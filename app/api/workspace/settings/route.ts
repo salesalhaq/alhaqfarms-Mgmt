@@ -1,4 +1,11 @@
 import { authenticateStaff, authenticationResponse } from "@/lib/server/staff-auth";
+import {
+  assertHqAdmin,
+  assertSameOrigin,
+  readJsonBody,
+  readUuid,
+  writeFailure,
+} from "@/lib/server/write";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -149,5 +156,31 @@ export async function GET(request: Request) {
       { error: "Settings could not be loaded. Please try again." },
       503,
     );
+  }
+}
+
+export async function POST(request: Request) {
+  const authentication = await authenticateStaff(request);
+  if (!authentication.ok) {
+    return authenticationResponse(request, authentication, { error: authentication.error }, authentication.status);
+  }
+
+  try {
+    assertSameOrigin(request);
+    assertHqAdmin(authentication.identity);
+    const body = await readJsonBody(request);
+    if (body.action !== "set_default_branch") {
+      return authenticationResponse(request, authentication, { error: "Choose a valid settings action." }, 400);
+    }
+
+    const branchId = readUuid(body.branchId, "Branch");
+    const { data, error } = await authentication.client.rpc("staff_set_default_branch", {
+      p_branch_id: branchId,
+    });
+    if (error) throw error;
+
+    return authenticationResponse(request, authentication, { branch: data });
+  } catch (error) {
+    return writeFailure(request, authentication, error);
   }
 }

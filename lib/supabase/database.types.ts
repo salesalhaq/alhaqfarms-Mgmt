@@ -529,6 +529,10 @@ export interface Database {
         Args: { p_payload: Json };
         Returns: Json;
       };
+      staff_set_default_branch: {
+        Args: { p_branch_id: string };
+        Returns: Json;
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

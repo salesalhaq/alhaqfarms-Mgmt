@@ -519,11 +519,12 @@ function PrinterSettingsPanel({ branchId }: { branchId: string | null }) {
   );
 }
 
-function ReadOnlyTable({ headers, rows, emptyMessage, searchQuery }: {
+function ReadOnlyTable({ headers, rows, emptyMessage, searchQuery, compactControls = false }: {
   headers: string[];
   rows: (string | number | ReactNode)[][];
   emptyMessage: string;
   searchQuery: string;
+  compactControls?: boolean;
 }) {
   const [sortColumn, setSortColumn] = useState(0);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
@@ -555,19 +556,21 @@ function ReadOnlyTable({ headers, rows, emptyMessage, searchQuery }: {
 
   return (
     <div className="settings-workspace-table">
-      <label className="settings-workspace-table-search">
-        <Search size={14} aria-hidden="true" />
-        <input
-          type="search"
-          value={tableFilter}
-          aria-label="Search this settings table"
-          placeholder="Filter rows…"
-          onChange={(event) => {
-            setTableFilter(event.target.value);
-            setRequestedPage(0);
-          }}
-        />
-      </label>
+      {!compactControls && (
+        <label className="settings-workspace-table-search">
+          <Search size={14} aria-hidden="true" />
+          <input
+            type="search"
+            value={tableFilter}
+            aria-label="Search this settings table"
+            placeholder="Filter rows…"
+            onChange={(event) => {
+              setTableFilter(event.target.value);
+              setRequestedPage(0);
+            }}
+          />
+        </label>
+      )}
       <div className="table-wrap">
         <table className="workspace-table">
           <thead><tr>{headers.map((header, index) => (
@@ -596,25 +599,27 @@ function ReadOnlyTable({ headers, rows, emptyMessage, searchQuery }: {
           </tbody>
         </table>
       </div>
-      <div className="settings-workspace-table-controls">
-        <span>Showing {firstRow}–{lastRow} of {filteredRows.length}</span>
-        <label>
-          Rows
-          <select aria-label="Rows per page" value={pageSize} onChange={(event) => {
-            setPageSize(Number(event.target.value));
-            setRequestedPage(0);
-          }}>
-            {[10, 25, 50].map((size) => <option key={size} value={size}>{size}</option>)}
-          </select>
-        </label>
-        <button type="button" aria-label="Previous page" disabled={page === 0} onClick={() => setRequestedPage(page - 1)}>
-          <ChevronLeft size={14} />
-        </button>
-        <span>Page {page + 1} of {pageCount}</span>
-        <button type="button" aria-label="Next page" disabled={page >= pageCount - 1} onClick={() => setRequestedPage(page + 1)}>
-          <ChevronRight size={14} />
-        </button>
-      </div>
+      {!compactControls && (
+        <div className="settings-workspace-table-controls">
+          <span>Showing {firstRow}–{lastRow} of {filteredRows.length}</span>
+          <label>
+            Rows
+            <select aria-label="Rows per page" value={pageSize} onChange={(event) => {
+              setPageSize(Number(event.target.value));
+              setRequestedPage(0);
+            }}>
+              {[10, 25, 50].map((size) => <option key={size} value={size}>{size}</option>)}
+            </select>
+          </label>
+          <button type="button" aria-label="Previous page" disabled={page === 0} onClick={() => setRequestedPage(page - 1)}>
+            <ChevronLeft size={14} />
+          </button>
+          <span>Page {page + 1} of {pageCount}</span>
+          <button type="button" aria-label="Next page" disabled={page >= pageCount - 1} onClick={() => setRequestedPage(page + 1)}>
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -626,6 +631,7 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [globalSearch, setGlobalSearch] = useState("");
+  const [defaultBranchBusy, setDefaultBranchBusy] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -656,6 +662,25 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
     () => new Map((settings?.branches || []).map((branch) => [branch.id, branch.name])),
     [settings?.branches],
   );
+  const setDefaultBranch = async (branchId: string) => {
+    setDefaultBranchBusy(branchId);
+    setError(null);
+    try {
+      const response = await fetch("/api/workspace/settings", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_default_branch", branchId }),
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || "The default branch could not be changed.");
+      setReloadKey((key) => key + 1);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "The default branch could not be changed.");
+    } finally {
+      setDefaultBranchBusy(null);
+    }
+  };
   const visibleTabs = useMemo(() => settings
     ? TABS.filter(({ roles, requiresHq }) => (!roles || roles.includes(settings.profile.role))
       && (!requiresHq || (settings.profile.role === "admin" && settings.profile.branchId === null)))
@@ -676,20 +701,20 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
           <p>Read-only view of settings available to your signed-in account.</p>
         </div>
         <div className="settings-workspace-actions">
-          <label className="settings-workspace-search">
-            <Search size={15} aria-hidden="true" />
-            <input
-              type="search"
-              aria-label="Search settings tables"
-              placeholder="Search settings tables…"
-              value={globalSearch}
-              onChange={(event) => setGlobalSearch(event.target.value)}
-            />
-          </label>
+          {activeTab !== "profile" && <label className="settings-workspace-search">
+              <Search size={15} aria-hidden="true" />
+              <input
+                type="search"
+                aria-label="Search settings tables"
+                placeholder="Search settings tables…"
+                value={globalSearch}
+                onChange={(event) => setGlobalSearch(event.target.value)}
+              />
+            </label>}
           <button type="button" className="secondary-button" disabled={loading} onClick={() => setReloadKey((key) => key + 1)}>
             <RefreshCw size={13} /> Refresh
           </button>
-          {activeTab === "branches" && settings?.profile.role === "admin" && (
+          {activeTab === "branches" && settings?.profile.role === "admin" && settings.profile.branchId === null && (
             <button type="button" className="primary-button" disabled title="Adding branches is a Windows desktop workflow.">
               <Plus size={14} /> Add branch
             </button>
@@ -720,7 +745,8 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
             <p>Your profile is loaded from the authenticated cloud staff record.</p>
             <ReadOnlyTable
               headers={["Setting", "Current value"]}
-              searchQuery={globalSearch}
+              searchQuery=""
+              compactControls
               rows={[
                 ["Name", settings.profile.fullName],
                 ["Email", settings.profile.email],
@@ -804,7 +830,7 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
 
         {activeTab === "branches" && <section className="card settings-workspace-panel">
           <h2>Branches</h2>
-          <p>Only branches returned for this authenticated user's existing access are shown. Branch administration is read-only here.</p>
+          <p>Only branches returned for this authenticated user's existing access are shown. HQ administrators can choose the default branch.</p>
           <ReadOnlyTable
             headers={["Branch", "Code", "Status", "Address", "Timezone", "Receipt prefix", "Default", "Contact", "Actions"]}
             searchQuery={globalSearch}
@@ -818,13 +844,23 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
               branch.is_default ? "Yes" : "No",
               [branch.phone, branch.email].filter(Boolean).join(" · ") || "Not set",
               <div className="row-actions" key={branch.id}>
-                <button className="secondary-button" type="button" disabled title="Making a branch default is a Windows desktop workflow.">Make default</button>
-                <button className="secondary-button" type="button" disabled title="Editing branches is a Windows desktop workflow."><Pencil size={12} /> Edit</button>
+                {settings.profile.role === "admin" && settings.profile.branchId === null && !branch.is_default && branch.is_active && (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={defaultBranchBusy !== null}
+                    onClick={() => void setDefaultBranch(branch.id)}
+                  >
+                    {defaultBranchBusy === branch.id ? <RefreshCw size={12} className="spin" /> : <CheckCircle2 size={12} />}
+                    Make default
+                  </button>
+                )}
+                <button className="secondary-button" type="button" disabled title="Editing branch details requires the branch administration workflow."><Pencil size={12} /> Edit</button>
               </div>,
             ])}
             emptyMessage="No branches are available to this account."
           />
-          <p className="settings-workspace-note">Address and contact details are shown only when present in the shared branch record. Branch changes are disabled.</p>
+          <p className="settings-workspace-note">Address and contact details are shown only when present in the shared branch record. Default-branch changes are saved securely and recorded in the audit log.</p>
         </section>}
 
         {activeTab === "permissions" && settings.profile.role !== "admin" && <section className="card settings-workspace-panel"><h2>Permissions</h2><p>Permission management settings are available to administrators only.</p></section>}

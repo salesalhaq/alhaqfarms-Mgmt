@@ -202,7 +202,7 @@ begin
     end if;
     v_discount := (coalesce(p_payload->>'billDiscountPaisa', '0'))::bigint;
     if v_discount > v_subtotal then raise exception 'Bill discount cannot exceed the sale subtotal.'; end if;
-    if v_staff.role = 'cashier' and v_discount > least(floor(v_subtotal::numeric * 0.03)::bigint, 10000) then
+    if v_discount > least(floor(v_subtotal::numeric * 0.03)::bigint, 10000) then
       raise exception 'A manager or administrator must approve this discount before holding the sale.';
     end if;
     if coalesce(p_payload->>'loyaltyPointsRedeemed', '0') !~ '^\d{1,9}$' then
@@ -622,8 +622,8 @@ begin
   end if;
 
   if p_action = 'request' then
-    if v_staff.role <> 'cashier' then
-      raise exception 'Only cashiers need a manager discount approval request.';
+    if v_staff.role not in ('cashier', 'manager', 'admin') then
+      raise exception 'Your role cannot request a POS discount approval.';
     end if;
     v_items := p_payload->'items';
     if coalesce(jsonb_typeof(v_items), '') <> 'array' then
@@ -716,6 +716,7 @@ begin
     select coalesce(jsonb_agg(jsonb_build_object(
       'id', request.id,
       'cashierName', coalesce(cashier.full_name, 'Cashier'),
+      'canReview', request.cashier_id is distinct from v_staff.local_staff_id,
       'billDiscountPaisa', request.bill_discount_paisa,
       'items', request.items_json,
       'expiresAt', request.expires_at
@@ -737,6 +738,16 @@ begin
       raise exception 'Choose a valid discount request.';
     end;
     v_status := case when p_action = 'approve' then 'approved' else 'declined' end;
+    if p_action = 'approve' and exists (
+      select 1 from public.pos_discount_approvals request
+      where request.id = v_request_id
+        and request.branch_id = v_branch_id
+        and request.cashier_id = v_staff.local_staff_id
+        and request.status = 'pending'
+        and request.expires_at > v_now
+    ) then
+      raise exception 'Another staff member must approve your discount request.';
+    end if;
     update public.pos_discount_approvals
     set status = v_status, approved_by = case when p_action = 'approve' then v_staff.local_staff_id else null end,
         updated_at = v_now, server_updated_at = v_now

@@ -60,6 +60,10 @@ export async function POST(request: Request) {
 
     return authenticationResponse(request, authentication, data);
   } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "P0001"
+        && "message" in error && typeof error.message === "string") {
+      return authenticationResponse(request, authentication, { error: error.message }, 400);
+    }
     return writeFailure(request, authentication, error);
   }
 }

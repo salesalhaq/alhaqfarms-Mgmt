@@ -238,7 +238,7 @@ begin
   end if;
   v_bill_discount := (coalesce(p_payload->>'billDiscountPaisa', '0'))::bigint;
   if v_bill_discount > v_subtotal then raise exception 'Bill discount cannot exceed the sale subtotal.'; end if;
-  if v_staff.role = 'cashier' and v_bill_discount > least(floor(v_subtotal::numeric * 0.03)::bigint, 10000) then
+  if v_bill_discount > least(floor(v_subtotal::numeric * 0.03)::bigint, 10000) then
     begin
       v_discount_approval_id := (p_payload->>'discountApprovalId')::uuid;
     exception when invalid_text_representation then

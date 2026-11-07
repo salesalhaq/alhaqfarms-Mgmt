@@ -55,6 +55,7 @@ interface PosCustomerResponse {
 interface PosDiscountRequest {
   id: string;
   cashierName: string;
+  canReview: boolean;
   billDiscountPaisa: number;
   expiresAt: string;
 }
@@ -219,7 +220,9 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
   const [customerPhone, setCustomerPhone] = useState("");
   const [loyaltyPointsInput, setLoyaltyPointsInput] = useState("0");
   const [discountApprovalRequestId, setDiscountApprovalRequestId] = useState("");
+  const [discountApprovalRequestFingerprint, setDiscountApprovalRequestFingerprint] = useState("");
   const [discountApprovalId, setDiscountApprovalId] = useState("");
+  const [discountApprovalFingerprint, setDiscountApprovalFingerprint] = useState("");
   const [discountApprovalBusy, setDiscountApprovalBusy] = useState(false);
   const [managerDiscountRequests, setManagerDiscountRequests] = useState<PosDiscountRequest[]>([]);
   const [registerDialog, setRegisterDialog] = useState<"open_shift" | "close_shift" | "cash_in" | "cash_out" | null>(null);
@@ -261,6 +264,13 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
     0,
   ), [cart]);
   const billDiscountPaisa = billDiscountInput.trim() ? parseMoneyInput(billDiscountInput) : 0;
+  const discountApprovalBasketFingerprint = useMemo(() => JSON.stringify({
+    billDiscountPaisa: billDiscountPaisa || 0,
+    items: cart.map((line) => ({
+      productId: line.product.id.toLowerCase(),
+      quantityMilli: line.quantityMilli,
+    })).sort((left, right) => left.productId.localeCompare(right.productId)),
+  }), [billDiscountPaisa, cart]);
   const loyaltyPointsRedeemed = /^\d{1,10}$/.test(loyaltyPointsInput.trim())
     ? Number(loyaltyPointsInput.trim()) : 0;
   const loyaltyDiscountPaisa = loyaltyPointsRedeemed * 100;
@@ -269,7 +279,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
     || (loyaltyPointsRedeemed > 0 && !selectedCustomer)
     || loyaltyPointsRedeemed > (selectedCustomer?.loyalty_points || 0)
     || loyaltyDiscountPaisa > totalPaisa - (billDiscountPaisa || 0);
-  const discountNeedsManagerApproval = staff?.role === "cashier"
+  const discountNeedsManagerApproval = Boolean(staff)
     && (billDiscountPaisa || 0) > Math.min(Math.floor(totalPaisa * 0.03), 10_000);
   let taxDiscountRemaining = (billDiscountPaisa ?? 0)
     + (invalidLoyaltyRedemption ? 0 : loyaltyDiscountPaisa);
@@ -431,7 +441,10 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
   }, [branchId, staff?.role]);
 
   const requestManagerDiscountApproval = async () => {
-    if (!branchId || !discountNeedsManagerApproval || discountApprovalRequestId) return;
+    if (!branchId || !discountNeedsManagerApproval
+        || (discountApprovalRequestId && discountApprovalRequestFingerprint === discountApprovalBasketFingerprint)
+        || (discountApprovalId && discountApprovalFingerprint === discountApprovalBasketFingerprint)) return;
+    const requestFingerprint = discountApprovalBasketFingerprint;
     setDiscountApprovalBusy(true);
     setCheckoutError(null);
     try {
@@ -449,7 +462,10 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
       );
       if (!result.requestId) throw new Error("The manager approval request was not created.");
       setDiscountApprovalRequestId(result.requestId);
-      setScanNotice("Discount request sent. Waiting for a manager or administrator.");
+      setDiscountApprovalRequestFingerprint(requestFingerprint);
+      setDiscountApprovalId("");
+      setDiscountApprovalFingerprint("");
+      setScanNotice("Discount request sent. Waiting for another manager or administrator.");
     } catch (requestError) {
       setCheckoutError(requestError instanceof Error ? requestError.message : "Could not request discount approval.");
     } finally {
@@ -473,7 +489,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
   };
 
   useEffect(() => {
-    if (!branchId || staff?.role !== "cashier" || !discountApprovalRequestId) return;
+    if (!branchId || !discountApprovalRequestId) return;
     let active = true;
     const pollApproval = async () => {
       try {
@@ -483,11 +499,14 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
         );
         if (!active || result.status === "pending") return;
         setDiscountApprovalRequestId("");
+        setDiscountApprovalRequestFingerprint("");
         if (result.status === "approved") {
           setDiscountApprovalId(discountApprovalRequestId);
-          setScanNotice("Manager approved this discount. Complete checkout within two minutes.");
+          setDiscountApprovalFingerprint(discountApprovalRequestFingerprint);
+          setScanNotice("Another staff member approved this discount. Complete checkout within two minutes.");
         } else {
           setDiscountApprovalId("");
+          setDiscountApprovalFingerprint("");
           setCheckoutError(result.status === "expired"
             ? "The discount approval expired. Request approval again."
             : "The manager declined the discount request.");
@@ -495,6 +514,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
       } catch (pollError) {
         if (!active) return;
         setDiscountApprovalRequestId("");
+        setDiscountApprovalRequestFingerprint("");
         setCheckoutError(pollError instanceof Error ? pollError.message : "Could not check discount approval.");
       }
     };
@@ -504,7 +524,12 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
       active = false;
       window.clearInterval(timer);
     };
-  }, [branchId, discountApprovalRequestId, staff?.role]);
+  }, [branchId, discountApprovalRequestFingerprint, discountApprovalRequestId]);
+
+  const hasDiscountApprovalForBasket = Boolean(discountApprovalId)
+    && discountApprovalFingerprint === discountApprovalBasketFingerprint;
+  const hasDiscountRequestForBasket = Boolean(discountApprovalRequestId)
+    && discountApprovalRequestFingerprint === discountApprovalBasketFingerprint;
 
   useEffect(() => {
     if (!branchId || !["manager", "admin"].includes(staff?.role || "")) {
@@ -929,7 +954,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
         taxMode,
         customerAccountId: selectedCustomer?.id || null,
         loyaltyPointsRedeemed,
-        ...(discountApprovalId ? { discountApprovalId } : {}),
+        ...(hasDiscountApprovalForBasket ? { discountApprovalId } : {}),
         ...(activeHeldId ? { heldSaleId: activeHeldId } : {}),
       });
       if (!result.sale) throw new Error("Checkout returned no sale confirmation.");
@@ -962,7 +987,9 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
       setCompletedAt(new Date().toISOString());
       setActiveHeldId(null);
       setDiscountApprovalRequestId("");
+      setDiscountApprovalRequestFingerprint("");
       setDiscountApprovalId("");
+      setDiscountApprovalFingerprint("");
       setCheckoutDialog(false);
       setCart([]);
       setQuantityDrafts({});
@@ -1077,12 +1104,14 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
                 <small>Requested discount {formatMoney(request.billDiscountPaisa)}</small>
                 <small>Expires {new Date(request.expiresAt).toLocaleTimeString()}</small>
               </div>
-              <div>
-                <button className="button" disabled={discountApprovalBusy || Date.parse(request.expiresAt) <= Date.now()}
-                  onClick={() => void reviewManagerDiscount(request.id, true)} type="button">Approve</button>
-                <button className="button secondary" disabled={discountApprovalBusy}
-                  onClick={() => void reviewManagerDiscount(request.id, false)} type="button">Decline</button>
-              </div>
+              {request.canReview
+                ? <div>
+                  <button className="button" disabled={discountApprovalBusy || Date.parse(request.expiresAt) <= Date.now()}
+                    onClick={() => void reviewManagerDiscount(request.id, true)} type="button">Approve</button>
+                  <button className="button secondary" disabled={discountApprovalBusy}
+                    onClick={() => void reviewManagerDiscount(request.id, false)} type="button">Decline</button>
+                </div>
+                : <small>Another staff member must review this request.</small>}
             </article>
           ))}
         </section>
@@ -1268,7 +1297,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
             <button className="button secondary" disabled={!shiftOpen || !cart.length || heldSalesBusy || discountNeedsManagerApproval || invalidLoyaltyRedemption} onClick={() => void holdCurrentSale()} type="button">
               {heldSalesBusy ? "Saving…" : "Hold sale"}
             </button>
-            <button className="button" disabled={!shiftOpen || !cart.length || invalidBillDiscount || invalidLoyaltyRedemption || (discountNeedsManagerApproval && !discountApprovalId) || checkoutSaving} onClick={openCheckout} type="button">Take payment</button>
+            <button className="button" disabled={!shiftOpen || !cart.length || invalidBillDiscount || invalidLoyaltyRedemption || (discountNeedsManagerApproval && !hasDiscountApprovalForBasket) || checkoutSaving} onClick={openCheckout} type="button">Take payment</button>
           </div>
           <div className="pos-basket-actions">
             <button className="button secondary" disabled={!completedSale} onClick={printReceipt} type="button">Print receipt</button>
@@ -1280,14 +1309,14 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
           </div>
           {discountNeedsManagerApproval && (
             <div className="notice" role="status">
-              <p>This cashier discount exceeds the self-approval limit. Manager approval expires after two minutes.</p>
-              {discountApprovalId
-                ? <p>Approved. Complete this exact basket now.</p>
-                : discountApprovalRequestId
-                  ? <p>Waiting for a manager or administrator to review this request.</p>
+              <p>This discount is above the self-approval limit. Another staff member must approve it; approval expires after two minutes.</p>
+              {hasDiscountApprovalForBasket
+                ? <p>Approved for this exact basket. Complete checkout within two minutes.</p>
+                : hasDiscountRequestForBasket
+                  ? <p>Waiting for another manager or administrator to review this request.</p>
                   : <button className="button secondary" disabled={discountApprovalBusy || !cart.length}
                     onClick={() => void requestManagerDiscountApproval()} type="button">
-                      {discountApprovalBusy ? "Sending request…" : "Request on manager screen"}
+                      {discountApprovalBusy ? "Sending request…" : "Request another staff member"}
                     </button>}
               {checkoutError && <p role="alert">{checkoutError}</p>}
             </div>
@@ -1491,7 +1520,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
               setCheckoutError(null);
             }}>
               <label className="field">
-                <span>Discount amount (PKR)<small>Cashier discounts above the lower of 3% or PKR 100 require manager approval.</small></span>
+                <span>Discount amount (PKR)<small>Discounts above the lower of 3% or PKR 100 require approval from another manager or administrator.</small></span>
                 <input autoFocus inputMode="decimal" value={discountDraft} onChange={(event) => setDiscountDraft(event.target.value)} />
               </label>
               {checkoutError && <div className="error-banner" role="alert">{checkoutError}</div>}

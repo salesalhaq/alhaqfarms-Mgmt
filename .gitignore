@@ -1,0 +1,17 @@
+/node_modules
+/.next
+/.open-next
+/.wrangler
+/coverage
+/out
+/build
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+*.tsbuildinfo
+next-env.d.ts
+npm-debug.log*
+/supabase/.temp/

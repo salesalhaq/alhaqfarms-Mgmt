@@ -13,8 +13,10 @@ import {
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { DEFAULT_BRAND_NAME } from "@/lib/branding";
 import { formatMoney } from "@/lib/format";
+import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { ean13ForWeight } from "@/lib/scale/weight-barcode";
 import { printLabelsViaBridge } from "@/lib/print/bridge-print";
+import { loadPrinterSettings } from "@/lib/print/printer-settings";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { SerialScale } from "./SerialScale";
 
@@ -73,7 +75,7 @@ interface LabelSize {
   font: number;
 }
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 60;
 const MAX_LABELS = 240;
 const MAX_PER_PRODUCT = 99;
 
@@ -124,6 +126,20 @@ function effectivePrice(product: Product): number {
     : product.price_paisa;
 }
 
+async function assignWeightBarcodeCode(productId: string): Promise<{ numericCode: number; reassigned: boolean }> {
+  const response = await fetch("/api/workspace/weight-barcode-code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ productId }),
+  });
+  const result = await response.json() as { numericCode?: number; reassigned?: boolean; error?: string };
+  if (!response.ok || typeof result.numericCode !== "number" || !Number.isInteger(result.numericCode)) {
+    throw new Error(result.error || "Could not assign a weight-barcode code.");
+  }
+  return { numericCode: result.numericCode, reassigned: Boolean(result.reassigned) };
+}
+
 function Barcode({
   value,
   height,
@@ -156,6 +172,7 @@ function Barcode({
 }
 
 export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
+  const { staff } = useStaffAuth();
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -173,6 +190,7 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
   const [error, setError] = useState<string | null>(null);
 
   const [weightedProductId, setWeightedProductId] = useState("");
+  const [selectedWeightedProduct, setSelectedWeightedProduct] = useState<Product | null>(null);
   const [weight, setWeight] = useState("0.500");
   const [weightLabelCopies, setWeightLabelCopies] = useState("1");
   const [weightBarcodeMode, setWeightBarcodeMode] = useState<"weight" | "product">("weight");
@@ -189,6 +207,12 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
   const [weightCodeNotice, setWeightCodeNotice] = useState("");
   const [weightCodeError, setWeightCodeError] = useState("");
   const [printNotice, setPrintNotice] = useState("");
+  const [weightBusy, setWeightBusy] = useState(false);
+
+  useEffect(() => {
+    const savedSize = loadPrinterSettings({ branchId: staff?.branch_id ?? null }).labelSizeId;
+    if (SIZES.some((option) => option.id === savedSize)) setSizeId(savedSize);
+  }, [staff?.branch_id]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 250);
@@ -238,7 +262,8 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
     () => products.filter((product) => ["kg", "ltr"].includes(String(product.unit_code || "").toLowerCase())),
     [products],
   );
-  const weightedProduct = weighedProducts.find((product) => product.id === weightedProductId) || null;
+  const weightedProduct = weighedProducts.find((product) => product.id === weightedProductId)
+    || (selectedWeightedProduct?.id === weightedProductId ? selectedWeightedProduct : null);
   const weightQuantityMilli = /^\d{1,2}(?:\.\d{1,3})?$/.test(weight.trim())
     ? Math.round(Number(weight) * 1000)
     : null;
@@ -255,27 +280,19 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
     setWeightCode(null);
     setWeightCodeNotice("");
     setWeightCodeError("");
-    if (!weightedProductId) {
+    if (!weightedProductId || weightBarcodeMode !== "weight") {
       setWeightCodeBusy(false);
       return () => { active = false; };
     }
     setWeightCodeBusy(true);
     void (async () => {
       try {
-        const response = await fetch("/api/workspace/weight-barcode-code", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "same-origin",
-          body: JSON.stringify({ productId: weightedProductId }),
-        });
-        const result = await response.json() as { numericCode?: number; reassigned?: boolean; error?: string };
+        const result = await assignWeightBarcodeCode(weightedProductId);
         if (!active) return;
-        if (!response.ok || !Number.isInteger(result.numericCode)) {
-          throw new Error(result.error || "Could not assign a weight-barcode code.");
-        }
-        setWeightCode(result.numericCode as number);
+        setWeightCode(result.numericCode);
         if (result.reassigned) {
-          setWeightCodeNotice(`Assigned a new weight-barcode code ${result.numericCode} because the previous code was missing or duplicated.`);
+          setWeightedLabels((current) => current.filter((label) => label.product.id !== weightedProductId));
+          setWeightCodeNotice(`Assigned weight-barcode code ${result.numericCode}; older measured labels for this product were removed. Reprint them before scanning.`);
         }
       } catch (codeError) {
         if (active) setWeightCodeError(codeError instanceof Error ? codeError.message : "Could not assign a weight-barcode code.");
@@ -284,13 +301,14 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
       }
     })();
     return () => { active = false; };
-  }, [weightedProductId]);
+  }, [weightedProductId, weightBarcodeMode]);
 
   const setQuantity = (product: Product, requested: number) => {
     setSelected((current) => {
       const previousQuantity = current[product.id]?.quantity || 0;
       const otherLabels = Object.values(current).reduce((sum, entry) => sum + entry.quantity, 0) - previousQuantity;
-      const quantity = Math.max(0, Math.min(MAX_PER_PRODUCT, MAX_LABELS - otherLabels, Math.floor(requested) || 0));
+      const available = MAX_LABELS - weightedLabels.length - otherLabels;
+      const quantity = Math.max(0, Math.min(MAX_PER_PRODUCT, available, Math.floor(requested) || 0));
       const next = { ...current };
       if (quantity === 0) delete next[product.id];
       else next[product.id] = { product, quantity };
@@ -298,7 +316,7 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
     });
   };
 
-  const addWeightedLabels = () => {
+  const addWeightedLabels = async () => {
     setWeightError("");
     if (!weightedProduct) {
       setWeightError("Select a kg or ltr product first.");
@@ -321,31 +339,52 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
       setWeightError("Choose a valid packed date and shelf life.");
       return;
     }
-    if (weightBarcodeMode === "weight" && weightCode == null) {
-      setWeightError(weightCodeBusy
-        ? "Preparing this product's weight-barcode code…"
-        : weightCodeError || "This product does not have a weight-barcode code yet. Use product code only, or retry the assignment.");
+    if (copies > MAX_LABELS - labelCount - weightedLabels.length) {
+      setWeightError(`Only ${Math.max(0, MAX_LABELS - labelCount - weightedLabels.length)} label(s) fit in the ${MAX_LABELS}-label queue.`);
       return;
     }
 
-    const code = weightBarcodeMode === "weight" && weightCode != null
-      ? ean13ForWeight(weightCode, weightQuantityMilli)
-      : getCode(weightedProduct);
-    const barcodeFormat = weightBarcodeMode === "weight" ? "EAN13" : "CODE128";
-    const total = Math.round(weightedUnitPrice * weightQuantityMilli / 1000);
-    const items: WeightedLabel[] = Array.from({ length: copies }, (_, index) => ({
-      key: `weighted-${Date.now()}-${index}`,
-      code,
-      barcodeFormat,
-      product: weightedProduct,
-      measuredQuantity: weightQuantityMilli / 1000,
-      totalPricePaisa: total,
-      packedDate,
-      expiryDate,
-      companyName: companyName.trim() || DEFAULT_BRAND_NAME,
-      labelFooter: labelFooter.trim(),
-    }));
-    setWeightedLabels((current) => [...current, ...items].slice(-MAX_LABELS));
+    setWeightBusy(true);
+    try {
+      let numericCode = weightCode;
+      if (weightBarcodeMode === "weight") {
+        const assigned = await assignWeightBarcodeCode(weightedProduct.id);
+        numericCode = assigned.numericCode;
+        setWeightCode(assigned.numericCode);
+        if (assigned.reassigned) {
+          setWeightedLabels((current) => current.filter((label) => label.product.id !== weightedProduct.id));
+          setWeightCodeNotice(`Assigned weight-barcode code ${assigned.numericCode}; older measured labels for this product were removed. Reprint them before scanning.`);
+        }
+      }
+
+      let code = getCode(weightedProduct);
+      let barcodeFormat: WeightedLabel["barcodeFormat"] = "CODE128";
+      if (weightBarcodeMode === "weight") {
+        if (numericCode == null) {
+          throw new Error(weightCodeError || "Could not assign a weight-barcode code.");
+        }
+        code = ean13ForWeight(numericCode, weightQuantityMilli);
+        barcodeFormat = "EAN13";
+      }
+      const total = Math.round(weightedUnitPrice * weightQuantityMilli / 1000);
+      const items: WeightedLabel[] = Array.from({ length: copies }, (_, index) => ({
+        key: `weighted-${Date.now()}-${index}`,
+        code,
+        barcodeFormat,
+        product: weightedProduct,
+        measuredQuantity: weightQuantityMilli / 1000,
+        totalPricePaisa: total,
+        packedDate,
+        expiryDate,
+        companyName: companyName.trim() || DEFAULT_BRAND_NAME,
+        labelFooter: labelFooter.trim(),
+      }));
+      setWeightedLabels((current) => [...current, ...items]);
+    } catch (addError) {
+      setWeightError(addError instanceof Error ? addError.message : "Could not prepare measured labels.");
+    } finally {
+      setWeightBusy(false);
+    }
   };
 
   const printLabels = () => window.print();
@@ -492,7 +531,7 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
         <label className="toggle-field"><input type="checkbox" checked={showName} onChange={(event) => setShowName(event.target.checked)} /> Name</label>
         <label className="toggle-field"><input type="checkbox" checked={showPrice} onChange={(event) => setShowPrice(event.target.checked)} /> Price</label>
         <label className="toggle-field"><input type="checkbox" checked={showCode} onChange={(event) => setShowCode(event.target.checked)} /> Code</label>
-        <button type="button" className="secondary-button" onClick={() => setSelected({})} disabled={!labelCount}>Clear</button>
+        <button type="button" className="secondary-button" onClick={() => setSelected({})} disabled={!labelCount || weightBusy}>Clear</button>
         {(search || categoryId) && <button type="button" className="secondary-button" onClick={clearFilters}>Clear filters</button>}
       </div>
 
@@ -502,7 +541,7 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
             <h2>Measured product labels</h2>
             <p>Print a weight/volume-specific label using a configured USB-to-serial scale.</p>
           </div>
-          <button type="button" className="secondary-button" onClick={() => setWeightedLabels([])} disabled={!weightedLabels.length}>
+          <button type="button" className="secondary-button" onClick={() => setWeightedLabels([])} disabled={!weightedLabels.length || weightBusy}>
             Clear measured labels
           </button>
         </div>
@@ -513,12 +552,19 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
               <select
                 value={weightedProductId}
                 onChange={(event) => {
-                  setWeightedProductId(event.target.value);
+                  const productId = event.target.value;
+                  setWeightedProductId(productId);
+                  setSelectedWeightedProduct(weighedProducts.find((product) => product.id === productId) || null);
                   setWeightError("");
                   setScaleConfirmed(false);
                 }}
               >
                 <option value="">Choose kg/ltr product</option>
+                {selectedWeightedProduct && !weighedProducts.some((product) => product.id === selectedWeightedProduct.id) && (
+                  <option value={selectedWeightedProduct.id}>
+                    {selectedWeightedProduct.name} · {formatMoney(effectivePrice(selectedWeightedProduct))}/{selectedWeightedProduct.unit_code}
+                  </option>
+                )}
                 {weighedProducts.map((product) => (
                   <option key={product.id} value={product.id}>
                     {product.name} · {formatMoney(effectivePrice(product))}/{product.unit_code}
@@ -605,10 +651,10 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
             <button
               type="button"
               className="primary-button"
-              disabled={scaleMode && !scaleConfirmed}
+              disabled={weightBusy || weightCodeBusy || (scaleMode && !scaleConfirmed)}
               onClick={addWeightedLabels}
             >
-              Add {weightLabelCopies || 1} measured label{Number(weightLabelCopies) === 1 ? "" : "s"}
+              {weightBusy ? "Preparing labels…" : `Add ${weightLabelCopies || 1} measured label${Number(weightLabelCopies) === 1 ? "" : "s"}`}
             </button>
           </div>
         </div>
@@ -624,7 +670,7 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
               {products.map((product) => {
                 const quantity = selected[product.id]?.quantity || 0;
                 const totalWithoutProduct = labelCount - quantity;
-                const addDisabled = quantity >= MAX_PER_PRODUCT || totalWithoutProduct + quantity >= MAX_LABELS;
+                const addDisabled = quantity >= MAX_PER_PRODUCT || totalWithoutProduct + quantity + weightedLabels.length >= MAX_LABELS;
                 return (
                   <div className={quantity ? "labels-row selected" : "labels-row"} key={product.id}>
                     <div className="labels-info">
@@ -637,13 +683,14 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
                         className="secondary-button icon-button"
                         aria-label={`Remove one label for ${product.name}`}
                         onClick={() => setQuantity(product, quantity - 1)}
-                        disabled={!quantity}
+                        disabled={!quantity || weightBusy}
                       >−</button>
                       <input
                         aria-label={`Labels for ${product.name}`}
                         inputMode="numeric"
                         value={quantity || ""}
                         placeholder="0"
+                        disabled={weightBusy}
                         onChange={(event) => setQuantity(product, Number.parseInt(event.target.value, 10) || 0)}
                       />
                       <button
@@ -651,7 +698,7 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
                         className="secondary-button icon-button"
                         aria-label={`Add one label for ${product.name}`}
                         onClick={() => setQuantity(product, quantity + 1)}
-                        disabled={addDisabled}
+                        disabled={addDisabled || weightBusy}
                       >+</button>
                     </div>
                   </div>

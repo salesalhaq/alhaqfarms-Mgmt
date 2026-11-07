@@ -202,9 +202,6 @@ begin
     end if;
     v_discount := (coalesce(p_payload->>'billDiscountPaisa', '0'))::bigint;
     if v_discount > v_subtotal then raise exception 'Bill discount cannot exceed the sale subtotal.'; end if;
-    if v_staff.role = 'cashier' and v_discount > least(floor(v_subtotal::numeric * 0.03)::bigint, 10000) then
-      raise exception 'A manager or administrator must approve this discount before holding the sale.';
-    end if;
     if coalesce(p_payload->>'loyaltyPointsRedeemed', '0') !~ '^\d{1,9}$' then
       raise exception 'Loyalty points must be a non-negative whole number.';
     end if;

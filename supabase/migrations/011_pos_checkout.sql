@@ -19,11 +19,6 @@ declare
   v_existing public.pos_sales;
   v_held_sale_id uuid;
   v_held public.pos_held_sales;
-  v_discount_approval_id uuid;
-  v_discount_approval record;
-  v_discount_fingerprint text;
-  v_normalized_items jsonb;
-  v_row_count bigint;
   v_customer public.customer_accounts;
   v_customer_account_id uuid;
   v_customer_balance bigint := 0;
@@ -238,37 +233,6 @@ begin
   end if;
   v_bill_discount := (coalesce(p_payload->>'billDiscountPaisa', '0'))::bigint;
   if v_bill_discount > v_subtotal then raise exception 'Bill discount cannot exceed the sale subtotal.'; end if;
-  if v_staff.role = 'cashier' and v_bill_discount > least(floor(v_subtotal::numeric * 0.03)::bigint, 10000) then
-    begin
-      v_discount_approval_id := (p_payload->>'discountApprovalId')::uuid;
-    exception when invalid_text_representation then
-      raise exception 'A manager or administrator must approve this bill discount.';
-    end;
-    if v_discount_approval_id is null or to_regclass('public.pos_discount_approvals') is null then
-      raise exception 'A manager or administrator must approve this bill discount.';
-    end if;
-    select jsonb_agg(jsonb_build_object(
-      'productId', lower(line.value->>'productId'),
-      'quantityMilli', (line.value->>'quantityMilli')::bigint
-    ) order by lower(line.value->>'productId'))
-    into v_normalized_items
-    from jsonb_array_elements(v_items) line(value);
-    v_discount_fingerprint := md5(v_normalized_items::text || ':' || v_bill_discount::text);
-    execute
-      'select id, basket_fingerprint, status, expires_at
-       from public.pos_discount_approvals
-       where id = $1 and branch_id = $2 and cashier_id = $3
-         and cashier_user_id = auth.uid()
-       for update'
-      into v_discount_approval
-      using v_discount_approval_id, v_branch_id, v_staff.local_staff_id;
-    get diagnostics v_row_count = row_count;
-    if v_row_count = 0 or v_discount_approval.status <> 'approved'
-      or v_discount_approval.expires_at <= v_now
-      or v_discount_approval.basket_fingerprint <> v_discount_fingerprint then
-      raise exception 'Manager approval is missing, expired, or no longer matches this basket.';
-    end if;
-  end if;
   if coalesce(p_payload->>'loyaltyPointsRedeemed', '0') !~ '^\d{1,9}$' then
     raise exception 'Loyalty points must be a non-negative whole number.';
   end if;
@@ -568,16 +532,6 @@ begin
     set status = 'completed', updated_at = v_now, server_updated_at = v_now
     where id = v_held_sale_id;
   end if;
-  if v_discount_approval_id is not null then
-    execute
-      'update public.pos_discount_approvals
-       set status = ''used'', updated_at = $1, server_updated_at = $1
-       where id = $2 and status = ''approved'''
-      using v_now, v_discount_approval_id;
-    get diagnostics v_row_count = row_count;
-    if v_row_count = 0 then raise exception 'Discount approval was already used.'; end if;
-  end if;
-
   return jsonb_build_object(
     'duplicate', false,
     'id', v_sale_id,

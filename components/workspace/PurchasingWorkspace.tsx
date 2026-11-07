@@ -7,6 +7,8 @@ import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
+import { DEFAULT_BRAND_NAME } from "@/lib/branding";
+import { generateSupplierDirectoryDocument } from "@/lib/print/reports";
 
 interface PurchaseOrder {
   id: string;
@@ -110,6 +112,16 @@ export function PurchasingWorkspace({ item }: { item: WorkspaceModule }) {
   const receipts = data?.receipts || [];
   const suppliers = data?.suppliers || [];
   const visibleRows = view === "orders" ? orders : view === "receipts" ? receipts : suppliers;
+  const reportBranchName = branchId === "all"
+    ? "All branches"
+    : branches.find((branch) => branch.id === branchId)?.name || "Your branch";
+  const supplierPurchases = new Map<string, number>();
+  for (const receipt of receipts) {
+    supplierPurchases.set(
+      receipt.supplier_name,
+      (supplierPurchases.get(receipt.supplier_name) || 0) + Number(receipt.subtotal_paisa || 0),
+    );
+  }
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 250);
@@ -242,7 +254,32 @@ export function PurchasingWorkspace({ item }: { item: WorkspaceModule }) {
                   </select>
                 </label>
               )}
-              <TableDocumentTools tableId={tableId} title={`Purchasing · ${view}`} disabled={loading || Boolean(error) || !visibleRows.length} />
+              <TableDocumentTools
+                tableId={tableId}
+                title={`Purchasing · ${view}`}
+                orientationKey={view === "suppliers" ? "supplier-directory" : `purchasing-${view}`}
+                disabled={loading || Boolean(error) || !visibleRows.length}
+                buildDocument={view === "suppliers"
+                  ? (orientation) => suppliers.length
+                    ? generateSupplierDirectoryDocument({
+                        rows: suppliers.map((supplier) => ({
+                          name: supplier.name,
+                          contact_name: supplier.contact_name,
+                          phone: supplier.phone,
+                          email: supplier.email,
+                          is_active: supplier.is_active,
+                          purchased_paisa: supplierPurchases.get(supplier.name) ?? null,
+                        })),
+                        branchName: reportBranchName,
+                      }, {
+                        branding: { businessName: DEFAULT_BRAND_NAME },
+                        orientationPreference: orientation,
+                        branch: reportBranchName,
+                        printedBy: staff?.full_name || "Staff",
+                      })
+                    : null
+                  : undefined}
+              />
             </div>
 
             <div className="workspace-tabs" role="tablist" aria-label="Purchasing record type">

@@ -74,10 +74,20 @@ export function TableDocumentTools({
   tableId,
   title,
   disabled = false,
+  orientationKey,
+  buildDocument,
 }: {
   tableId: string;
   title: string;
   disabled?: boolean;
+  /** Stable key for the saved orientation. Defaults to the table id. */
+  orientationKey?: string;
+  /**
+   * Optional desktop-specific document builder. When provided, print/preview
+   * use this document instead of the generic table snapshot (CSV still exports
+   * the visible table). Returning null means the report is not ready.
+   */
+  buildDocument?: (orientation: PrintOrientation) => GeneratedDocument | null;
 }) {
   const [orientation, setOrientation] = useState<PrintOrientation>("auto");
   const [openMenu, setOpenMenu] = useState<"print" | "export" | null>(null);
@@ -86,7 +96,7 @@ export function TableDocumentTools({
   >(null);
   const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const key = `${tableId}`;
+  const key = orientationKey || tableId;
 
   useEffect(() => setOrientation(readOrientation(key)), [key]);
 
@@ -127,7 +137,7 @@ export function TableDocumentTools({
     return value;
   };
 
-  const buildDocument = (data: TableSnapshot): GeneratedDocument =>
+  const buildTableDocument = (data: TableSnapshot): GeneratedDocument =>
     generateTableDocument({
       title,
       columns: data.columns,
@@ -143,10 +153,10 @@ export function TableDocumentTools({
   const runAction = (action: DocumentAction) => {
     setOpenMenu(null);
     if (disabled) return;
-    const data = snapshot();
-    if (!data) return;
 
     if (action === "csv") {
+      const data = snapshot();
+      if (!data) return;
       const csv = [data.columns, ...data.rows]
         .map((row) => row.map(csvCell).join(","))
         .join("\r\n");
@@ -161,9 +171,19 @@ export function TableDocumentTools({
       return;
     }
 
-    const generated = buildDocument(data);
+    const data = readTable(tableId);
+    const generated = buildDocument
+      ? buildDocument(orientation)
+      : data
+        ? buildTableDocument(data)
+        : null;
+    if (!generated) {
+      setError("This report is not ready to print.");
+      return;
+    }
+    setError(null);
     if (action === "preview") {
-      setPreview({ ...generated, rowCount: data.rows.length });
+      setPreview({ ...generated, rowCount: data?.rows.length ?? 0 });
       return;
     }
 

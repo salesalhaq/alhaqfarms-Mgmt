@@ -10,7 +10,7 @@ import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } fro
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { ReceiptQr } from "@/components/workspace/ReceiptQr";
-import { formatReportMoney, formatReportQuantity } from "@/lib/print/document";
+import { formatReportDate, formatReportMoney, formatReportQuantity } from "@/lib/print/document";
 import {
   buildReceiptQrData,
   DEFAULT_RECEIPT_SETTINGS,
@@ -18,6 +18,8 @@ import {
   receiptWidth,
 } from "@/lib/print/receipt";
 import { waitForReceiptQr } from "@/lib/print/print-window";
+import { DEFAULT_BRAND_NAME } from "@/lib/branding";
+import { generateSalesHistoryDocument } from "@/lib/print/reports";
 
 interface SaleBase {
   id: string;
@@ -152,6 +154,9 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
   const [detailError, setDetailError] = useState<string | null>(null);
   const isAdmin = staff?.role === "admin";
   const receiptSettings = DEFAULT_RECEIPT_SETTINGS;
+  const reportBranchName = branchId === "all"
+    ? "All branches"
+    : branches.find((branch) => branch.id === branchId)?.name || "Your branch";
   const canFilterCashiers = staff?.role === "admin" || staff?.role === "manager";
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -355,7 +360,28 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
       <section className="card table-wrap workspace-table sales-history-table" aria-label="Sales history data">
         <div className="table-document-heading">
           <strong>Sales history · page {page}</strong>
-          <TableDocumentTools tableId="sales-history-table" title="Sales history" disabled={loading || Boolean(error) || !rows.length} />
+          <TableDocumentTools
+            tableId="sales-history-table"
+            title="Sales history"
+            orientationKey="sales-history"
+            disabled={loading || Boolean(error) || !rows.length}
+            buildDocument={(orientation) => rows.length
+              ? generateSalesHistoryDocument({
+                  rows,
+                  period: `${formatReportDate(fromDate)} - ${formatReportDate(toDate)}`,
+                  filterSummary: [
+                    status !== "all" ? `Status: ${labelize(status)}` : "",
+                    search ? `Search: ${search}` : "",
+                    customerSearch ? `Customer: ${customerSearch}` : "",
+                  ].filter(Boolean).join(" · "),
+                }, {
+                  branding: { businessName: DEFAULT_BRAND_NAME },
+                  orientationPreference: orientation,
+                  branch: reportBranchName,
+                  printedBy: staff?.full_name || "Staff",
+                })
+              : null}
+          />
         </div>
         {loading && rows.length === 0 ? (
           <div className="loading"><LoaderCircle size={18} className="spin" /> Loading sales history…</div>

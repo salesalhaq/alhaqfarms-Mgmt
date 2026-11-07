@@ -1,4 +1,4 @@
-import { DEFAULT_BRAND_NAME } from "@/lib/branding";
+import { DEFAULT_BRAND_NAME, DEFAULT_BRAND_TAGLINE } from "@/lib/branding";
 import { formatReportMoney, formatReportQuantity } from "@/lib/print/document";
 
 export type ReceiptPaperSize = "80mm" | "58mm" | "A4";
@@ -21,7 +21,7 @@ export interface ReceiptSettings {
 
 export const DEFAULT_RECEIPT_SETTINGS: ReceiptSettings = {
   businessName: DEFAULT_BRAND_NAME,
-  businessTagline: "",
+  businessTagline: DEFAULT_BRAND_TAGLINE,
   businessAddress: "",
   businessPhone: "",
   businessEmail: "",

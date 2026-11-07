@@ -1,5 +1,9 @@
 export const SCALE_SETTINGS_KEY = "pos.scale.settings";
 export const LEGACY_SCALE_SETTINGS_KEY = "pos.serialScale.settings";
+export const SCALE_DEVICE_ID_KEY = "pos.device.id";
+
+/** Default local bridge address used for Ethernet scales and silent printing. */
+export const DEFAULT_BRIDGE_URL = "ws://127.0.0.1:47654";
 
 export type ScaleConnection = "serial" | "ethernet";
 export type ScaleProtocol = "ascii" | "modbus-rtu" | "modbus-tcp";
@@ -30,6 +34,8 @@ export interface ScaleSettings {
   byteOrder: ScaleByteOrder;
   scaleFactor: number;
   offset: number;
+  /** WebSocket address of the local Al Haq bridge (Ethernet scale + printing). */
+  bridgeUrl: string;
 }
 
 export const DEFAULT_SCALE_SETTINGS: Readonly<ScaleSettings> = Object.freeze({
@@ -53,6 +59,7 @@ export const DEFAULT_SCALE_SETTINGS: Readonly<ScaleSettings> = Object.freeze({
   byteOrder: "ABCD",
   scaleFactor: 1,
   offset: 0,
+  bridgeUrl: DEFAULT_BRIDGE_URL,
 });
 
 function storageOrNull(): Storage | null {
@@ -64,27 +71,73 @@ function storageOrNull(): Storage | null {
   }
 }
 
-export function loadScaleSettings(storage: Storage | null = storageOrNull()): ScaleSettings {
-  if (!storage) return { ...DEFAULT_SCALE_SETTINGS };
-  const raw = storage.getItem(SCALE_SETTINGS_KEY);
-  if (!raw) {
-    const legacy = storage.getItem(LEGACY_SCALE_SETTINGS_KEY);
-    if (legacy) {
-      const migrated = { ...DEFAULT_SCALE_SETTINGS, ...JSON.parse(legacy) } as ScaleSettings;
-      storage.setItem(SCALE_SETTINGS_KEY, JSON.stringify(migrated));
-      return migrated;
-    }
-    return { ...DEFAULT_SCALE_SETTINGS };
+/** Stable identifier for this browser/device, used to scope local settings. */
+export function getDeviceId(storage: Storage | null = storageOrNull()): string {
+  if (!storage) return "server";
+  const existing = storage.getItem(SCALE_DEVICE_ID_KEY);
+  if (existing) return existing;
+  let generated = "";
+  try {
+    generated = globalThis.crypto?.randomUUID?.() || "";
+  } catch {
+    generated = "";
   }
-  const saved = JSON.parse(raw) as Partial<ScaleSettings>;
-  return { ...DEFAULT_SCALE_SETTINGS, ...saved };
+  if (!generated) generated = `device-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
+  storage.setItem(SCALE_DEVICE_ID_KEY, generated);
+  return generated;
 }
 
-export function saveScaleSettings(
-  settings: ScaleSettings,
-  storage: Storage | null = storageOrNull(),
-): void {
-  storage?.setItem(SCALE_SETTINGS_KEY, JSON.stringify(settings));
+export interface ScaleStorageOptions {
+  branchId?: string | null;
+  deviceId?: string;
+  storage?: Storage | null;
+}
+
+function scopedKey(branchId: string | null | undefined, deviceId: string): string {
+  return `${SCALE_SETTINGS_KEY}.${branchId || "shared"}.${deviceId}`;
+}
+
+function parseSettings(raw: string | null): Partial<ScaleSettings> | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Partial<ScaleSettings>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Loads scale settings for this branch + device. Falls back to the legacy
+ * device-wide key so existing installs keep their configuration.
+ */
+export function loadScaleSettings(options: ScaleStorageOptions = {}): ScaleSettings {
+  const storage = options.storage === undefined ? storageOrNull() : options.storage;
+  if (!storage) return { ...DEFAULT_SCALE_SETTINGS };
+  const deviceId = options.deviceId || getDeviceId(storage);
+  const key = scopedKey(options.branchId, deviceId);
+  const scoped = parseSettings(storage.getItem(key));
+  if (scoped) return { ...DEFAULT_SCALE_SETTINGS, ...scoped };
+  const legacy = parseSettings(storage.getItem(SCALE_SETTINGS_KEY))
+    || parseSettings(storage.getItem(LEGACY_SCALE_SETTINGS_KEY));
+  if (legacy) {
+    const migrated = { ...DEFAULT_SCALE_SETTINGS, ...legacy };
+    storage.setItem(key, JSON.stringify(migrated));
+    return migrated;
+  }
+  return { ...DEFAULT_SCALE_SETTINGS };
+}
+
+/** Saves scale settings for this branch + device. */
+export function saveScaleSettings(settings: ScaleSettings, options: ScaleStorageOptions = {}): void {
+  const storage = options.storage === undefined ? storageOrNull() : options.storage;
+  if (!storage) return;
+  const deviceId = options.deviceId || getDeviceId(storage);
+  storage.setItem(scopedKey(options.branchId, deviceId), JSON.stringify(settings));
+  // Keep the legacy key in sync so older code paths read the same values.
+  storage.setItem(SCALE_SETTINGS_KEY, JSON.stringify(settings));
 }
 
 export function validateScaleSettings(settings: ScaleSettings): ScaleSettings {
@@ -142,6 +195,10 @@ export function validateScaleSettings(settings: ScaleSettings): ScaleSettings {
       throw new Error("TCP port must be between 1 and 65535.");
     }
   }
+  const bridgeUrl = String(settings.bridgeUrl || DEFAULT_BRIDGE_URL).trim();
+  if (!/^wss?:\/\/[^\s]+$/i.test(bridgeUrl)) {
+    throw new Error("The local bridge address must start with ws:// or wss://.");
+  }
   if (settings.asciiPattern) {
     try {
       new RegExp(settings.asciiPattern);
@@ -161,5 +218,6 @@ export function validateScaleSettings(settings: ScaleSettings): ScaleSettings {
     registerCount: registerCount as 1 | 2,
     scaleFactor,
     offset,
+    bridgeUrl,
   };
 }

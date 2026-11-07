@@ -17,11 +17,13 @@ import {
   ShieldCheck,
   Users,
   Wallet,
+  X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
-import { formatMoney, labelize, statusTone } from "@/lib/format";
+import { formatDateTime, formatMoney, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
+import { printCurrentPage } from "@/lib/print/print-window";
 
 type PayrollRow = {
   id: string;
@@ -268,6 +270,7 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
   const [taxYear, setTaxYear] = useState(currentTaxYear());
   const [summary, setSummary] = useState<PayrollSummaryResponse | null>(null);
   const [expandedRunId, setExpandedRunId] = useState("");
+  const [selectedPayslip, setSelectedPayslip] = useState<{ item: PayrollItem; run: PayrollRun } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -799,7 +802,11 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
                             <td>{formatMoney(payslip.taxWithheldPaisa)}</td>
                             <td>{formatMoney(payslip.netPaisa)}</td>
                             <td>
-                              <button className="secondary-button" type="button" disabled title="Printing payslips is a Windows desktop workflow.">
+                              <button
+                                className="secondary-button"
+                                type="button"
+                                onClick={() => setSelectedPayslip({ item: payslip, run })}
+                              >
                                 <Printer size={12} /> Print
                               </button>
                             </td>
@@ -945,6 +952,94 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
             </div>
           </section>
         </>
+      )}
+
+      {selectedPayslip && (
+        <div
+          className="sales-dialog-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setSelectedPayslip(null);
+          }}
+        >
+          <section
+            aria-label={`Payslip · ${selectedPayslip.item.staffName}`}
+            aria-modal="true"
+            className="sales-dialog card"
+            role="dialog"
+          >
+            <header className="sales-dialog-header">
+              <div>
+                <p className="eyebrow page">Payslip</p>
+                <h2>{selectedPayslip.item.staffName}</h2>
+              </div>
+              <button
+                aria-label="Close payslip"
+                className="button secondary"
+                onClick={() => setSelectedPayslip(null)}
+                type="button"
+              >
+                <X size={16} />
+              </button>
+            </header>
+
+            <div className="sales-dialog-actions" style={{ marginBottom: 14 }}>
+              <button className="primary-button" onClick={printCurrentPage} type="button">
+                <Printer size={14} /> Print payslip
+              </button>
+            </div>
+
+            <style>{"@page payslip { size: A4 portrait; margin: 14mm; }"}</style>
+            <article className="payslip-print">
+              <header className="payslip-header">
+                <div>
+                  <small>{selectedPayslip.run.branchName} · Employee payslip</small>
+                  <h1>Employee payslip</h1>
+                </div>
+                <span className={`status ${statusTone(selectedPayslip.run.status)}`}>
+                  {labelize(selectedPayslip.run.status)}
+                </span>
+              </header>
+              <div className="payslip-facts">
+                <div><span>Employee</span><strong>{selectedPayslip.item.staffName}</strong></div>
+                <div><span>Job title</span><strong>{labelize(selectedPayslip.item.role)}</strong></div>
+                <div><span>Department</span><strong>{selectedPayslip.item.departmentName || "Unassigned"}</strong></div>
+                <div>
+                  <span>Pay period</span>
+                  <strong>{formatDate(selectedPayslip.run.periodStart)} — {formatDate(selectedPayslip.run.periodEnd)}</strong>
+                </div>
+                <div><span>Working days</span><strong>{selectedPayslip.item.workingDays}</strong></div>
+                <div>
+                  <span>Attendance</span>
+                  <strong>
+                    {selectedPayslip.item.presentDays} present · {selectedPayslip.item.absentDays} absent · {selectedPayslip.item.halfDays} half
+                  </strong>
+                </div>
+              </div>
+              <table className="data-table payslip-breakdown">
+                <thead>
+                  <tr><th>Earnings and deductions</th><th>Amount</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>Base salary</td><td>{formatMoney(selectedPayslip.item.baseSalaryPaisa)}</td></tr>
+                  <tr><td>Allowances</td><td>{formatMoney(selectedPayslip.item.allowancesPaisa)}</td></tr>
+                  <tr><td>Gross after attendance</td><td>{formatMoney(selectedPayslip.item.grossPaisa)}</td></tr>
+                  <tr><td>Attendance deduction</td><td>−{formatMoney(selectedPayslip.item.attendanceDeductionPaisa)}</td></tr>
+                  <tr><td>Advance recovery</td><td>−{formatMoney(selectedPayslip.item.advanceDeductionPaisa)}</td></tr>
+                  {selectedPayslip.item.taxWithheldPaisa > 0 && (
+                    <tr><td>Manual withholding</td><td>−{formatMoney(selectedPayslip.item.taxWithheldPaisa)}</td></tr>
+                  )}
+                </tbody>
+              </table>
+              <div className="payslip-net">
+                <span>Net pay</span>
+                <strong>{formatMoney(selectedPayslip.item.netPaisa)}</strong>
+              </div>
+              <footer>
+                Generated {formatDateTime(new Date().toISOString())}. Keep this document for your records.
+              </footer>
+            </article>
+          </section>
+        </div>
       )}
     </>
   );

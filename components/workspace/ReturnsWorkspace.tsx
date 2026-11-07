@@ -10,7 +10,7 @@ import { formatDateTime, formatMoney, formatQuantity, labelize } from "@/lib/for
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { ReceiptQr } from "@/components/workspace/ReceiptQr";
-import { formatReportMoney, formatReportQuantity } from "@/lib/print/document";
+import { formatReportDate, formatReportMoney, formatReportQuantity } from "@/lib/print/document";
 import {
   buildReturnReceiptQrData,
   DEFAULT_RECEIPT_SETTINGS,
@@ -18,6 +18,8 @@ import {
   receiptWidth,
 } from "@/lib/print/receipt";
 import { waitForReceiptQr } from "@/lib/print/print-window";
+import { DEFAULT_BRAND_NAME } from "@/lib/branding";
+import { generateReturnsRefundsDocument } from "@/lib/print/reports";
 
 interface ReturnRow {
   id: string;
@@ -114,6 +116,9 @@ export function ReturnsWorkspace({ item }: { item: WorkspaceModule }) {
   const [fromDate, setFromDate] = useState(from);
   const [toDate, setToDate] = useState(to);
   const [branchId, setBranchId] = useState(staff?.role === "admin" ? "all" : staff?.branch_id || "");
+  const reportBranchName = branchId === "all"
+    ? "All branches"
+    : branches.find((branch) => branch.id === branchId)?.name || "Your branch";
   const [status, setStatus] = useState<(typeof RETURN_STATUSES)[number]>("all");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -289,7 +294,27 @@ export function ReturnsWorkspace({ item }: { item: WorkspaceModule }) {
       <section className="card table-wrap workspace-table returns-history-table" aria-label="Returns history data">
         <div className="table-document-heading">
           <strong>Returns history · page {page}</strong>
-          <TableDocumentTools tableId="returns-history-table" title="Returns history" disabled={loading || Boolean(error) || !rows.length} />
+          <TableDocumentTools
+            tableId="returns-history-table"
+            title="Returns history"
+            orientationKey="returns-refunds"
+            disabled={loading || Boolean(error) || !rows.length}
+            buildDocument={(orientation) => rows.length
+              ? generateReturnsRefundsDocument({
+                  rows,
+                  period: `${formatReportDate(fromDate)} - ${formatReportDate(toDate)}`,
+                  filterSummary: [
+                    status !== "all" ? `Status: ${labelize(status)}` : "",
+                    search ? `Search: ${search}` : "",
+                  ].filter(Boolean).join(" · "),
+                }, {
+                  branding: { businessName: DEFAULT_BRAND_NAME },
+                  orientationPreference: orientation,
+                  branch: reportBranchName,
+                  printedBy: staff?.full_name || "Staff",
+                })
+              : null}
+          />
         </div>
         {loading && rows.length === 0 ? (
           <div className="loading"><LoaderCircle size={18} className="spin" /> Loading returns…</div>

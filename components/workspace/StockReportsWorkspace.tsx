@@ -6,6 +6,8 @@ import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { formatMoney, formatQuantity } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { DEFAULT_BRAND_NAME } from "@/lib/branding";
+import { generateBranchInventoryDocument } from "@/lib/print/reports";
 
 interface StockReportProduct {
   id: string;
@@ -244,7 +246,20 @@ export function StockReportsWorkspace({ item }: { item: WorkspaceModule }) {
           <section className="daily-report-panel card">
             <div className="daily-report-panel-heading">
               <div><h2>On-hand stock · {report.branchName}</h2><p>{filteredProducts.length} matching products · {report.sourceProductCount} active in source catalog</p></div>
-              <TableDocumentTools tableId="stock-reports-table" title={`Stock report · ${report.branchName}`} disabled={!visibleProducts.length || loading} />
+              <TableDocumentTools
+                tableId="stock-reports-table"
+                title={`Stock report · ${report.branchName}`}
+                orientationKey="branch-inventory"
+                disabled={!visibleProducts.length || loading}
+                buildDocument={(orientation) => visibleProducts.length
+                  ? generateBranchInventoryDocument({ products: visibleProducts, branchName: report.branchName }, {
+                      branding: { businessName: DEFAULT_BRAND_NAME },
+                      orientationPreference: orientation,
+                      branch: report.branchName,
+                      printedBy: staff?.full_name || "Staff",
+                    })
+                  : null}
+              />
             </div>
             <div className="table-wrap">
               <table id="stock-reports-table">

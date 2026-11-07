@@ -4,6 +4,7 @@ import { ArrowRight, LoaderCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
+import { BrandLockup } from "@/components/BrandLockup";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 
 export function StaffEnrollment() {
@@ -42,7 +43,7 @@ export function StaffEnrollment() {
   return (
     <main className="auth-screen">
       <section className="login-card">
-        <div className="brand-mark" aria-label="Al Haq Farms">AH</div>
+        <BrandLockup />
         <p className="eyebrow">Staff enrollment</p>
         <h1>Set up your account</h1>
         <p className="muted">Use the invite code from your administrator. Choose the same password and PIN you use on Windows.</p>

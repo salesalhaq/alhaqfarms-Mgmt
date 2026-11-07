@@ -12,6 +12,8 @@ import {
   WorkspaceSuccess,
 } from "@/components/workspace/WorkspaceDialog";
 import { formatMoney, formatQuantity } from "@/lib/format";
+import { DEFAULT_BRAND_NAME } from "@/lib/branding";
+import { generateProductCatalogDocument } from "@/lib/print/reports";
 import { postWorkspaceAction } from "@/lib/workspace/write-client";
 import { useWorkspaceAction } from "@/lib/workspace/use-workspace-action";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
@@ -277,7 +279,20 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
       <section className="card table-wrap workspace-table" aria-label="Product catalog">
         <div className="table-document-heading">
           <strong>Product catalog</strong>
-          <TableDocumentTools tableId="products-table" title="Product catalog" disabled={loading || Boolean(error) || !products.length} />
+          <TableDocumentTools
+            tableId="products-table"
+            title="Product catalog"
+            orientationKey="product-catalog"
+            disabled={loading || Boolean(error) || !products.length}
+            buildDocument={(orientation) => products.length
+              ? generateProductCatalogDocument({ products, branchName }, {
+                  branding: { businessName: DEFAULT_BRAND_NAME },
+                  orientationPreference: orientation,
+                  branch: branchName,
+                  printedBy: staff?.full_name || "Staff",
+                })
+              : null}
+          />
         </div>
         {loading ? (
           <div className="loading"><LoaderCircle size={18} className="spin" /> Loading products…</div>

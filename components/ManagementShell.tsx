@@ -10,6 +10,7 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
+import { BrandLockup } from "@/components/BrandLockup";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { workspaceSections } from "@/lib/workspace-modules";
 
@@ -75,7 +76,7 @@ export function ManagementShell({ children }: { children: ReactNode }) {
     return (
       <main className="auth-screen">
         <section className="login-card">
-          <div className="brand-mark">AH</div>
+          <BrandLockup />
           <p className="eyebrow">Staff access</p>
           <h1>Account unavailable</h1>
           <p className="muted">{error || "Your active staff profile could not be loaded."}</p>
@@ -90,10 +91,7 @@ export function ManagementShell({ children }: { children: ReactNode }) {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand-row">
-          <div className="brand-mark">AH</div>
-          <div className="brand-copy"><strong>Al Haq Farms</strong><small>Management</small></div>
-        </div>
+        <BrandLockup className="brand-row" />
         <nav aria-label="Main navigation">
           {workspaceSections.filter((section) => canSeeSection(section.title)).map((section) => (
             <div className="nav-group" key={section.title}>

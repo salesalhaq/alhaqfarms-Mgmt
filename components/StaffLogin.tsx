@@ -4,6 +4,7 @@ import { ArrowRight, LoaderCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
+import { BrandLockup } from "@/components/BrandLockup";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 
 export function StaffLogin() {
@@ -44,7 +45,7 @@ export function StaffLogin() {
   return (
     <main className="auth-screen">
       <section className="login-card">
-        <div className="brand-mark" aria-label="Al Haq Farms">AH</div>
+        <BrandLockup />
         <p className="eyebrow">Staff portal</p>
         <h1>Welcome back</h1>
         <p className="muted">Use your shared staff account to access your assigned branch.</p>

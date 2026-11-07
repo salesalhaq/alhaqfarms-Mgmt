@@ -6,6 +6,8 @@
  * same document as the offline client. Keep this file in sync with that source.
  */
 
+import { DEFAULT_BRAND_NAME, DEFAULT_BRAND_TAGLINE } from "@/lib/branding";
+
 export type PrintOrientation = "auto" | "portrait" | "landscape";
 export type ResolvedOrientation = Exclude<PrintOrientation, "auto">;
 
@@ -318,8 +320,8 @@ function pageHeader({
   filterSummary,
 }: ReportMetadata & ReportBranding & { reportTitle: string }): string {
   const logo = safeLogoDataUrl(logoDataUrl);
-  const brandName = String(businessName || "").trim();
-  const brandTagline = String(businessTagline || "").trim();
+  const brandName = String(businessName || DEFAULT_BRAND_NAME).trim();
+  const brandTagline = String(businessTagline || DEFAULT_BRAND_TAGLINE).trim();
   const brandCopy = `${brandName ? `<strong>${escapeHtml(brandName)}</strong>` : ""}${brandTagline ? `<em>${escapeHtml(brandTagline)}</em>` : ""}`;
   const context: [string, string][] = [
     ["Printed at", formatReportDate(printedAt || new Date(), { withTime: true })],
@@ -354,7 +356,7 @@ function baseDocument({
   content: string;
 }): string {
   const reportName = escapeHtml(reportTitle);
-  const businessName = escapeHtml(branding.businessName || "");
+  const businessName = escapeHtml(branding.businessName || DEFAULT_BRAND_NAME);
   const bodyContent = metadata.tightColumns
     ? `<div class="tight-columns">${content}</div>`
     : content;
@@ -362,7 +364,7 @@ function baseDocument({
 <html lang="en"><head><meta charset="utf-8"><title>${reportName}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src 'self' data:">
-<style>${reportStyles(orientation, branding.businessName || "", reportTitle, branding.logoDataUrl)}</style></head>
+<style>${reportStyles(orientation, branding.businessName || DEFAULT_BRAND_NAME, reportTitle, branding.logoDataUrl)}</style></head>
 <body><main class="report-page">
 ${pageHeader({ ...metadata, reportTitle, ...branding })}
 ${bodyContent}

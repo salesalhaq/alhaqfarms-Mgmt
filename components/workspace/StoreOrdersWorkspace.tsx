@@ -7,6 +7,9 @@ import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import type { Database } from "@/lib/supabase/database.types";
+import { DEFAULT_BRAND_NAME } from "@/lib/branding";
+import { formatReportDate } from "@/lib/print/document";
+import { generateOnlineOrdersDocument } from "@/lib/print/reports";
 
 type StoreOrder = Pick<
   Database["public"]["Tables"]["web_orders"]["Row"],
@@ -93,6 +96,9 @@ export function StoreOrdersWorkspace({ item }: { item: WorkspaceModule }) {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const isAdmin = staff?.role === "admin";
+  const reportBranchName = branchId === "all"
+    ? "All branches"
+    : branches.find((branch) => branch.id === branchId)?.name || "Your branch";
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 250);
@@ -249,7 +255,37 @@ export function StoreOrdersWorkspace({ item }: { item: WorkspaceModule }) {
       <section className="card table-wrap" aria-label="Store order list">
         <div className="table-document-heading">
           <strong>Store orders</strong>
-          <TableDocumentTools tableId="store-orders-table" title="Store orders" disabled={loading || Boolean(error) || !visibleOrders.length} />
+          <TableDocumentTools
+            tableId="store-orders-table"
+            title="Store orders"
+            orientationKey="online-orders"
+            disabled={loading || Boolean(error) || !visibleOrders.length}
+            buildDocument={(orientation) => visibleOrders.length
+              ? generateOnlineOrdersDocument({
+                  rows: visibleOrders.map((order) => ({
+                    order_number: order.order_number,
+                    customer_name: order.customer_name,
+                    item_count: order.items?.length || 0,
+                    total_paisa: order.total_paisa,
+                    payment_method: order.payment_method,
+                    payment_status: order.payment_status,
+                    payment_review_status: order.payment_review_status,
+                    status: order.status,
+                    created_at: order.created_at,
+                  })),
+                  period: `${formatReportDate(fromDate)} - ${formatReportDate(toDate)}`,
+                  filterSummary: [
+                    status !== "all" ? `Status: ${labelize(status)}` : "",
+                    search ? `Search: ${search}` : "",
+                  ].filter(Boolean).join(" · "),
+                }, {
+                  branding: { businessName: DEFAULT_BRAND_NAME },
+                  orientationPreference: orientation,
+                  branch: reportBranchName,
+                  printedBy: staff?.full_name || "Staff",
+                })
+              : null}
+          />
         </div>
 
         {loading ? (

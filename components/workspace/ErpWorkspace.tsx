@@ -2,7 +2,7 @@
 
 import {
   AlertCircle, ArrowRight, BarChart3, CheckCircle2, ClipboardList, CreditCard, Download, Eye, LoaderCircle, Lock,
-  MapPin, Pencil, Plus, RefreshCw, Search, Store, Trash2, X,
+  MapPin, Pencil, Plus, Printer, RefreshCw, Search, Store, Trash2, X,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -10,6 +10,10 @@ import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
+import { DEFAULT_BRAND_NAME } from "@/lib/branding";
+import type { GeneratedDocument, PrintOrientation } from "@/lib/print/document";
+import { generateErpReportDocument } from "@/lib/print/reports";
+import { printHtmlDocument } from "@/lib/print/print-window";
 
 type ErpRow = Record<string, any>;
 type BranchOption = { id: string; name: string };
@@ -184,6 +188,19 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
   const showBranchColumn = branchId === "all";
   const rows = data?.rows || [];
   const report = data?.report;
+  const [reportPreview, setReportPreview] = useState<GeneratedDocument | null>(null);
+
+  const buildErpDocument = (orientation: PrintOrientation): GeneratedDocument | null => {
+    if (!report) return null;
+    return generateErpReportDocument(report, {
+      branding: { businessName: DEFAULT_BRAND_NAME },
+      orientationPreference: orientation,
+      branch: branchId === "all"
+        ? "All branches"
+        : branches.find((branch) => branch.id === branchId)?.name || "Your branch",
+      printedBy: staff?.full_name || "Staff",
+    });
+  };
 
   const exportReportCsv = () => {
     if (!report) return;
@@ -474,6 +491,31 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
               <Download size={14} /> Export CSV
             </button>
           )}
+          {isReports && (
+            <>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={!report}
+                onClick={() => {
+                  const document = buildErpDocument("auto");
+                  if (document && !printHtmlDocument(document.html, { title: document.title })) {
+                    setError("The print window was blocked. Allow pop-ups for this site and try again.");
+                  }
+                }}
+              >
+                <Printer size={14} /> Print A4
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={!report}
+                onClick={() => setReportPreview(buildErpDocument("auto"))}
+              >
+                <Eye size={14} /> Preview
+              </button>
+            </>
+          )}
           <button className="secondary-button" type="button" onClick={() => setReloadKey((key) => key + 1)} disabled={loading}>
             {loading ? <LoaderCircle size={15} className="spin" /> : <RefreshCw size={15} />} {isReports ? "REF" : "Refresh"}
           </button>
@@ -648,6 +690,49 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
             </section>
           )}
         </>
+      )}
+
+      {reportPreview && (
+        <div
+          className="table-document-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setReportPreview(null);
+          }}
+        >
+          <section
+            aria-label="ERP report preview"
+            aria-modal="true"
+            className={`table-document-preview ${reportPreview.orientation}`}
+            role="dialog"
+          >
+            <header>
+              <div>
+                <h2>ERP report</h2>
+                <p>A4 {reportPreview.orientation}</p>
+              </div>
+              <button type="button" className="button secondary" onClick={() => setReportPreview(null)}>
+                Close
+              </button>
+            </header>
+            <div className="table-document-paper">
+              <iframe title="ERP report preview" srcDoc={reportPreview.html} sandbox="" />
+            </div>
+            <footer>
+              <span>PDF opens the browser print dialog; choose “Save as PDF”.</span>
+              <button
+                type="button"
+                className="button"
+                onClick={() => {
+                  if (printHtmlDocument(reportPreview.html, { title: reportPreview.title })) {
+                    setReportPreview(null);
+                  }
+                }}
+              >
+                <Printer size={14} /> Print / Save as PDF
+              </button>
+            </footer>
+          </section>
+        </div>
       )}
     </>
   );

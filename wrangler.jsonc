@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "alhaqfarms-management",
+  "name": "alhaqfarms-mgmt",
   "main": ".open-next/worker.js",
   "compatibility_date": "2025-11-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -11,7 +11,7 @@
   "services": [
     {
       "binding": "WORKER_SELF_REFERENCE",
-      "service": "alhaqfarms-management"
+      "service": "alhaqfarms-mgmt"
     }
   ],
   "vars": {

@@ -24,6 +24,8 @@ import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { formatDateTime, formatMoney, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { printCurrentPage } from "@/lib/print/print-window";
+import { loadPrinterSettings } from "@/lib/print/printer-settings";
+import { printHtmlViaBridge, serializeElementForBridge } from "@/lib/print/bridge-print";
 
 type PayrollRow = {
   id: string;
@@ -274,6 +276,30 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+
+  const printPayslip = async () => {
+    const element = document.querySelector(".payslip-print");
+    if (!element) return;
+    const settings = loadPrinterSettings();
+    if (settings.silentPrint && settings.reportPrinter) {
+      const html = serializeElementForBridge(element, {
+        title: "Payslip",
+        pageCss: "@page payslip { size: A4 portrait; margin: 14mm; }",
+      });
+      const result = await printHtmlViaBridge(html, {
+        printer: settings.reportPrinter,
+        copies: 1,
+        title: "Payslip",
+        pageSize: "A4 portrait",
+      });
+      if (result.printed) return;
+      if (!result.bridgeUnavailable && result.reason) {
+        setError(result.reason);
+        return;
+      }
+    }
+    printCurrentPage();
+  };
 
   useEffect(() => {
     if (!staff) return;
@@ -983,7 +1009,7 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
             </header>
 
             <div className="sales-dialog-actions" style={{ marginBottom: 14 }}>
-              <button className="primary-button" onClick={printCurrentPage} type="button">
+              <button className="primary-button" onClick={() => void printPayslip()} type="button">
                 <Printer size={14} /> Print payslip
               </button>
             </div>

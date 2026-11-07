@@ -15,6 +15,8 @@ import { DEFAULT_BRAND_NAME } from "@/lib/branding";
 import { formatReportMoney, type GeneratedDocument } from "@/lib/print/document";
 import { generateDailyReportDocument } from "@/lib/print/report-daily";
 import { printHtmlDocument } from "@/lib/print/print-window";
+import { loadPrinterSettings } from "@/lib/print/printer-settings";
+import { printHtmlViaBridge, printReceiptElementViaBridge } from "@/lib/print/bridge-print";
 import {
   DEFAULT_RECEIPT_SETTINGS,
   receiptPageCss,
@@ -124,6 +126,42 @@ export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
       { ...report, branchName },
       { branding: { businessName: DEFAULT_BRAND_NAME } },
     );
+  };
+
+  const printGenerated = async (generated: GeneratedDocument): Promise<boolean> => {
+    const settings = loadPrinterSettings();
+    if (settings.silentPrint && settings.reportPrinter) {
+      const result = await printHtmlViaBridge(generated.html, {
+        printer: settings.reportPrinter,
+        copies: 1,
+        title: generated.title,
+        pageSize: generated.orientation === "landscape" ? "A4 landscape" : "A4 portrait",
+      });
+      if (result.printed) return true;
+      if (!result.bridgeUnavailable && result.reason) {
+        setError(result.reason);
+        return false;
+      }
+    }
+    if (!printHtmlDocument(generated.html, { title: generated.title })) {
+      setError("The print window was blocked. Allow pop-ups for this site and try again.");
+      return false;
+    }
+    return true;
+  };
+
+  const printA4 = async () => {
+    const generated = buildA4Document();
+    if (generated) await printGenerated(generated);
+  };
+
+  const printZReport = async () => {
+    const element = document.querySelector(".receipt-print");
+    const result = await printReceiptElementViaBridge(element, {
+      pageCss: receiptPageCss(receiptSettings),
+      title: "Z-report",
+    });
+    if (!result.printed) window.print();
   };
 
   useEffect(() => {
@@ -238,12 +276,7 @@ export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
           className="button secondary"
           type="button"
           disabled={!report}
-          onClick={() => {
-            const document = buildA4Document();
-            if (document && !printHtmlDocument(document.html, { title: document.title })) {
-              setError("The print window was blocked. Allow pop-ups for this site and try again.");
-            }
-          }}
+          onClick={() => void printA4()}
         >
           <Printer size={14} /> Print A4
         </button>
@@ -438,7 +471,7 @@ export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
               <footer className="receipt-thanks">End of day</footer>
             </article>
             <div className="sales-dialog-actions">
-              <button className="button" onClick={() => window.print()} type="button">
+              <button className="button" onClick={() => void printZReport()} type="button">
                 <Printer size={15} /> Print Z-report
               </button>
             </div>
@@ -479,7 +512,9 @@ export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
                 type="button"
                 className="button"
                 onClick={() => {
-                  if (printHtmlDocument(preview.html, { title: preview.title })) setPreview(null);
+                  void (async () => {
+                    if (await printGenerated(preview)) setPreview(null);
+                  })();
                 }}
               >
                 <Printer size={14} /> Print / Save as PDF

@@ -35,7 +35,7 @@ export const workspaceSections = [
     title: "Operations",
     modules: [
       defineWorkspaceModule("overview", "Overview", "Operations", "A quick view of branch activity, today's work, and shortcuts to the tools staff use most.", ["Metric", "Today", "Trend"]),
-      defineWorkspaceModule("point-of-sale", "Point of sale", "Operations", "Browse branch stock and build a temporary sale basket. Checkout remains disabled until its secure transaction workflow is implemented.", ["Product", "SKU", "Price", "Available stock"], "Start sale", ["Category", "Availability"]),
+      defineWorkspaceModule("point-of-sale", "Point of sale", "Operations", "Open a register, build a basket, hold sales, take payment, and print receipts.", ["Product", "SKU", "Price", "Available stock"], "Start sale", ["Category", "Availability"]),
       defineWorkspaceModule("sales", "Sales", "Operations", "Search receipts, filter sale history, and open or print itemized receipts.", ["Receipt", "Customer", "Status", "Total", "Completed"]),
       defineWorkspaceModule("returns", "Returns", "Operations", "Review return requests, decisions, and refund history.", ["Return", "Sale reference", "Reason", "Status", "Refund", "Created"], "New return", ["Status"]),
       defineWorkspaceModule("daily-report", "Daily report", "Operations", "Review business-day totals and register close information.", ["Business date", "Branch", "Sales", "Refunds", "Cash difference"], undefined, ["Date", "Branch"]),

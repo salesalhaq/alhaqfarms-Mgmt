@@ -40,6 +40,10 @@ export function receiptWidth(settings: ReceiptSettings): string {
   return "72mm";
 }
 
+export function receiptPageSize(settings: ReceiptSettings): string {
+  return settings.paperSize === "A4" ? "A4" : `${settings.paperSize} auto`;
+}
+
 /**
  * Named page so receipts and labels can coexist with A4 reports in the same
  * browser document. Chrome supports `@page <name>` + `page: <name>`.

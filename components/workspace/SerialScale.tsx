@@ -10,11 +10,15 @@ import {
 } from "@/lib/scale-settings";
 import {
   buildModbusRtuRequest,
+  buildModbusTcpRequest,
   encodeCommand,
   parseAsciiReading,
   parseModbusRtuFrame,
+  parseModbusTcpFrame,
   quantityInUnit,
 } from "@/lib/scale-protocols";
+import { BridgeScaleConnection } from "@/lib/scale/bridge-client";
+import { getBridgeClient, type BridgeStatus } from "@/lib/bridge/client";
 
 type ScaleStatus = "disconnected" | "connecting" | "connected";
 
@@ -23,15 +27,22 @@ function makeReading(value: number, sourceUnit: string, targetUnit: string, conf
   return quantityInUnit(value, sourceUnit, targetUnit, resolvedUnit);
 }
 
+function connectionId(): string {
+  return `scale-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
+}
+
 export function SerialScale({
   unitCode = "kg",
+  branchId = null,
   onUseReading,
 }: {
   unitCode?: string;
+  branchId?: string | null;
   onUseReading?: (quantity: number) => void;
 }) {
   const [settings, setSettings] = useState<ScaleSettings>({ ...DEFAULT_SCALE_SETTINGS });
   const [status, setStatus] = useState<ScaleStatus>("disconnected");
+  const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>("idle");
   const [reading, setReading] = useState<{ quantity: number; receivedAt: number; stable: boolean } | null>(null);
   const [error, setError] = useState("");
   const [connecting, setConnecting] = useState(false);
@@ -44,17 +55,28 @@ export function SerialScale({
   const unitCodeRef = useRef(unitCode);
   const settingsRef = useRef(settings);
   const pollTimerRef = useRef<number | null>(null);
+  const transactionRef = useRef(0);
+  const pendingTcpRef = useRef<{ id: number; sentAt: number } | null>(null);
+  const tcpRef = useRef<BridgeScaleConnection | null>(null);
+  const connectionIdRef = useRef(connectionId());
 
   unitCodeRef.current = unitCode;
   settingsRef.current = settings;
 
   useEffect(() => {
     try {
-      setSettings(loadScaleSettings());
+      setSettings(loadScaleSettings({ branchId }));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Scale settings could not be loaded.");
     }
-  }, []);
+  }, [branchId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const client = getBridgeClient(settings.bridgeUrl);
+    setBridgeStatus(client.status);
+    return client.onStatus(setBridgeStatus);
+  }, [settings.bridgeUrl]);
 
   const reportReading = (amount: number, sourceUnit: string) => {
     try {
@@ -102,15 +124,47 @@ export function SerialScale({
     }
   };
 
+  const processTcp = (bytes: Uint8Array) => {
+    bufferRef.current.push(...bytes);
+    while (bufferRef.current.length >= 7) {
+      const frameLength = 6 + (bufferRef.current[4] << 8) + bufferRef.current[5];
+      if (frameLength < 9 || frameLength > 260) {
+        bufferRef.current.shift();
+        continue;
+      }
+      if (bufferRef.current.length < frameLength) return;
+      const frame = Uint8Array.from(bufferRef.current.splice(0, frameLength));
+      const transactionId = (frame[0] << 8) | frame[1];
+      if (transactionId !== pendingTcpRef.current?.id) continue;
+      pendingTcpRef.current = null;
+      try {
+        reportReading(parseModbusTcpFrame(frame, transactionId, settingsRef.current), "");
+      } catch (frameError) {
+        setError(frameError instanceof Error ? frameError.message : "The scale response could not be read.");
+      }
+    }
+  };
+
   const processBytes = (bytes: Uint8Array) => {
     if (settingsRef.current.protocol === "ascii") processAscii(bytes);
     else if (settingsRef.current.protocol === "modbus-rtu") processRtu(bytes);
+    else processTcp(bytes);
+  };
+
+  const writeSerial = async (bytes: Uint8Array) => {
+    const port = portRef.current;
+    if (!port?.writable) return false;
+    const writer = port.writable.getWriter();
+    try {
+      await writer.write(bytes);
+    } finally {
+      writer.releaseLock();
+    }
+    return true;
   };
 
   const sendRequest = async () => {
     const current = settingsRef.current;
-    const port = portRef.current;
-    if (!port?.writable) return;
     let request: Uint8Array | null = null;
     if (current.protocol === "ascii") {
       if (!current.command) return;
@@ -118,22 +172,32 @@ export function SerialScale({
     } else if (current.protocol === "modbus-rtu") {
       request = buildModbusRtuRequest(current);
     } else {
-      return;
+      const now = Date.now();
+      if (pendingTcpRef.current && now - pendingTcpRef.current.sentAt < Math.max(current.pollMs * 3, 1500)) return;
+      const transactionId = (transactionRef.current + 1) & 0xffff;
+      transactionRef.current = transactionId;
+      pendingTcpRef.current = { id: transactionId, sentAt: now };
+      request = buildModbusTcpRequest({ ...current, transactionId });
     }
     if (!request) return;
-    const writer = port.writable.getWriter();
-    try {
-      await writer.write(request);
-    } finally {
-      writer.releaseLock();
+    if (current.connection === "serial") {
+      await writeSerial(request);
+    } else if (tcpRef.current) {
+      await tcpRef.current.write(request);
     }
   };
 
   const disconnect = async () => {
     closingRef.current = true;
+    pendingTcpRef.current = null;
     if (pollTimerRef.current != null) {
       window.clearTimeout(pollTimerRef.current);
       pollTimerRef.current = null;
+    }
+    if (tcpRef.current) {
+      await tcpRef.current.close();
+      tcpRef.current.dispose();
+      tcpRef.current = null;
     }
     if (readerRef.current) {
       try {
@@ -195,15 +259,31 @@ export function SerialScale({
     setReading(null);
     bufferRef.current = [];
     asciiBufferRef.current = "";
+    pendingTcpRef.current = null;
     try {
-      const configured = validateScaleSettings(loadScaleSettings());
+      const configured = validateScaleSettings(loadScaleSettings({ branchId }));
       setSettings(configured);
       settingsRef.current = configured;
       if (configured.connection === "ethernet") {
-        throw new Error("Ethernet scales require the Windows desktop app. Use a USB-to-serial scale in the web workspace.");
+        const connection = new BridgeScaleConnection(
+          connectionIdRef.current,
+          getBridgeClient(configured.bridgeUrl),
+          {
+            onData: processBytes,
+            onError: (message) => setError(message),
+            onClose: () => {
+              tcpRef.current = null;
+              setStatus("disconnected");
+            },
+          },
+        );
+        tcpRef.current = connection;
+        await connection.connect(configured.host, configured.tcpPort);
+        setStatus("connected");
+        return;
       }
       if (!navigator.serial) {
-        throw new Error("Web Serial is not available in this browser. Use Chrome or Edge, or connect through the Windows desktop app.");
+        throw new Error("Web Serial is not available in this browser. Use Chrome or Edge, or use an Ethernet scale through the local bridge.");
       }
       const port = await navigator.serial.requestPort();
       await port.open({
@@ -244,6 +324,11 @@ export function SerialScale({
   };
 
   const fresh = reading && Date.now() - reading.receivedAt < 2000;
+  const bridgeLabel = bridgeStatus === "connected"
+    ? "Bridge connected"
+    : bridgeStatus === "connecting"
+      ? "Bridge connecting…"
+      : "Bridge offline";
 
   return (
     <div className="serial-scale">
@@ -269,6 +354,11 @@ export function SerialScale({
           )}
         </div>
       </div>
+      {settings.connection === "ethernet" && (
+        <p className={`serial-scale-bridge ${bridgeStatus === "connected" ? "connected" : ""}`}>
+          Local bridge: {bridgeLabel} · {settings.bridgeUrl}
+        </p>
+      )}
       {status === "connected" && !reading && (
         <p className="serial-scale-help">Waiting for a stable scale reading. Check the scale connection and protocol settings.</p>
       )}

@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  AlertCircle, ChevronLeft, ChevronRight, Eye, LoaderCircle, Plus,
+  AlertCircle, ChevronLeft, ChevronRight, Eye, LoaderCircle, Plus, Printer,
   RefreshCw, Search, X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -9,6 +9,15 @@ import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { ReceiptDocument } from "@/components/workspace/ReceiptDocument";
+import { waitForReceiptQr } from "@/lib/print/print-window";
+import { printReceiptElementViaBridge } from "@/lib/print/bridge-print";
+import {
+  buildReturnReceiptQrData,
+  DEFAULT_RECEIPT_SETTINGS,
+  receiptPageCss,
+  receiptPageSize,
+} from "@/lib/print/receipt";
 
 interface StoreReturnRow {
   id: string;
@@ -94,6 +103,7 @@ function returnStatusTone(status: string): string {
 
 export function StoreReturnsWorkspace({ item }: { item: WorkspaceModule }) {
   const { staff, branches } = useStaffAuth();
+  const receiptSettings = DEFAULT_RECEIPT_SETTINGS;
   const [from, to] = useMemo(initialDateRange, []);
   const [fromDate, setFromDate] = useState(from);
   const [toDate, setToDate] = useState(to);
@@ -114,6 +124,17 @@ export function StoreReturnsWorkspace({ item }: { item: WorkspaceModule }) {
   const [detailError, setDetailError] = useState<string | null>(null);
   const isAdmin = staff?.role === "admin";
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  const printReceipt = async () => {
+    await waitForReceiptQr();
+    const element = document.querySelector(".receipt-print");
+    const result = await printReceiptElementViaBridge(element, {
+      pageCss: receiptPageCss(receiptSettings),
+      pageSize: receiptPageSize(receiptSettings),
+      title: details ? `Return ${details.return_number}` : "Return receipt",
+    });
+    if (!result.printed) window.print();
+  };
 
   const summary = useMemo(() => rows.reduce((acc, row) => {
     acc.totalRefundPaisa += row.refund_total_paisa;
@@ -399,6 +420,47 @@ export function StoreReturnsWorkspace({ item }: { item: WorkspaceModule }) {
                   {details.completed_by_name && <div><span>Completed by</span><strong>{details.completed_by_name}</strong></div>}
                 </div>
 
+                <ReceiptDocument
+                  settings={receiptSettings}
+                  branchName={details.branch_name}
+                  documentLabel="RETURN / REFUND"
+                  metadata={[
+                    { label: "Return number", value: details.return_number },
+                    { label: "Sale receipt", value: details.receipt_number },
+                    { label: "Store", value: details.branch_name },
+                    { label: "Date", value: new Date(details.created_at).toLocaleString() },
+                    { label: "Raised by", value: details.created_by_name },
+                    ...(details.approved_by_name ? [{ label: "Approved by", value: details.approved_by_name }] : []),
+                    ...(details.completed_by_name ? [{ label: "Completed by", value: details.completed_by_name }] : []),
+                    { label: "Customer", value: details.customer_name || "Walk-in Customer" },
+                    { label: "Status", value: details.status.toUpperCase() },
+                    { label: "Reason", value: details.reason },
+                  ]}
+                  items={details.items.map((returnItem) => ({
+                    id: returnItem.id,
+                    name: returnItem.product_name,
+                    details: [
+                      `${formatQuantity(returnItem.quantity_milli)} ${returnItem.unit_code} · ${labelize(returnItem.condition)}`,
+                      `Restock: ${returnItem.restock ? "Yes" : "No"}`,
+                    ],
+                    amount: formatMoney(returnItem.line_refund_paisa),
+                  }))}
+                  totals={[
+                    { label: "Refund total", value: formatMoney(details.refund_total_paisa), emphasis: true },
+                    ...details.refunds.map((refund) => ({
+                      label: `Refund via ${refund.method.replaceAll("_", " ")}`,
+                      value: formatMoney(refund.amount_paisa),
+                      detail: refund.reference || refund.status,
+                    })),
+                  ]}
+                  policy={details.notes || undefined}
+                  qr={{
+                    value: buildReturnReceiptQrData(details),
+                    label: "Scan for return details · not a tax invoice",
+                  }}
+                  footer={receiptSettings.receiptFooter || "Return receipt"}
+                />
+
                 <div className="return-facts-grid">
                   <div className="info-block">
                     <h3>Return reason</h3>
@@ -472,7 +534,7 @@ export function StoreReturnsWorkspace({ item }: { item: WorkspaceModule }) {
 
                 <div className="sales-dialog-footer">
                   <div className="sales-dialog-actions">
-                    <button className="button secondary" onClick={() => window.print()} type="button">Print return receipt</button>
+                    <button className="button secondary" onClick={() => void printReceipt()} type="button"><Printer size={15} /> Print return receipt</button>
                     {details.status === "pending" && (
                       <button className="button secondary" disabled title="Cancelling returns is a Windows desktop workflow." type="button">Cancel return</button>
                     )}

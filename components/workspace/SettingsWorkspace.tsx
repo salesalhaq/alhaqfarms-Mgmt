@@ -40,6 +40,20 @@ import {
   validateScaleSettings,
   type ScaleSettings,
 } from "@/lib/scale-settings";
+import { getBridgeClient, probeBridge, type BridgeStatus } from "@/lib/bridge/client";
+import type { BridgePrinter } from "@/lib/bridge/protocol";
+import {
+  DEFAULT_PRINTER_SETTINGS,
+  loadPrinterSettings,
+  savePrinterSettings,
+  validatePrinterSettings,
+  type PrinterSettings,
+} from "@/lib/print/printer-settings";
+import {
+  buildStandalonePrintHtml,
+  listBridgePrinters,
+  printHtmlViaBridge,
+} from "@/lib/print/bridge-print";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 
 type SettingsTab =
@@ -211,19 +225,27 @@ function LocalOnlyPanel({ title, description, fields, actions, children, note }:
   );
 }
 
-function ScaleSettingsPanel() {
+function ScaleSettingsPanel({ branchId }: { branchId: string | null }) {
   const [form, setForm] = useState<ScaleSettings>({ ...DEFAULT_SCALE_SETTINGS });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>("idle");
 
   useEffect(() => {
     try {
-      setForm(loadScaleSettings());
+      setForm(loadScaleSettings({ branchId }));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Scale settings could not be loaded.");
     }
-  }, []);
+  }, [branchId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const client = getBridgeClient(form.bridgeUrl);
+    setBridgeStatus(client.status);
+    return client.onStatus(setBridgeStatus);
+  }, [form.bridgeUrl]);
 
   const update = <K extends keyof ScaleSettings>(key: K, value: ScaleSettings[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -236,11 +258,26 @@ function ScaleSettingsPanel() {
     setNotice("");
     try {
       const validated = validateScaleSettings(form);
-      saveScaleSettings(validated);
+      saveScaleSettings(validated, { branchId });
       setForm(validated);
-      setNotice("Scale settings saved on this device.");
+      setNotice("Scale settings saved for this branch and device.");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Scale settings could not be saved.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const testBridge = async () => {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const health = await probeBridge(form.bridgeUrl);
+      if (!health) throw new Error("The local bridge did not answer. Start Al Haq Local Bridge and try again.");
+      setNotice(`Local bridge ${health.version} is online (${health.platform}).`);
+    } catch (bridgeError) {
+      setError(bridgeError instanceof Error ? bridgeError.message : "The local bridge could not be reached.");
     } finally {
       setBusy(false);
     }
@@ -249,7 +286,18 @@ function ScaleSettingsPanel() {
   return (
     <section className="card settings-workspace-panel">
       <h2><Scale size={14} /> Weighing scale configuration</h2>
-      <p>Configure a USB-to-serial / RS-232 scale or an Ethernet TCP scale. These settings are saved locally in this browser and are not synced to other branches.</p>
+      <p>Configure a USB-to-serial / RS-232 scale or an Ethernet TCP scale. Settings are saved for this branch and device only.</p>
+      <div className="settings-bridge-status">
+        <span className={`status-dot ${bridgeStatus === "connected" ? "online" : ""}`} aria-hidden="true" />
+        <span>
+          {bridgeStatus === "connected"
+            ? "Local bridge connected"
+            : bridgeStatus === "connecting"
+              ? "Connecting to the local bridge…"
+              : "Local bridge offline"}
+        </span>
+        <code>{form.bridgeUrl}</code>
+      </div>
       <div className="settings-scale-grid">
         <label className="field"><span>Connection</span><select value={form.connection} onChange={(event) => update("connection", event.target.value as ScaleSettings["connection"])}><option value="serial">USB-to-serial / RS-232</option><option value="ethernet">Ethernet TCP</option></select></label>
         <label className="field"><span>Protocol</span><select value={form.protocol} onChange={(event) => update("protocol", event.target.value as ScaleSettings["protocol"])}><option value="ascii">ASCII stream</option><option value="modbus-rtu">Modbus RTU</option><option value="modbus-tcp">Modbus TCP</option></select></label>
@@ -279,15 +327,194 @@ function ScaleSettingsPanel() {
           <label className="field"><span>Scale factor</span><input type="number" step="any" value={form.scaleFactor} onChange={(event) => update("scaleFactor", Number(event.target.value))} /></label>
           <label className="field"><span>Offset</span><input type="number" step="any" value={form.offset} onChange={(event) => update("offset", Number(event.target.value))} /></label>
         </>}
+        <label className="field"><span>Local bridge address</span><input value={form.bridgeUrl} onChange={(event) => update("bridgeUrl", event.target.value)} placeholder="ws://127.0.0.1:47654" /></label>
       </div>
       {error && <div className="error-banner" role="alert">{error}</div>}
       {notice && <div className="notice info" role="status">{notice}</div>}
       <div className="heading-actions">
+        <button type="button" className="secondary-button" disabled={busy} onClick={() => void testBridge()}>
+          {busy ? "Checking…" : "Test bridge"}
+        </button>
         <button type="button" className="primary-button" disabled={busy} onClick={save}>
           {busy ? "Saving…" : <><Save size={13} /> Save scale settings</>}
         </button>
       </div>
-      <p className="settings-workspace-note">USB-to-serial scales connect through Web Serial in Chrome or Edge. Ethernet TCP scales require the Windows desktop app.</p>
+      <p className="settings-workspace-note">USB-to-serial scales connect through Web Serial in Chrome or Edge. Ethernet TCP scales and Modbus TCP require Al Haq Local Bridge running on this computer.</p>
+    </section>
+  );
+}
+
+function PrinterSettingsPanel({ branchId }: { branchId: string | null }) {
+  const [form, setForm] = useState<PrinterSettings>({ ...DEFAULT_PRINTER_SETTINGS });
+  const [printers, setPrinters] = useState<BridgePrinter[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [loadingPrinters, setLoadingPrinters] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>("idle");
+
+  useEffect(() => {
+    setForm(loadPrinterSettings({ branchId }));
+  }, [branchId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const client = getBridgeClient(form.bridgeUrl);
+    setBridgeStatus(client.status);
+    return client.onStatus(setBridgeStatus);
+  }, [form.bridgeUrl]);
+
+  const update = <K extends keyof PrinterSettings>(key: K, value: PrinterSettings[K]) => {
+    setForm((current) => ({ ...current, [key]: value }));
+    setNotice("");
+  };
+
+  const refreshPrinters = async (bridgeUrl = form.bridgeUrl) => {
+    setLoadingPrinters(true);
+    setError("");
+    try {
+      const list = await listBridgePrinters(bridgeUrl);
+      setPrinters(list);
+      if (!list.length) setNotice("The local bridge is running but Windows reports no printers.");
+    } catch (listError) {
+      setPrinters([]);
+      setError(listError instanceof Error ? listError.message : "Could not list printers through the local bridge.");
+    } finally {
+      setLoadingPrinters(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshPrinters(form.bridgeUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.bridgeUrl]);
+
+  const save = () => {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const validated = validatePrinterSettings(form);
+      savePrinterSettings(validated, { branchId });
+      setForm(validated);
+      setNotice("Printer settings saved for this branch and device.");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Printer settings could not be saved.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const printTestPage = async () => {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const validated = validatePrinterSettings(form);
+      savePrinterSettings(validated, { branchId });
+      setForm(validated);
+      const html = buildStandalonePrintHtml({
+        title: "Al Haq printer test",
+        pageCss: "@page { size: 80mm auto; margin: 4mm; }",
+        bodyHtml: `<div style="font-family:Arial,Helvetica,sans-serif;font-size:10px;padding:4mm;text-align:center;">`
+          + `<h3 style="margin:0 0 4px;">Al Haq Farms &amp; Meats</h3>`
+          + `<p style="margin:0;">Printer test page</p>`
+          + `<p style="margin:8px 0 0;">${new Date().toLocaleString()}</p></div>`,
+      });
+      const result = await printHtmlViaBridge(html, {
+        printer: validated.receiptPrinter,
+        copies: 1,
+        title: "Printer test",
+        pageSize: "80mm auto",
+        bridgeUrl: validated.bridgeUrl,
+      });
+      if (!result.printed) {
+        throw new Error(result.reason || "The test page could not be printed.");
+      }
+      setNotice("Test page sent to the selected printer.");
+    } catch (printError) {
+      setError(printError instanceof Error ? printError.message : "The test page could not be printed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const printerOptions = (selected: string) => {
+    const names = new Set(printers.map((printer) => printer.name));
+    if (selected) names.add(selected);
+    return Array.from(names).sort((left, right) => left.localeCompare(right));
+  };
+
+  return (
+    <section className="card settings-workspace-panel">
+      <h2><Printer size={14} /> Printers</h2>
+      <p>Choose the receipt, report, and barcode-tag printers for this branch and device. Silent printing runs through Al Haq Local Bridge.</p>
+      <div className="settings-bridge-status">
+        <span className={`status-dot ${bridgeStatus === "connected" ? "online" : ""}`} aria-hidden="true" />
+        <span>
+          {bridgeStatus === "connected"
+            ? "Local bridge connected"
+            : bridgeStatus === "connecting"
+              ? "Connecting to the local bridge…"
+              : "Local bridge offline"}
+        </span>
+        <code>{form.bridgeUrl}</code>
+      </div>
+      <div className="settings-scale-grid">
+        <label className="field">
+          <span>Receipt printer</span>
+          <select value={form.receiptPrinter} onChange={(event) => update("receiptPrinter", event.target.value)}>
+            <option value="">Use system default</option>
+            {printerOptions(form.receiptPrinter).map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
+        </label>
+        <label className="field">
+          <span>A4 / report printer</span>
+          <select value={form.reportPrinter} onChange={(event) => update("reportPrinter", event.target.value)}>
+            <option value="">Use system default</option>
+            {printerOptions(form.reportPrinter).map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
+        </label>
+        <label className="field">
+          <span>Barcode tag printer</span>
+          <select value={form.labelPrinter} onChange={(event) => update("labelPrinter", event.target.value)}>
+            <option value="">Use system default</option>
+            {printerOptions(form.labelPrinter).map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
+        </label>
+        <label className="field">
+          <span>Label size</span>
+          <select value={form.labelSizeId} onChange={(event) => update("labelSizeId", event.target.value)}>
+            {["100x50", "80x50", "75x50", "60x40", "50x30"].map((size) => <option key={size} value={size}>{size.replace("x", " × ")} mm</option>)}
+          </select>
+        </label>
+        <label className="field">
+          <span>Receipt copies</span>
+          <input type="number" min="1" max="10" value={form.receiptCopies} onChange={(event) => update("receiptCopies", Number(event.target.value))} />
+        </label>
+        <label className="field">
+          <span>Local bridge address</span>
+          <input value={form.bridgeUrl} onChange={(event) => update("bridgeUrl", event.target.value)} placeholder="ws://127.0.0.1:47654" />
+        </label>
+      </div>
+      <div className="settings-toggle-grid">
+        <label className="toggle-field"><input type="checkbox" checked={form.autoPrintReceipt} onChange={(event) => update("autoPrintReceipt", event.target.checked)} /> Print receipt automatically after checkout</label>
+        <label className="toggle-field"><input type="checkbox" checked={form.silentPrint} onChange={(event) => update("silentPrint", event.target.checked)} /> Print silently to the selected printer</label>
+      </div>
+      {error && <div className="error-banner" role="alert">{error}</div>}
+      {notice && <div className="notice info" role="status">{notice}</div>}
+      <div className="heading-actions">
+        <button type="button" className="secondary-button" disabled={loadingPrinters} onClick={() => void refreshPrinters()}>
+          <RefreshCw size={13} className={loadingPrinters ? "spin" : ""} /> {loadingPrinters ? "Loading printers…" : "Refresh printers"}
+        </button>
+        <button type="button" className="secondary-button" disabled={busy || !bridgeStatus || bridgeStatus !== "connected"} onClick={() => void printTestPage()}>
+          <Printer size={13} /> Print test page
+        </button>
+        <button type="button" className="primary-button" disabled={busy} onClick={save}>
+          {busy ? "Saving…" : <><Save size={13} /> Save printer settings</>}
+        </button>
+      </div>
+      <p className="settings-workspace-note">Printer queues belong to this computer, so these choices stay on this device. Start Al Haq Local Bridge to list printers and print without the browser dialog. When the bridge is offline the app falls back to the browser print dialog.</p>
     </section>
   );
 }
@@ -742,23 +969,9 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
           </section>
         </>}
 
-        {activeTab === "printers" && <LocalOnlyPanel
-          title="Printers"
-          description="Printer queues, paper width, copies, and auto-print behavior depend on the Windows host and are not synced."
-          fields={[
-            { label: "Receipt printer", type: "select", options: ["Use system default"] },
-            { label: "A4 / report printer", type: "select", options: ["Use system default"] },
-            { label: "Barcode tag printer", type: "select", options: ["Use system default"] },
-            { label: "Receipt paper width", type: "select", options: ["80 mm", "58 mm"] },
-            { label: "Receipt copies", type: "number" },
-            { label: "Print receipt automatically after checkout", type: "checkbox", wide: true },
-            { label: "Print silently to the selected printer", type: "checkbox", wide: true },
-          ]}
-          actions={<DesktopAction primary title="Saving printer settings is a Windows desktop workflow."><Save size={13} /> Save settings</DesktopAction>}
-          note="Cash-drawer pulse commands are not supported by the current operating-system print integration. Printer queues are local to the Windows host, so all controls are disabled."
-        />}
+        {activeTab === "printers" && <PrinterSettingsPanel branchId={settings.profile.branchId} />}
 
-        {activeTab === "scale" && <ScaleSettingsPanel />}
+        {activeTab === "scale" && <ScaleSettingsPanel branchId={settings.profile.branchId} />}
 
         {activeTab === "tags" && <>
           <LocalOnlyPanel

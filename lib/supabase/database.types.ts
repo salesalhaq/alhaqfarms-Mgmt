@@ -148,6 +148,25 @@ export interface Database {
         deleted_at: string | null;
         server_updated_at: string;
       }>;
+      pos_held_sales: Table<{
+        id: string;
+        branch_id: string;
+        cashier_id: string;
+        shift_id: string;
+        customer_name: string;
+        customer_phone: string | null;
+        tax_mode: string;
+        items_json: Json;
+        payments_json: Json;
+        status: string;
+        created_at: string;
+        updated_at: string;
+        bill_discount_paisa: number;
+        customer_account_id: string | null;
+        loyalty_points_redeemed: number;
+        deleted_at: string | null;
+        server_updated_at: string;
+      }>;
       branch_module_permissions: Table<{
         id: string;
         branch_id: string;
@@ -220,6 +239,23 @@ export interface Database {
         metadata_json: Json;
         created_at: string;
         updated_at: string;
+        deleted_at: string | null;
+        server_updated_at: string;
+      }>;
+      stock_movements: Table<{
+        id: string;
+        idempotency_key: string;
+        branch_id: string;
+        product_id: string;
+        movement_type: string;
+        quantity_delta_milli: number;
+        unit_cost_paisa: number | null;
+        reference_type: string | null;
+        reference_id: string | null;
+        occurred_at: string;
+        created_by: string | null;
+        notes: string | null;
+        created_at: string;
         deleted_at: string | null;
         server_updated_at: string;
       }>;
@@ -414,6 +450,10 @@ export interface Database {
     };
     Views: Record<string, never>;
     Functions: {
+      assign_product_weight_barcode_code: {
+        Args: { p_product_id: string };
+        Returns: number;
+      };
       complete_staff_web_enrollment: {
         Args: { p_staff_id: string; p_user_id: string };
         Returns: boolean;
@@ -452,6 +492,34 @@ export interface Database {
           stock_milli: number;
           total_count: number;
         }[];
+      };
+      staff_pos_register_action: {
+        Args: { p_action: string; p_payload: Json };
+        Returns: Json;
+      };
+      staff_complete_pos_sale: {
+        Args: { p_payload: Json };
+        Returns: Json;
+      };
+      staff_manage_pos_held_sale: {
+        Args: { p_action: string; p_payload: Json };
+        Returns: Json;
+      };
+      staff_manage_pos_customer: {
+        Args: { p_action: string; p_payload: Json };
+        Returns: Json;
+      };
+      staff_manage_pos_discount: {
+        Args: { p_action: string; p_payload: Json };
+        Returns: Json;
+      };
+      staff_manage_return: {
+        Args: { p_action: string; p_payload: Json };
+        Returns: Json;
+      };
+      get_staff_pos_tax_rates: {
+        Args: { p_branch_id: string; p_product_ids: string[] };
+        Returns: { product_id: string; tax_rate_bps: number }[];
       };
       get_staff_daily_report: {
         Args: { p_business_date: string; p_branch_id: string | null };

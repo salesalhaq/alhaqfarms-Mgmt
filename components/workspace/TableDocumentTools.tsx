@@ -9,6 +9,8 @@ import {
   type PrintOrientation,
 } from "@/lib/print/document";
 import { printHtmlDocument } from "@/lib/print/print-window";
+import { loadPrinterSettings } from "@/lib/print/printer-settings";
+import { printHtmlViaBridge } from "@/lib/print/bridge-print";
 
 type DocumentAction = "print" | "preview" | "csv" | "pdf";
 interface TableSnapshot {
@@ -187,11 +189,31 @@ export function TableDocumentTools({
       return;
     }
 
+    void printGenerated(generated);
+  };
+
+  const printGenerated = async (generated: GeneratedDocument): Promise<boolean> => {
+    const settings = loadPrinterSettings();
+    if (settings.silentPrint && settings.reportPrinter) {
+      const result = await printHtmlViaBridge(generated.html, {
+        printer: settings.reportPrinter,
+        copies: 1,
+        title: generated.title,
+        pageSize: generated.orientation === "landscape" ? "A4 landscape" : "A4 portrait",
+      });
+      if (result.printed) return true;
+      if (!result.bridgeUnavailable && result.reason) {
+        setError(result.reason);
+        return false;
+      }
+    }
     // Print and PDF both use the browser print dialog. Chrome's "Save as PDF"
     // produces the PDF with the same layout as the desktop report document.
     if (!printHtmlDocument(generated.html, { title: generated.title })) {
       setError("The print window was blocked. Allow pop-ups for this site and try again.");
+      return false;
     }
+    return true;
   };
 
   const updateOrientation = (value: string) => {
@@ -307,8 +329,9 @@ export function TableDocumentTools({
                 type="button"
                 className="button"
                 onClick={() => {
-                  if (printHtmlDocument(preview.html, { title: preview.title })) setPreview(null);
-                  else setError("The print window was blocked. Allow pop-ups for this site and try again.");
+                  void (async () => {
+                    if (await printGenerated(preview)) setPreview(null);
+                  })();
                 }}
               >
                 <Printer size={14} /> Print / Save as PDF

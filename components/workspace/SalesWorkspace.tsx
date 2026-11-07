@@ -4,20 +4,21 @@ import {
   AlertCircle, ChevronLeft, ChevronRight, Eye, LoaderCircle, Printer,
   RefreshCw, Search, X,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
-import { ReceiptQr } from "@/components/workspace/ReceiptQr";
+import { ReceiptDocument } from "@/components/workspace/ReceiptDocument";
 import { formatReportDate, formatReportMoney, formatReportQuantity } from "@/lib/print/document";
 import {
   buildReceiptQrData,
   DEFAULT_RECEIPT_SETTINGS,
   receiptPageCss,
-  receiptWidth,
+  receiptPageSize,
 } from "@/lib/print/receipt";
 import { waitForReceiptQr } from "@/lib/print/print-window";
+import { printReceiptElementViaBridge } from "@/lib/print/bridge-print";
 import { DEFAULT_BRAND_NAME } from "@/lib/branding";
 import { generateSalesHistoryDocument } from "@/lib/print/reports";
 
@@ -159,6 +160,17 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
     : branches.find((branch) => branch.id === branchId)?.name || "Your branch";
   const canFilterCashiers = staff?.role === "admin" || staff?.role === "manager";
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  const printReceipt = async () => {
+    await waitForReceiptQr();
+    const element = document.querySelector(".receipt-print");
+    const result = await printReceiptElementViaBridge(element, {
+      pageCss: receiptPageCss(receiptSettings),
+      pageSize: receiptPageSize(receiptSettings),
+      title: saleDetails ? `Receipt ${saleDetails.sale.receipt_number}` : "Receipt",
+    });
+    if (!result.printed) window.print();
+  };
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -469,93 +481,73 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
                   <div><span>Branch</span><strong>{saleDetails.sale.branch_name}</strong></div>
                   <div><span>Cashier</span><strong>{saleDetails.sale.cashier_name}</strong></div>
                 </div>
-                <style>{receiptPageCss(receiptSettings)}</style>
-                <article
-                  className="receipt-print"
-                  style={{ "--print-receipt-width": receiptWidth(receiptSettings) } as CSSProperties}
-                >
-                  <header className="receipt-business">
-                    {receiptSettings.showLogoOnReceipt && receiptSettings.logoDataUrl ? (
-                      <img
-                        src={receiptSettings.logoDataUrl}
-                        alt=""
-                        style={{ maxWidth: "36mm", maxHeight: "18mm", objectFit: "contain" }}
-                      />
-                    ) : null}
-                    <strong>{receiptSettings.businessName || saleDetails.sale.branch_name}</strong>
-                    {receiptSettings.businessTagline ? <small>{receiptSettings.businessTagline}</small> : null}
-                    {receiptSettings.businessAddress ? <small>{receiptSettings.businessAddress}</small> : null}
-                    {receiptSettings.businessPhone ? <small>{receiptSettings.businessPhone}</small> : null}
-                    {receiptSettings.businessEmail ? <small>{receiptSettings.businessEmail}</small> : null}
-                  </header>
-                  <div className="receipt-meta">
-                    <div><span>Receipt</span><strong>{saleDetails.sale.receipt_number}</strong></div>
-                    <div><span>Date</span><strong>{new Date(saleDetails.sale.completed_at).toLocaleString()}</strong></div>
-                    <div><span>Cashier</span><strong>{saleDetails.sale.cashier_name}</strong></div>
-                    <div><span>Customer</span><strong>{saleDetails.sale.customer_name || "Walk-in Customer"}</strong></div>
-                    {saleDetails.sale.customer_phone ? <div><span>Phone</span><strong>{saleDetails.sale.customer_phone}</strong></div> : null}
-                  </div>
-                  <div className="receipt-items">
-                    {saleDetails.items.map((line) => (
-                      <div className="receipt-item" key={line.id}>
-                        <div>
-                          <strong>{line.product_name}</strong>
-                          <small>{formatReportQuantity(line.quantity_milli)} {line.unit_code} × {formatReportMoney(line.unit_price_paisa)}</small>
-                          {line.discount_paisa > 0 && <small>Discount: − {formatReportMoney(line.discount_paisa)}</small>}
-                        </div>
-                        <strong>{formatReportMoney(line.line_total_paisa)}</strong>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="receipt-totals">
-                    <div><span>Subtotal</span><strong>{formatReportMoney(saleDetails.sale.subtotal_paisa)}</strong></div>
-                    {saleDetails.sale.discount_paisa - saleDetails.sale.loyalty_discount_paisa > 0 && (
-                      <div><span>Discount</span><strong>− {formatReportMoney(saleDetails.sale.discount_paisa - saleDetails.sale.loyalty_discount_paisa)}</strong></div>
-                    )}
-                    {saleDetails.sale.loyalty_redeemed > 0 && (
-                      <div><span>{saleDetails.sale.loyalty_redeemed} loyalty points</span><strong>− {formatReportMoney(saleDetails.sale.loyalty_discount_paisa)}</strong></div>
-                    )}
-                    {receiptSettings.showTaxOnReceipt && (
-                      receiptSettings.taxDisplay === "detailed"
-                        ? [...new Set(saleDetails.items.map((line) => line.tax_rate_bps))].map((rate) => (
-                            <div key={rate}>
-                              <span>Tax {rate / 100}%</span>
-                              <strong>{formatReportMoney(saleDetails.items.filter((line) => line.tax_rate_bps === rate).reduce((sum, line) => sum + line.tax_paisa, 0))}</strong>
-                            </div>
-                          ))
-                        : <div><span>Tax ({saleDetails.sale.tax_mode})</span><strong>{formatReportMoney(saleDetails.sale.tax_paisa)}</strong></div>
-                    )}
-                    {saleDetails.sale.rounding_paisa !== 0 && (
-                      <div><span>Rounding</span><strong>{formatReportMoney(saleDetails.sale.rounding_paisa)}</strong></div>
-                    )}
-                    <div className="receipt-total"><span>Total</span><strong>{formatReportMoney(saleDetails.sale.total_paisa)}</strong></div>
-                    {saleDetails.sale.loyalty_earned > 0 && (
-                      <div><span>Loyalty points earned</span><strong>{saleDetails.sale.loyalty_earned}</strong></div>
-                    )}
-                    {saleDetails.payments.map((payment) => (
-                      <div key={payment.id}>
-                        <span>
-                          {payment.method.replaceAll("_", " ")}
-                          {payment.reference ? <small className="sale-payment-reference">{payment.reference}</small> : null}
-                        </span>
-                        <strong>{formatReportMoney(payment.amount_paisa)}</strong>
-                      </div>
-                    ))}
-                    {saleDetails.sale.due_paisa > 0 && <div><span>Due</span><strong>{formatReportMoney(saleDetails.sale.due_paisa)}</strong></div>}
-                    {saleDetails.sale.change_paisa > 0 && <div><span>Change</span><strong>{formatReportMoney(saleDetails.sale.change_paisa)}</strong></div>}
-                  </div>
-                  {receiptSettings.returnPolicy ? <p className="receipt-thanks">{receiptSettings.returnPolicy}</p> : null}
-                  <ReceiptQr
-                    value={buildReceiptQrData({
+                <ReceiptDocument
+                  settings={receiptSettings}
+                  branchName={saleDetails.sale.branch_name}
+                  documentLabel="SALE RECEIPT"
+                  metadata={[
+                    { label: "Receipt", value: saleDetails.sale.receipt_number },
+                    { label: "Date", value: new Date(saleDetails.sale.completed_at).toLocaleString() },
+                    { label: "Branch", value: saleDetails.sale.branch_name },
+                    { label: "Cashier", value: saleDetails.sale.cashier_name },
+                    { label: "Customer", value: saleDetails.sale.customer_name || "Walk-in Customer" },
+                    ...(saleDetails.sale.customer_phone ? [{ label: "Phone", value: saleDetails.sale.customer_phone }] : []),
+                  ]}
+                  items={saleDetails.items.map((line) => ({
+                    id: line.id,
+                    name: line.product_name,
+                    details: [
+                      `${formatReportQuantity(line.quantity_milli)} ${line.unit_code} × ${formatReportMoney(line.unit_price_paisa)}`,
+                      ...(line.discount_paisa > 0 ? [`Discount: − ${formatReportMoney(line.discount_paisa)}`] : []),
+                    ],
+                    amount: formatReportMoney(line.line_total_paisa),
+                  }))}
+                  totals={[
+                    { label: "Subtotal", value: formatReportMoney(saleDetails.sale.subtotal_paisa) },
+                    ...(saleDetails.sale.discount_paisa - saleDetails.sale.loyalty_discount_paisa > 0
+                      ? [{ label: "Discount", value: `− ${formatReportMoney(saleDetails.sale.discount_paisa - saleDetails.sale.loyalty_discount_paisa)}` }]
+                      : []),
+                    ...(saleDetails.sale.loyalty_redeemed > 0
+                      ? [{ label: `${saleDetails.sale.loyalty_redeemed} loyalty points`, value: `− ${formatReportMoney(saleDetails.sale.loyalty_discount_paisa)}` }]
+                      : []),
+                    ...(!receiptSettings.showTaxOnReceipt
+                      ? []
+                      : receiptSettings.taxDisplay === "detailed"
+                        ? [...new Set(saleDetails.items.map((line) => line.tax_rate_bps))].map((rate) => ({
+                            label: `Tax ${rate / 100}%`,
+                            value: formatReportMoney(saleDetails.items.filter((line) => line.tax_rate_bps === rate).reduce((sum, line) => sum + line.tax_paisa, 0)),
+                          }))
+                        : [{ label: `Tax (${saleDetails.sale.tax_mode})`, value: formatReportMoney(saleDetails.sale.tax_paisa) }]),
+                    ...(saleDetails.sale.rounding_paisa !== 0
+                      ? [{ label: "Rounding", value: formatReportMoney(saleDetails.sale.rounding_paisa) }]
+                      : []),
+                    { label: "Total", value: formatReportMoney(saleDetails.sale.total_paisa), emphasis: true },
+                    ...(saleDetails.sale.loyalty_earned > 0
+                      ? [{ label: "Loyalty points earned", value: String(saleDetails.sale.loyalty_earned) }]
+                      : []),
+                    ...saleDetails.payments.map((payment) => ({
+                      label: payment.method.replaceAll("_", " "),
+                      value: formatReportMoney(payment.amount_paisa),
+                      detail: payment.reference || undefined,
+                    })),
+                    ...(saleDetails.sale.due_paisa > 0
+                      ? [{ label: "Due", value: formatReportMoney(saleDetails.sale.due_paisa) }]
+                      : []),
+                    ...(saleDetails.sale.change_paisa > 0
+                      ? [{ label: "Change", value: formatReportMoney(saleDetails.sale.change_paisa) }]
+                      : []),
+                  ]}
+                  policy={receiptSettings.returnPolicy || undefined}
+                  qr={{
+                    value: buildReceiptQrData({
                       sale: saleDetails.sale,
                       items: saleDetails.items,
                       payments: saleDetails.payments,
                       returns: saleDetails.returns,
-                    })}
-                    label="Scan for order details · not FBR verified"
-                  />
-                  <footer className="receipt-thanks">{receiptSettings.receiptFooter}</footer>
-                </article>
+                    }),
+                    label: "Scan for order details · not FBR verified",
+                  }}
+                />
                 {saleDetails.returns.length > 0 && (
                   <section className="sales-return-history">
                     <h3>Returns</h3>
@@ -568,7 +560,7 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
                   </section>
                 )}
                 <div className="sales-dialog-actions">
-                  <button className="button" onClick={async () => { await waitForReceiptQr(); window.print(); }} type="button"><Printer size={15} /> Print receipt</button>
+                  <button className="button" onClick={() => void printReceipt()} type="button"><Printer size={15} /> Print receipt</button>
                 </div>
               </>
             )}

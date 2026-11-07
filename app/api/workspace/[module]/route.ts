@@ -95,7 +95,24 @@ export async function GET(request: Request, context: RouteContext) {
         .maybeSingle();
       if (shiftError) throw new Error(shiftError.message);
 
-      const products = productsResult.data || [];
+      const catalogProducts = productsResult.data || [];
+      const { data: taxRates, error: taxRatesError } = catalogProducts.length
+        ? await authentication.client.rpc("get_staff_pos_tax_rates", {
+            p_branch_id: branchId,
+            p_product_ids: catalogProducts.map((product) => product.id),
+          })
+        : { data: [], error: null };
+      if (taxRatesError?.code === "PGRST202") {
+        return authenticationResponse(request, authentication, {
+          error: "POS tax-rate lookup is not configured in Supabase. Apply migration 012_pos_held_sales.sql.",
+        }, 503);
+      }
+      if (taxRatesError) throw new Error(taxRatesError.message);
+      const taxRateByProductId = new Map((taxRates || []).map((row) => [row.product_id, row.tax_rate_bps]));
+      const products = catalogProducts.map((product) => ({
+        ...product,
+        tax_rate_bps: taxRateByProductId.get(product.id) || 0,
+      }));
       return authenticationResponse(request, authentication, {
         products,
         hasMore: products.length > 0 && products[0].total_count > offset + products.length,
@@ -662,6 +679,7 @@ export async function GET(request: Request, context: RouteContext) {
           sale_total_paisa: saleResult.data.total_paisa,
           branch_name: authentication.identity.branches.find((branch) => branch.id === returnRecord.branch_id)?.name || "Branch",
           created_by_name: staffNames.get(returnRecord.created_by) || "Staff member",
+          created_by_is_current: returnRecord.created_by === authentication.identity.staff.local_staff_id,
           approved_by_name: returnRecord.approved_by ? staffNames.get(returnRecord.approved_by) || "Staff member" : null,
           rejected_by_name: returnRecord.rejected_by ? staffNames.get(returnRecord.rejected_by) || "Staff member" : null,
           completed_by_name: returnRecord.completed_by ? staffNames.get(returnRecord.completed_by) || "Staff member" : null,

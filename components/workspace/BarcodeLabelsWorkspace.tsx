@@ -13,6 +13,8 @@ import {
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { DEFAULT_BRAND_NAME } from "@/lib/branding";
 import { formatMoney } from "@/lib/format";
+import { ean13ForWeight } from "@/lib/scale/weight-barcode";
+import { printLabelsViaBridge } from "@/lib/print/bridge-print";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { SerialScale } from "./SerialScale";
 
@@ -91,48 +93,6 @@ function getCode(product: Product): string {
     const code = character.charCodeAt(0);
     return code >= 32 && code <= 126;
   })) || candidates[0] || product.id;
-}
-
-function productMetadata(product: Product): Record<string, unknown> {
-  if (!product.metadata_json) return {};
-  if (typeof product.metadata_json === "string") {
-    try {
-      return JSON.parse(product.metadata_json) as Record<string, unknown>;
-    } catch {
-      return {};
-    }
-  }
-  if (typeof product.metadata_json === "object" && !Array.isArray(product.metadata_json)) {
-    return product.metadata_json as Record<string, unknown>;
-  }
-  return {};
-}
-
-function derivedWeightCode(product: Product): number {
-  let hash = 0;
-  for (const character of product.id) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
-  return (hash % 99999) + 1;
-}
-
-function weightProductCode(product: Product): number {
-  const metadata = productMetadata(product);
-  const stored = Number(metadata.weightBarcodeCode);
-  if (Number.isInteger(stored) && stored >= 1 && stored <= 99999) return stored;
-  return derivedWeightCode(product);
-}
-
-function hasStoredWeightCode(product: Product): boolean {
-  const stored = Number(productMetadata(product).weightBarcodeCode);
-  return Number.isInteger(stored) && stored >= 1 && stored <= 99999;
-}
-
-function ean13ForWeight(productCode: number, quantityMilli: number): string {
-  const body = `21${String(productCode).padStart(5, "0")}${String(quantityMilli).padStart(5, "0")}`;
-  let sum = 0;
-  for (let index = 0; index < body.length; index += 1) {
-    sum += Number(body[index]) * (index % 2 === 0 ? 1 : 3);
-  }
-  return `${body}${(10 - (sum % 10)) % 10}`;
 }
 
 function pakistanDateString(date = new Date()): string {
@@ -224,6 +184,11 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
   const [weightError, setWeightError] = useState("");
   const [scaleMode, setScaleMode] = useState(false);
   const [scaleConfirmed, setScaleConfirmed] = useState(false);
+  const [weightCode, setWeightCode] = useState<number | null>(null);
+  const [weightCodeBusy, setWeightCodeBusy] = useState(false);
+  const [weightCodeNotice, setWeightCodeNotice] = useState("");
+  const [weightCodeError, setWeightCodeError] = useState("");
+  const [printNotice, setPrintNotice] = useState("");
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 250);
@@ -284,8 +249,42 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
   const expiryDate = packedDate
     ? addDays(packedDate, Math.max(0, Number.parseInt(shelfLifeDays, 10) || 0))
     : "";
-  const weightCode = weightedProduct ? weightProductCode(weightedProduct) : null;
-  const storedWeightCode = weightedProduct ? hasStoredWeightCode(weightedProduct) : false;
+
+  useEffect(() => {
+    let active = true;
+    setWeightCode(null);
+    setWeightCodeNotice("");
+    setWeightCodeError("");
+    if (!weightedProductId) {
+      setWeightCodeBusy(false);
+      return () => { active = false; };
+    }
+    setWeightCodeBusy(true);
+    void (async () => {
+      try {
+        const response = await fetch("/api/workspace/weight-barcode-code", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ productId: weightedProductId }),
+        });
+        const result = await response.json() as { numericCode?: number; reassigned?: boolean; error?: string };
+        if (!active) return;
+        if (!response.ok || !Number.isInteger(result.numericCode)) {
+          throw new Error(result.error || "Could not assign a weight-barcode code.");
+        }
+        setWeightCode(result.numericCode as number);
+        if (result.reassigned) {
+          setWeightCodeNotice(`Assigned a new weight-barcode code ${result.numericCode} because the previous code was missing or duplicated.`);
+        }
+      } catch (codeError) {
+        if (active) setWeightCodeError(codeError instanceof Error ? codeError.message : "Could not assign a weight-barcode code.");
+      } finally {
+        if (active) setWeightCodeBusy(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [weightedProductId]);
 
   const setQuantity = (product: Product, requested: number) => {
     setSelected((current) => {
@@ -323,7 +322,9 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
       return;
     }
     if (weightBarcodeMode === "weight" && weightCode == null) {
-      setWeightError("This product does not have a weight-barcode code yet. Use product code only, or assign a code in the desktop app.");
+      setWeightError(weightCodeBusy
+        ? "Preparing this product's weight-barcode code…"
+        : weightCodeError || "This product does not have a weight-barcode code yet. Use product code only, or retry the assignment.");
       return;
     }
 
@@ -348,8 +349,20 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
   };
 
   const printLabels = () => window.print();
-  const printToTagPrinter = () => {
+  const printToTagPrinter = async () => {
     if (!allLabelCount) return;
+    setPrintNotice("");
+    const pageCss = `@page label { size: ${size.widthMm}mm ${size.heightMm}mm; margin: 0; }`;
+    const root = document.querySelector("[data-barcode-print-root]");
+    const bridgeResult = await printLabelsViaBridge(root, { pageCss, title: "Product labels" });
+    if (bridgeResult.printed) {
+      setPrintNotice("Labels sent to the configured tag printer through the local bridge.");
+      return;
+    }
+    if (!bridgeResult.bridgeUnavailable && bridgeResult.reason
+      && !/not configured/i.test(bridgeResult.reason)) {
+      setPrintNotice(bridgeResult.reason);
+    }
     const pageStyleId = "direct-label-page-size";
     let pageStyle = document.getElementById(pageStyleId) as HTMLStyleElement | null;
     if (!pageStyle) {
@@ -357,7 +370,7 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
       pageStyle.id = pageStyleId;
       document.head.append(pageStyle);
     }
-    pageStyle.textContent = `@page label { size: ${size.widthMm}mm ${size.heightMm}mm; margin: 0; }`;
+    pageStyle.textContent = pageCss;
     document.documentElement.classList.add("direct-label-print");
     const cleanup = () => {
       document.documentElement.classList.remove("direct-label-print");
@@ -442,6 +455,7 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
       </div>
 
       {error && <div className="error-banner">{error}</div>}
+      {printNotice && <div className="notice info" role="status">{printNotice}</div>}
 
       <div className="stats-grid compact">
         <article className="stat-card"><span>Products selected</span><strong>{queuedProducts.length}</strong><small>With at least one label</small></article>
@@ -557,9 +571,14 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
               <label className="field"><span>Footer text</span><input value={labelFooter} onChange={(event) => setLabelFooter(event.target.value)} /></label>
             </div>
             {weightError && <div className="error-banner">{weightError}</div>}
-            {weightedProduct && weightBarcodeMode === "weight" && !storedWeightCode && (
+            {weightedProduct && weightBarcodeMode === "weight" && (
               <div className="weight-barcode-notice" role="status">
-                This product has no saved weight-barcode code. A temporary code ({weightCode}) is used for preview only; set a weight-barcode code on the product before printing for scanner compatibility.
+                {weightCodeBusy
+                  ? "Preparing this product's weight-barcode code…"
+                  : weightCodeError
+                    ? weightCodeError
+                    : weightCodeNotice
+                      || `Weight-barcode code ${weightCode ?? "—"}. Scanner lookup uses EAN-13 21 + this code + the measured quantity.`}
               </div>
             )}
           </div>

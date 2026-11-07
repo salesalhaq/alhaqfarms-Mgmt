@@ -116,9 +116,17 @@ export function formatReportDate(
 export function safeLogoDataUrl(value: string | null | undefined): string {
   const logo = String(value || "");
   if (logo.length > MAX_LOGO_BYTES * 1.4) return "";
-  return /^data:image\/(?:png|jpeg|jpg|webp);base64,[A-Za-z0-9+/]+={0,2}$/i.test(logo)
+  if (/^data:image\/(?:png|jpeg|jpg|webp);base64,[A-Za-z0-9+/]+={0,2}$/i.test(logo)) return logo;
+  if (logo === "/brand-mark.png") return logo;
+  return /^https?:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?\/brand-mark\.png$/.test(logo)
     ? logo
     : "";
+}
+
+function defaultBrandLogoUrl(): string {
+  return typeof window === "undefined"
+    ? "/brand-mark.png"
+    : new URL("/brand-mark.png", window.location.origin).href;
 }
 
 export function chooseOrientation(
@@ -266,7 +274,7 @@ function reportStyles(
     .report-page { width: 100%; background: #fff; }
     .report-header { display: grid; grid-template-columns: minmax(0, 1fr) minmax(62mm, auto); gap: 5mm; align-items: center; padding-bottom: 4mm; border-bottom: 1px dashed #555; }
     .brand-block { display: flex; align-items: center; gap: 4mm; min-width: 0; }
-    .brand-logo { width: 32mm; height: 18mm; object-fit: contain; flex: 0 0 auto; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    .brand-logo { width: 24mm; height: 24mm; object-fit: contain; flex: 0 0 auto; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
     .brand-copy { min-width: 0; overflow-wrap: break-word; }
     .brand-copy strong { display: block; font-size: 13pt; line-height: 1.15; font-weight: 700; }
     .brand-copy em { display: block; margin-top: 1mm; color: #333; font-size: 8.5pt; }
@@ -356,17 +364,27 @@ function baseDocument({
   content: string;
 }): string {
   const reportName = escapeHtml(reportTitle);
-  const businessName = escapeHtml(branding.businessName || DEFAULT_BRAND_NAME);
+  const resolvedBusinessName = branding.businessName || DEFAULT_BRAND_NAME;
+  const logoUrl = safeLogoDataUrl(branding.logoDataUrl) || defaultBrandLogoUrl();
+  const resolvedBranding: ReportBranding = {
+    businessName: resolvedBusinessName,
+    businessTagline: branding.businessTagline || DEFAULT_BRAND_TAGLINE,
+    logoDataUrl: logoUrl,
+  };
+  const businessName = escapeHtml(resolvedBusinessName);
+  const logoOrigin = logoUrl.startsWith("data:")
+    ? "'self'"
+    : new URL(logoUrl, typeof window === "undefined" ? "https://localhost" : window.location.origin).origin;
   const bodyContent = metadata.tightColumns
     ? `<div class="tight-columns">${content}</div>`
     : content;
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>${reportName}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src 'self' data:">
-<style>${reportStyles(orientation, branding.businessName || DEFAULT_BRAND_NAME, reportTitle, branding.logoDataUrl)}</style></head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: ${escapeHtml(logoOrigin)}; style-src 'unsafe-inline'; font-src 'self' data:">
+<style>${reportStyles(orientation, resolvedBusinessName, reportTitle, logoUrl)}</style></head>
 <body><main class="report-page">
-${pageHeader({ ...metadata, reportTitle, ...branding })}
+${pageHeader({ ...metadata, reportTitle, ...resolvedBranding })}
 ${bodyContent}
 </main><footer class="report-footer"><span>Thank You!</span><strong>${businessName}</strong><span>This is a computer generated report</span></footer></body></html>`;
 }

@@ -1,4 +1,14 @@
 import { authenticateStaff, authenticationResponse, isUuid } from "@/lib/server/staff-auth";
+import type { Json } from "@/lib/supabase/database.types";
+import {
+  assertSameOrigin,
+  readBoolean,
+  readEnum,
+  readJsonBody,
+  readText,
+  readUuid,
+  writeFailure,
+} from "@/lib/server/write";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +50,17 @@ const ORDER_ITEM_SELECT = [
   "line_total_paisa",
 ].join(",");
 
+const ORDER_ACTIONS = [
+  "accept",
+  "pack",
+  "dispatch",
+  "deliver",
+  "verify_payment",
+  "reject_payment",
+  "cancel",
+] as const;
+const ORDER_STATUSES = ["pending", "accepted", "packed", "dispatched", "delivered", "cancelled"] as const;
+
 function isCalendarDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00.000Z`);
@@ -73,6 +94,9 @@ export async function GET(request: Request) {
   }
   if ((from && !isCalendarDate(from)) || (to && !isCalendarDate(to))) {
     return authenticationResponse(request, authentication, { error: "Choose valid calendar dates." }, 400);
+  }
+  if (requestedStatus !== "all" && !(ORDER_STATUSES as readonly string[]).includes(requestedStatus)) {
+    return authenticationResponse(request, authentication, { error: "Choose a valid order status filter." }, 400);
   }
   if (from && to && from > to) {
     return authenticationResponse(request, authentication, { error: "Start date must be on or before the end date." }, 400);
@@ -123,24 +147,70 @@ export async function GET(request: Request) {
         .in("order_id", orderIds)
         .is("deleted_at", null)
         .order("line_number", { ascending: true });
-      if (!itemsResult.error) {
-        for (const item of (itemsResult.data || []) as unknown as Array<Record<string, unknown>>) {
-          const key = String(item.order_id);
-          const list = itemsByOrder.get(key) || [];
-          list.push(item);
-          itemsByOrder.set(key, list);
-        }
+      if (itemsResult.error) throw new Error(itemsResult.error.message);
+      for (const item of (itemsResult.data || []) as unknown as Array<Record<string, unknown>>) {
+        const key = String(item.order_id);
+        const list = itemsByOrder.get(key) || [];
+        list.push(item);
+        itemsByOrder.set(key, list);
       }
     }
     return authenticationResponse(request, authentication, {
       orders: orders.map((order) => ({ ...order, items: itemsByOrder.get(String(order.id)) || [] })),
     });
-  } catch {
+  } catch (error) {
+    console.error("Could not load online orders.", error);
     return authenticationResponse(
       request,
       authentication,
       { error: "Store orders could not be loaded. Please try again." },
       503,
     );
+  }
+}
+
+export async function POST(request: Request) {
+  const authentication = await authenticateStaff(request);
+  if (!authentication.ok) {
+    return authenticationResponse(request, authentication, { error: authentication.error }, authentication.status);
+  }
+  if (!authentication.identity.canViewOrders) {
+    return authenticationResponse(request, authentication, { error: "Your role does not have access to store orders." }, 403);
+  }
+
+  try {
+    assertSameOrigin(request);
+    const body = await readJsonBody(request);
+    const action = readEnum(body.action, "Order action", ORDER_ACTIONS);
+    const payload: Record<string, Json> = { id: readUuid(body.id, "Order") };
+    if (action === "reject_payment") {
+      payload.reason = readText(body.reason, "Rejection reason", 500);
+    } else if (action === "deliver" && body.paymentReceived !== undefined) {
+      payload.paymentReceived = readBoolean(body.paymentReceived, "Payment confirmation");
+    } else if (action === "cancel") {
+      payload.refundIssued = readBoolean(body.refundIssued, "Refund confirmation");
+    }
+
+    const { data, error } = await authentication.client.rpc("staff_manage_web_order", {
+      p_action: action,
+      p_payload: payload,
+    });
+    if (error) throw error;
+
+    return authenticationResponse(request, authentication, { result: data });
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "P0001"
+        && "message" in error && typeof error.message === "string") {
+      const status = /cannot access|role cannot|sign in with an active staff|not linked to a staff profile/i.test(error.message)
+        ? 403
+        : 400;
+      return authenticationResponse(request, authentication, { error: error.message }, status);
+    }
+    if (error && typeof error === "object" && "code" in error && error.code === "PGRST202") {
+      return authenticationResponse(request, authentication, {
+        error: "Online order actions are not configured in Supabase. Apply migration 019_online_order_workflow.sql.",
+      }, 503);
+    }
+    return writeFailure(request, authentication, error);
   }
 }

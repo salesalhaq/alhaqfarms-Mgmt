@@ -36,6 +36,10 @@ type StoreOrder = Pick<
   | "cancelled_at"
   | "created_at"
 > & {
+  branch_name?: string;
+  paymentProofAvailable?: boolean;
+  proofUrl?: string | null;
+  allowedActions?: string[];
   items?: Array<{
     id: string;
     order_id: string;
@@ -48,6 +52,16 @@ type StoreOrder = Pick<
     tax_paisa: number;
     line_total_paisa: number;
   }>;
+  events?: Array<{
+    id: string;
+    event_type: string;
+    previous_status: string | null;
+    next_status: string | null;
+    actor_id: string | null;
+    actor_name: string;
+    notes: string | null;
+    occurred_at: string;
+  }>;
 };
 
 interface StoreOrdersResponse {
@@ -55,16 +69,28 @@ interface StoreOrdersResponse {
   error?: string;
 }
 
+interface StoreOrderDetailsResponse {
+  order?: StoreOrder;
+  items?: StoreOrder["items"];
+  events?: StoreOrder["events"];
+  allowedActions?: string[];
+  paymentProofAvailable?: boolean;
+  proofUrl?: string | null;
+  error?: string;
+}
+
+interface StoreOrderActionResponse {
+  error?: string;
+}
+
 const ORDER_STATUS_OPTIONS = [
   "all",
   "pending",
-  "paid",
-  "processing",
+  "accepted",
   "packed",
-  "ready_for_pickup",
-  "completed",
+  "dispatched",
+  "delivered",
   "cancelled",
-  "rejected",
 ] as const;
 
 function localDateInput(date: Date): string {
@@ -93,6 +119,10 @@ export function StoreOrdersWorkspace({ item }: { item: WorkspaceModule }) {
   const [orders, setOrders] = useState<StoreOrder[]>([]);
   const [selected, setSelected] = useState<StoreOrder | null>(null);
   const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [rejectingPayment, setRejectingPayment] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const isAdmin = staff?.role === "admin";
@@ -153,6 +183,85 @@ export function StoreOrdersWorkspace({ item }: { item: WorkspaceModule }) {
 
   const visibleOrders = useMemo(() => orders, [orders]);
   const awaitingReview = orders.filter((order) => order.payment_review_status === "awaiting_review").length;
+  const allowedActions = selected?.allowedActions || [];
+  const detailAction = selected && (() => {
+    if (selected.status === "pending") return ["accept", "Accept order"] as const;
+    if (selected.status === "accepted") return ["pack", "Pack order"] as const;
+    if (selected.status === "packed" && selected.fulfillment_type === "delivery") return ["dispatch", "Dispatch"] as const;
+    if ((selected.status === "packed" && selected.fulfillment_type === "pickup")
+        || (selected.status === "dispatched" && selected.fulfillment_type === "delivery")) {
+      const needsCollection = ["cash_on_delivery", "pay_at_store"].includes(selected.payment_method)
+        && selected.payment_status !== "paid";
+      return ["deliver", needsCollection ? "Collect payment & complete" : "Complete handover"] as const;
+    }
+    return null;
+  })();
+  const walletPaymentNeedsReview = Boolean(selected
+    && ["easypaisa", "jazzcash"].includes(selected.payment_method)
+    && selected.payment_status !== "paid");
+
+  const loadOrderDetails = async (orderId: string) => {
+    const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+    const result = await response.json() as StoreOrderDetailsResponse;
+    if (!response.ok || !result.order) {
+      throw new Error(result.error || "Could not load order details.");
+    }
+    setSelected({
+      ...result.order,
+      items: result.items || [],
+      events: result.events || [],
+      allowedActions: result.allowedActions || [],
+      paymentProofAvailable: Boolean(result.paymentProofAvailable),
+      proofUrl: result.proofUrl || null,
+    });
+  };
+
+  const openDetails = async (order: StoreOrder) => {
+    setSelected(order);
+    setDetailLoading(true);
+    setRejectingPayment(false);
+    setRejectionReason("");
+    setError(null);
+    try {
+      await loadOrderDetails(order.id);
+    } catch (detailError) {
+      setError(detailError instanceof Error ? detailError.message : "Could not load order details.");
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const process = async (action: string, extra: Record<string, boolean | string> = {}) => {
+    if (!selected || busy) return;
+    if (action === "cancel" && selected.payment_status === "paid"
+        && !window.confirm("Issue the customer refund outside the app before continuing. Have you issued it?")) {
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/workspace/store-orders", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: selected.id, action, ...extra }),
+      });
+      const result = await response.json() as StoreOrderActionResponse;
+      if (!response.ok) throw new Error(result.error || "Could not update this order.");
+      await loadOrderDetails(selected.id);
+      setRejectingPayment(false);
+      setRejectionReason("");
+      setReloadKey((value) => value + 1);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Could not update this order.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const clearFilters = () => {
     const [defaultFrom, defaultTo] = initialDateRange();
@@ -183,7 +292,7 @@ export function StoreOrdersWorkspace({ item }: { item: WorkspaceModule }) {
 
       <div className="live-readonly-note">
         <AlertCircle size={16} />
-        <span>Live branch records · read-only. Updates and fulfillment actions remain disabled until the verified workflow is available.</span>
+        <span>Order actions follow your branch permissions and update payment, stock, sales, and order history together.</span>
       </div>
 
       <div className="order-summary-row">
@@ -333,7 +442,7 @@ export function StoreOrdersWorkspace({ item }: { item: WorkspaceModule }) {
                     <td className="nowrap">{formatMoney(order.total_paisa)}</td>
                     <td className="nowrap">{formatDateTime(order.created_at)}</td>
                     <td>
-                      <button className="button secondary" onClick={() => setSelected(order)} type="button">
+                      <button className="button secondary" onClick={() => void openDetails(order)} type="button">
                         <Eye size={14} /> Details
                       </button>
                     </td>
@@ -357,9 +466,11 @@ export function StoreOrdersWorkspace({ item }: { item: WorkspaceModule }) {
               </div>
               <button aria-label="Close order details" className="button secondary" onClick={() => setSelected(null)} type="button"><X size={16} /></button>
             </header>
+            {detailLoading && <div className="loading"><LoaderCircle size={16} className="spin" /> Loading order details…</div>}
             <div className="returns-detail-context">
               <div><span>Customer</span><strong>{selected.customer_name}</strong></div>
               <div><span>Phone</span><strong>{selected.customer_phone}</strong></div>
+              <div><span>Branch</span><strong>{selected.branch_name || "Your branch"}</strong></div>
               <div><span>Fulfillment</span><strong>{labelize(selected.fulfillment_type)}</strong></div>
               <div><span>Status</span><strong className={`status ${statusTone(selected.status)}`}>{labelize(selected.status)}</strong></div>
               <div><span>Payment</span><strong>{labelize(selected.payment_method)} · {labelize(selected.payment_review_status === "none" ? selected.payment_status : selected.payment_review_status)}</strong></div>
@@ -367,6 +478,7 @@ export function StoreOrdersWorkspace({ item }: { item: WorkspaceModule }) {
               {selected.delivery_address && <div className="returns-detail-wide"><span>Delivery address</span><strong>{selected.delivery_address}</strong></div>}
               {selected.payment_reference && <div><span>Payment reference</span><strong>{selected.payment_reference}</strong></div>}
               {selected.notes && <div className="returns-detail-wide"><span>Notes</span><strong>{selected.notes}</strong></div>}
+              {selected.payment_rejection_reason && <div className="returns-detail-wide"><span>Payment rejection reason</span><strong>{selected.payment_rejection_reason}</strong></div>}
             </div>
 
             <div className="returns-detail-items">
@@ -387,28 +499,85 @@ export function StoreOrdersWorkspace({ item }: { item: WorkspaceModule }) {
               <div><span>Total</span><strong>{formatMoney(selected.total_paisa)}</strong></div>
             </div>
 
+            {selected.paymentProofAvailable && allowedActions.includes("verify_payment") && selected.proofUrl && (
+              <div className="returns-detail-actions">
+                <a className="button secondary" href={selected.proofUrl} rel="noreferrer" target="_blank">
+                  <Eye size={13} /> View payment screenshot
+                </a>
+              </div>
+            )}
+            {selected.payment_review_status === "awaiting_review" && allowedActions.includes("verify_payment")
+              && (!selected.payment_reference || !selected.paymentProofAvailable) && (
+                <div className="notice"><AlertCircle size={16} />
+                  Verification needs the customer transaction ID and uploaded payment screenshot.
+                </div>
+              )}
+            {selected.payment_review_status === "awaiting_review" && allowedActions.includes("reject_payment")
+              && rejectingPayment && (
+                <label className="field">
+                  <span>Reason to send back to customer</span>
+                  <textarea
+                    autoFocus
+                    maxLength={500}
+                    rows={3}
+                    value={rejectionReason}
+                    onChange={(event) => setRejectionReason(event.target.value)}
+                  />
+                </label>
+              )}
+            {selected.payment_status === "paid" && ["pending", "accepted", "packed"].includes(selected.status)
+              && allowedActions.includes("cancel") && (
+                <div className="notice"><AlertCircle size={16} />
+                  Refund the customer outside the app before confirming cancellation.
+                </div>
+              )}
+            <section className="order-event-list" aria-label="Order history">
+              <strong>Order history</strong>
+              {selected.events?.length ? selected.events.map((event) => (
+                <small key={event.id}>
+                  {labelize(event.event_type)} · {event.actor_name} · {formatDateTime(event.occurred_at)}
+                  {event.notes ? ` · ${event.notes}` : ""}
+                </small>
+              )) : <small>No order history is recorded.</small>}
+            </section>
+
             <div className="returns-detail-actions">
-              <button className="button secondary" disabled title="Opening payment screenshots is a Windows desktop workflow." type="button">
-                <Eye size={13} /> View payment screenshot
-              </button>
-              <button className="button secondary" disabled title="Verifying online payments is a Windows desktop workflow." type="button">
-                <CreditCard size={13} /> Verify payment
-              </button>
-              <button className="button secondary" disabled title="Rejecting online payments is a Windows desktop workflow." type="button">
-                <X size={13} /> Reject payment
-              </button>
-              <button className="button secondary" disabled title="Packing orders is a Windows desktop workflow." type="button">
-                <Package size={13} /> Pack
-              </button>
-              <button className="button secondary" disabled title="Dispatching orders is a Windows desktop workflow." type="button">
-                <Truck size={13} /> Dispatch
-              </button>
-              <button className="button secondary" disabled title="Completing order handover is a Windows desktop workflow." type="button">
-                <CheckCircle2 size={13} /> Complete
-              </button>
-              <button className="button secondary" disabled title="Cancelling orders is a Windows desktop workflow." type="button">
-                Cancel order
-              </button>
+              {allowedActions.includes("cancel") && ["pending", "accepted", "packed"].includes(selected.status) && (
+                <button className="button secondary" disabled={busy || detailLoading} onClick={() => void process("cancel", {
+                  refundIssued: selected.payment_status === "paid",
+                })} type="button">
+                  <X size={13} /> {selected.payment_status === "paid" ? "Confirm refund & cancel" : "Cancel order"}
+                </button>
+              )}
+              {allowedActions.includes("verify_payment") && selected.payment_status === "pending_verification"
+                && selected.payment_review_status === "awaiting_review" && (
+                  <button className="button secondary" disabled={busy || detailLoading || !selected.payment_reference || !selected.paymentProofAvailable}
+                    onClick={() => void process("verify_payment")} type="button">
+                    <CreditCard size={13} /> Verify payment
+                  </button>
+                )}
+              {allowedActions.includes("reject_payment") && selected.payment_review_status === "awaiting_review" && (
+                <button className="button secondary" disabled={busy || detailLoading || (rejectingPayment && !rejectionReason.trim())}
+                  onClick={() => rejectingPayment
+                    ? void process("reject_payment", { reason: rejectionReason })
+                    : setRejectingPayment(true)} type="button">
+                  <X size={13} /> {rejectingPayment ? "Send rejection reason" : "Reject payment"}
+                </button>
+              )}
+              {detailAction && allowedActions.includes(detailAction[0]) && (
+                <button className="button" disabled={busy || detailLoading
+                  || (["pack", "deliver"].includes(detailAction[0]) && walletPaymentNeedsReview)}
+                  onClick={() => void process(detailAction[0], {
+                    ...(detailAction[0] === "deliver" && selected.payment_status !== "paid"
+                      ? { paymentReceived: true }
+                      : {}),
+                  })} type="button">
+                  {detailAction[0] === "pack" ? <Package size={13} />
+                    : detailAction[0] === "dispatch" ? <Truck size={13} />
+                      : <CheckCircle2 size={13} />}
+                  {detailAction[1]}
+                </button>
+              )}
               <button className="button secondary" onClick={() => setSelected(null)} type="button">Close</button>
             </div>
           </section>

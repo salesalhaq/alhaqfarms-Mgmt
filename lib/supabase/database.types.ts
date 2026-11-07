@@ -422,6 +422,17 @@ export interface Database {
         payment_rejected_at: string | null;
         server_updated_at: string;
       }>;
+      web_order_permissions: Table<{
+        id: string;
+        branch_id: string;
+        role: string;
+        action: string;
+        is_allowed: boolean;
+        created_at: string;
+        updated_at: string;
+        deleted_at: string | null;
+        server_updated_at: string;
+      }>;
       web_order_items: Table<{
         id: string;
         order_id: string;
@@ -531,6 +542,10 @@ export interface Database {
       };
       staff_set_default_branch: {
         Args: { p_branch_id: string };
+        Returns: Json;
+      };
+      staff_manage_web_order: {
+        Args: { p_action: string; p_payload: Json };
         Returns: Json;
       };
     };

@@ -525,6 +525,10 @@ export interface Database {
         Args: { p_business_date: string; p_branch_id: string | null };
         Returns: StaffDailyReportPayload;
       };
+      staff_close_day: {
+        Args: { p_payload: Json };
+        Returns: Json;
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

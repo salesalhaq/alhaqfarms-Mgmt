@@ -1,7 +1,7 @@
 "use client";
 
-import { AlertCircle, Download, Eye, LoaderCircle, Lock, Printer, RefreshCw, X } from "lucide-react";
-import { useEffect, useState, type CSSProperties } from "react";
+import { AlertCircle, Download, Eye, LoaderCircle, Printer, RefreshCw, X } from "lucide-react";
+import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { formatDateTime, formatMoney, formatQuantity, labelize } from "@/lib/format";
 import type {
@@ -17,6 +17,7 @@ import { generateDailyReportDocument } from "@/lib/print/report-daily";
 import { printHtmlDocument } from "@/lib/print/print-window";
 import { loadPrinterSettings } from "@/lib/print/printer-settings";
 import { printHtmlViaBridge, printReceiptElementViaBridge } from "@/lib/print/bridge-print";
+import { postWorkspaceAction } from "@/lib/workspace/write-client";
 import {
   DEFAULT_RECEIPT_SETTINGS,
   receiptPageCss,
@@ -55,6 +56,13 @@ function differenceTone(amount: number): string {
 function csvCell(value: unknown): string {
   const text = String(value ?? "");
   return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function parsePaisaInput(value: string): number | null {
+  const text = value.trim();
+  if (!/^\d+(?:\.\d{1,2})?$/.test(text)) return null;
+  const paisa = Math.round(Number(text) * 100);
+  return Number.isSafeInteger(paisa) ? paisa : null;
 }
 
 function SummaryTable({ title, headers, children, empty }: {
@@ -114,11 +122,18 @@ export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
   const [reloadKey, setReloadKey] = useState(0);
   const [zReportOpen, setZReportOpen] = useState(false);
   const [preview, setPreview] = useState<GeneratedDocument | null>(null);
+  const [closeBranchId, setCloseBranchId] = useState("");
+  const [countedCash, setCountedCash] = useState("");
+  const [closeNotes, setCloseNotes] = useState("");
+  const [closingDay, setClosingDay] = useState(false);
+  const [closeError, setCloseError] = useState<string | null>(null);
   const isAdmin = staff?.role === "admin";
+  const canCloseDay = isAdmin || staff?.role === "manager";
   const receiptSettings = DEFAULT_RECEIPT_SETTINGS;
   const branchName = branchId === "all"
     ? "All branches"
     : branches.find((branch) => branch.id === branchId)?.name || "Your branch";
+  const closedBranchIds = new Set(report?.dayCloses.map((close) => close.branch_id) ?? []);
 
   const buildA4Document = (): GeneratedDocument | null => {
     if (!report) return null;
@@ -164,6 +179,39 @@ export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
     if (!result.printed) window.print();
   };
 
+  const closeDay = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const targetBranchId = branchId === "all" ? closeBranchId : branchId;
+    const countedCashPaisa = parsePaisaInput(countedCash);
+    if (!targetBranchId) {
+      setCloseError("Choose the branch to close.");
+      return;
+    }
+    if (countedCashPaisa === null) {
+      setCloseError("Enter counted cash as a non-negative amount with up to two decimals.");
+      return;
+    }
+
+    setClosingDay(true);
+    setCloseError(null);
+    try {
+      await postWorkspaceAction("/api/workspace/daily-report-actions", {
+        branchId: targetBranchId,
+        businessDate: date,
+        countedCashPaisa,
+        notes: closeNotes,
+      });
+      setCountedCash("");
+      setCloseNotes("");
+      setCloseBranchId("");
+      setReloadKey((value) => value + 1);
+    } catch (closeFailure) {
+      setCloseError(closeFailure instanceof Error ? closeFailure.message : "Could not close this business day.");
+    } finally {
+      setClosingDay(false);
+    }
+  };
+
   useEffect(() => {
     if (staff?.role === "admin" && !branchId) setBranchId("all");
     else if (staff?.branch_id && !branchId) setBranchId(staff.branch_id);
@@ -199,6 +247,13 @@ export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
 
     return () => { active = false; };
   }, [branchId, date, reloadKey, staff]);
+
+  useEffect(() => {
+    setCountedCash("");
+    setCloseNotes("");
+    setCloseBranchId("");
+    setCloseError(null);
+  }, [branchId, date]);
 
   const exportCsv = () => {
     if (!report) return;
@@ -295,7 +350,7 @@ export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
 
       <div className="live-readonly-note daily-report-no-print">
         <AlertCircle size={16} />
-        <span>Live cloud figures · read-only. Complete day close in the Windows app; this page does not alter register or accounting records.</span>
+        <span>Live cloud figures · day-close snapshots are calculated from the branch sales, refunds, and register ledger.</span>
       </div>
 
       {error && <div className="notice" role="alert">{error}</div>}
@@ -384,11 +439,7 @@ export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
                 <button className="button secondary daily-report-no-print" type="button" onClick={() => setZReportOpen(true)}>
                   <Printer size={14} /> Z-report
                 </button>
-              ) : (
-                <button className="button secondary daily-report-no-print" type="button" disabled title="Closing the business day is a Windows desktop workflow.">
-                  <Lock size={14} /> Close day
-                </button>
-              )}
+              ) : null}
             </div>
             {dayClose ? (
               <div className="daily-report-close-summary">
@@ -399,7 +450,48 @@ export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
                 <div><span>Refunds</span><strong>{formatMoney(dayClose.refunds_paisa)}</strong></div>
                 {dayClose.notes && <div className="daily-report-close-notes"><span>Notes</span><strong>{dayClose.notes}</strong></div>}
               </div>
-            ) : <p className="daily-report-empty">Day closing is not enabled on the web yet. Use the Windows app to count and freeze the drawer.</p>}
+            ) : canCloseDay ? (
+              <form className="daily-report-close-form" onSubmit={(event) => void closeDay(event)}>
+                {isAdmin && branchId === "all" && (
+                  <label className="toolbar-control">
+                    <span>Branch to close</span>
+                    <select className="toolbar-select" required value={closeBranchId} onChange={(event) => setCloseBranchId(event.target.value)}>
+                      <option value="">Choose branch</option>
+                      {branches.map((branch) => (
+                        <option key={branch.id} value={branch.id} disabled={closedBranchIds.has(branch.id)}>
+                          {branch.name}{closedBranchIds.has(branch.id) ? " (closed)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <div className="daily-report-close-fields">
+                  <label className="toolbar-control">
+                    <span>Counted cash (PKR)</span>
+                    <input
+                      inputMode="decimal"
+                      maxLength={18}
+                      placeholder={(report.cashDrawer.expectedCashPaisa / 100).toFixed(2)}
+                      required
+                      value={countedCash}
+                      onChange={(event) => setCountedCash(event.target.value)}
+                    />
+                  </label>
+                  <label className="toolbar-control">
+                    <span>Closing notes <small>Optional</small></span>
+                    <input maxLength={500} value={closeNotes} onChange={(event) => setCloseNotes(event.target.value)} />
+                  </label>
+                </div>
+                <p className="daily-report-empty">Expected cash is opening float plus cash sales and cash in, minus cash refunds and cash out. Closing stores the counted amount and difference.</p>
+                {closeError && <div className="notice" role="alert">{closeError}</div>}
+                <div className="daily-report-close-actions">
+                  <button className="button" disabled={closingDay || !report} type="submit">
+                    {closingDay ? <LoaderCircle size={14} className="spin" /> : null}
+                    {closingDay ? "Closing…" : "Close day"}
+                  </button>
+                </div>
+              </form>
+            ) : <p className="daily-report-empty">A manager or administrator must close the business day.</p>}
           </section>
         </>
       )}

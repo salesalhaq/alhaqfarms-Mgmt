@@ -108,7 +108,7 @@ Exit met: `npm.cmd run typecheck` and `npm.cmd run build` pass; `categories` wri
 | Module | Desktop actions | Table | Permission |
 | --- | --- | --- | --- |
 | Categories | `saveCategory` | `categories` | HQ admin |
-| Products | `saveProduct` (incl. **weight-barcode code**) | `products` | HQ admin |
+| Products | `saveProduct` (incl. **weight-barcode code**) | `products` | HQ admin — web add/edit now saves product details and images; barcode-code assignment remains on the Barcode Labels workflow |
 | Suppliers | `saveSupplier`, `setSupplierActive` | `suppliers` | HQ admin |
 | Expense categories | `saveExpenseCategory` | `expense_categories` | HQ admin |
 | HR departments | `saveHrDepartment`, `setHrDepartmentActive`, `assignStaffDepartment` | `hr_departments`, `staff_profiles` | HQ admin |

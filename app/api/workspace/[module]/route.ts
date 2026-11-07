@@ -228,7 +228,7 @@ export async function GET(request: Request, context: RouteContext) {
 
       let productsQuery = authentication.client
         .from("products")
-        .select("id,name,sku,barcode,category_id,unit_code,price_paisa,cost_price_paisa,on_sale,discounted_price_paisa,is_active,image_path,metadata_json")
+        .select("id,name,sku,barcode,category_id,unit_code,price_paisa,cost_price_paisa,tax_rate_bps,min_stock_milli,reorder_point_milli,max_stock_milli,on_sale,discounted_price_paisa,is_active,image_path,metadata_json")
         .is("deleted_at", null)
         .order("name", { ascending: true })
         .limit(500);
@@ -291,6 +291,7 @@ export async function GET(request: Request, context: RouteContext) {
           const readMetadata = (key: string) => typeof metadata[key] === "string" ? String(metadata[key]) : "";
           return {
             id: product.id,
+            category_id: product.category_id,
             name: product.name,
             image_path: product.image_path,
             cost_price_paisa: Number(product.cost_price_paisa || 0),
@@ -303,6 +304,10 @@ export async function GET(request: Request, context: RouteContext) {
             price_paisa: Number(product.price_paisa || 0),
             on_sale: Boolean(product.on_sale),
             discounted_price_paisa: product.discounted_price_paisa == null ? null : Number(product.discounted_price_paisa),
+            tax_rate_bps: Number(product.tax_rate_bps || 0),
+            min_stock_milli: Number(product.min_stock_milli || 0),
+            reorder_point_milli: Number(product.reorder_point_milli || 0),
+            max_stock_milli: Number(product.max_stock_milli || 0),
             stock_milli: stockByProduct.get(product.id) || 0,
             is_active: Boolean(product.is_active),
           };

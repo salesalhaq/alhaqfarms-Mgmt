@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertCircle, LoaderCircle, Pencil, Plus, RefreshCw, Save, Search, Tags } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import {
@@ -20,6 +20,7 @@ import type { WorkspaceModule } from "@/lib/workspace-modules";
 
 interface ProductRow {
   id: string;
+  category_id: string | null;
   name: string;
   image_path: string | null;
   cost_price_paisa: number;
@@ -32,6 +33,10 @@ interface ProductRow {
   price_paisa: number;
   on_sale: boolean;
   discounted_price_paisa: number | null;
+  tax_rate_bps: number;
+  min_stock_milli: number;
+  reorder_point_milli: number;
+  max_stock_milli: number;
   stock_milli: number;
   is_active: boolean;
 }
@@ -69,6 +74,82 @@ interface ProductsResponse {
   error?: string;
 }
 
+interface ProductForm {
+  id: string;
+  name: string;
+  categoryId: string;
+  sku: string;
+  barcode: string;
+  unitCode: string;
+  price: string;
+  cost: string;
+  taxRate: string;
+  onSale: boolean;
+  discountedPrice: string;
+  minStock: string;
+  reorderPoint: string;
+  maxStock: string;
+  isActive: boolean;
+  imagePath: string;
+}
+
+const EMPTY_PRODUCT_FORM: ProductForm = {
+  id: "",
+  name: "",
+  categoryId: "",
+  sku: "",
+  barcode: "",
+  unitCode: "kg",
+  price: "",
+  cost: "0",
+  taxRate: "0",
+  onSale: false,
+  discountedPrice: "",
+  minStock: "0",
+  reorderPoint: "10",
+  maxStock: "1000",
+  isActive: true,
+  imagePath: "",
+};
+
+const PRODUCT_UNITS = [
+  ["kg", "Kilogram (kg)"],
+  ["g", "Gram (g)"],
+  ["lb", "Pound (lb)"],
+  ["each", "Each (Piece)"],
+  ["piece", "Piece"],
+  ["pack", "Pack"],
+  ["box", "Box/Carton"],
+  ["bag", "Bag"],
+  ["ltr", "Liter (ltr)"],
+  ["ml", "Milliliter (ml)"],
+  ["dozen", "Dozen (12 pcs)"],
+  ["head", "Head (cattle)"],
+  ["bird", "Bird (chicken)"],
+  ["tray", "Eggs Tray"],
+  ["batch", "Batch/Lot"],
+] as const;
+
+function moneyInput(paisa: number | null | undefined): string {
+  return paisa == null ? "" : (paisa / 100).toFixed(2);
+}
+
+function parsePaisa(value: string, label: string): number {
+  const text = value.trim();
+  if (!/^\d+(?:\.\d{1,2})?$/.test(text)) throw new Error(`${label} must be a non-negative amount with up to 2 decimal places.`);
+  const paisa = Math.round(Number(text) * 100);
+  if (!Number.isSafeInteger(paisa)) throw new Error(`${label} is too large.`);
+  return paisa;
+}
+
+function parseMilli(value: string, label: string): number {
+  const text = value.trim();
+  if (!/^\d+(?:\.\d{1,3})?$/.test(text)) throw new Error(`${label} must be a non-negative quantity with up to 3 decimal places.`);
+  const milli = Math.round(Number(text) * 1000);
+  if (!Number.isSafeInteger(milli)) throw new Error(`${label} is too large.`);
+  return milli;
+}
+
 const AVAILABILITY_OPTIONS = [
   { value: "all", label: "All availability" },
   { value: "active", label: "Active" },
@@ -90,7 +171,12 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
   const [branchName, setBranchName] = useState("Your branch");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+  const [productDialogOpen, setProductDialogOpen] = useState(false);
+  const [productForm, setProductForm] = useState<ProductForm>(EMPTY_PRODUCT_FORM);
+  const [productSaving, setProductSaving] = useState(false);
+  const [productError, setProductError] = useState<string | null>(null);
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [categoryList, setCategoryList] = useState<CategoryRow[]>([]);
   const [categoryLoading, setCategoryLoading] = useState(false);
@@ -204,13 +290,99 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
     setReloadKey((key) => key + 1);
   };
 
+  const openProductEditor = (product?: ProductRow) => {
+    setProductError(null);
+    setSaveMessage("");
+    setProductForm(product ? {
+      id: product.id,
+      name: product.name,
+      categoryId: product.category_id || "",
+      sku: product.sku || "",
+      barcode: product.barcode || "",
+      unitCode: product.unit_code,
+      price: moneyInput(product.price_paisa),
+      cost: moneyInput(product.cost_price_paisa),
+      taxRate: (product.tax_rate_bps / 100).toFixed(2).replace(/\.?0+$/, ""),
+      onSale: product.on_sale,
+      discountedPrice: moneyInput(product.discounted_price_paisa),
+      minStock: formatQuantity(product.min_stock_milli),
+      reorderPoint: formatQuantity(product.reorder_point_milli),
+      maxStock: formatQuantity(product.max_stock_milli),
+      isActive: product.is_active,
+      imagePath: product.image_path || "",
+    } : EMPTY_PRODUCT_FORM);
+    setProductDialogOpen(true);
+  };
+
+  const saveProduct = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setProductSaving(true);
+    setProductError(null);
+    try {
+      await postWorkspaceAction("/api/workspace/product", {
+        id: productForm.id || undefined,
+        name: productForm.name,
+        categoryId: productForm.categoryId || null,
+        sku: productForm.sku,
+        barcode: productForm.barcode,
+        unitCode: productForm.unitCode,
+        pricePaisa: parsePaisa(productForm.price, "Price"),
+        costPricePaisa: parsePaisa(productForm.cost || "0", "Cost price"),
+        taxRateBps: Math.round(Number(productForm.taxRate || 0) * 100),
+        onSale: productForm.onSale,
+        discountedPricePaisa: productForm.discountedPrice
+          ? parsePaisa(productForm.discountedPrice, "Sale price")
+          : null,
+        minStockMilli: parseMilli(productForm.minStock || "0", "Minimum stock"),
+        reorderPointMilli: parseMilli(productForm.reorderPoint || "0", "Reorder point"),
+        maxStockMilli: parseMilli(productForm.maxStock || "0", "Maximum stock"),
+        isActive: productForm.isActive,
+        imagePath: productForm.imagePath || null,
+      });
+      setProductDialogOpen(false);
+      setSaveMessage(productForm.id ? "Product updated." : "Product added.");
+      setReloadKey((key) => key + 1);
+    } catch (saveError) {
+      setProductError(saveError instanceof Error ? saveError.message : "The product could not be saved.");
+    } finally {
+      setProductSaving(false);
+    }
+  };
+
+  const importProductImage = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type)) {
+      setProductError("Choose a PNG, JPEG, WebP or GIF product image.");
+      event.target.value = "";
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setProductError("Product images must be 2 MB or smaller.");
+      event.target.value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        setProductError("The selected image could not be read.");
+        return;
+      }
+      setProductForm((form) => ({ ...form, imagePath: reader.result as string }));
+      setProductError(null);
+    };
+    reader.onerror = () => setProductError("The selected image could not be read.");
+    reader.readAsDataURL(file);
+    event.target.value = "";
+  };
+
   return (
     <>
       <div className="page-heading">
         <div>
           <p className="eyebrow page">{item.section}</p>
           <h1>Product catalog</h1>
-          <p>Manage the internal POS catalog. Prices are entered in PKR; the database stores paisa. Product rows are read-only for now and show stock for {branchName}.</p>
+          <p>Manage products, categories, units, prices and barcodes. Prices are entered in PKR; the database stores paisa. Stock shown is for {branchName}.</p>
         </div>
         <div className="heading-actions">
           <button
@@ -224,7 +396,7 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
           >
             <Tags size={14} /> Categories
           </button>
-          <button className="primary-button" type="button" disabled title="Adding products is a Windows desktop workflow.">
+          <button className="primary-button" type="button" disabled={!isHqAdmin} onClick={() => openProductEditor()} title={isHqAdmin ? "Add a product to the cloud catalog." : "Only an HQ administrator can manage products."}>
             <Plus size={15} /> Add product
           </button>
           <button className="secondary-button" type="button" onClick={() => setReloadKey((key) => key + 1)} disabled={loading}>
@@ -235,7 +407,7 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
 
       <div className="live-readonly-note">
         <AlertCircle size={16} />
-        <span>Live cloud catalog. Category changes save to the cloud; product images, prices, and barcodes remain in the Windows desktop app.</span>
+        <span>Product changes are saved to the shared cloud catalog. Assign weight-barcode product codes from Barcode Labels.</span>
       </div>
 
       <div className="workspace-toolbar">
@@ -275,6 +447,7 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
       </div>
 
       {error && <div className="notice" role="alert">{error}</div>}
+      <WorkspaceSuccess message={saveMessage} />
 
       <section className="card table-wrap workspace-table" aria-label="Product catalog">
         <div className="table-document-heading">
@@ -349,7 +522,7 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
                     </span>
                   </td>
                   <td className="row-actions">
-                    <button className="secondary-button" type="button" disabled title={`Editing ${product.name} is a Windows desktop workflow.`}>
+                    <button className="secondary-button" type="button" disabled={!isHqAdmin} onClick={() => openProductEditor(product)} title={isHqAdmin ? `Edit ${product.name}.` : "Only an HQ administrator can manage products."}>
                       <Pencil size={13} /> Edit
                     </button>
                   </td>
@@ -362,6 +535,149 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
 
       {!loading && !error && (
         <p className="list-limit-note">Showing {products.length} products, limited to 500 per request. Branch stock is calculated from the synchronized movement ledger.</p>
+      )}
+
+      {productDialogOpen && (
+        <WorkspaceDialog
+          eyebrow="Catalog"
+          onClose={() => setProductDialogOpen(false)}
+          title={productForm.id ? "Edit product" : "Add product"}
+        >
+          <form className="workspace-form" onSubmit={saveProduct}>
+            <WorkspaceError message={productError} />
+            <div className="workspace-form-grid">
+              <WorkspaceField label="Product name">
+                <input
+                  maxLength={200}
+                  onChange={(event) => setProductForm((form) => ({ ...form, name: event.target.value }))}
+                  required
+                  value={productForm.name}
+                />
+              </WorkspaceField>
+              <WorkspaceField label="Category">
+                <select
+                  onChange={(event) => setProductForm((form) => ({ ...form, categoryId: event.target.value }))}
+                  value={productForm.categoryId}
+                >
+                  <option value="">Uncategorized</option>
+                  {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                </select>
+              </WorkspaceField>
+              <WorkspaceField label="Unit">
+                <select
+                  onChange={(event) => setProductForm((form) => ({ ...form, unitCode: event.target.value }))}
+                  value={productForm.unitCode}
+                >
+                  {PRODUCT_UNITS.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
+                </select>
+              </WorkspaceField>
+              <WorkspaceField label="SKU" hint="Leave blank to generate one automatically.">
+                <input
+                  maxLength={100}
+                  onChange={(event) => setProductForm((form) => ({ ...form, sku: event.target.value }))}
+                  value={productForm.sku}
+                />
+              </WorkspaceField>
+              <WorkspaceField label="Barcode">
+                <input
+                  maxLength={100}
+                  onChange={(event) => setProductForm((form) => ({ ...form, barcode: event.target.value }))}
+                  value={productForm.barcode}
+                />
+              </WorkspaceField>
+              <WorkspaceField label="Price (PKR)">
+                <input
+                  inputMode="decimal"
+                  onChange={(event) => setProductForm((form) => ({ ...form, price: event.target.value }))}
+                  required
+                  value={productForm.price}
+                />
+              </WorkspaceField>
+              <WorkspaceField label="Cost (PKR)">
+                <input
+                  inputMode="decimal"
+                  onChange={(event) => setProductForm((form) => ({ ...form, cost: event.target.value }))}
+                  value={productForm.cost}
+                />
+              </WorkspaceField>
+              <WorkspaceField label="Tax rate (%)">
+                <input
+                  max={100}
+                  min={0}
+                  onChange={(event) => setProductForm((form) => ({ ...form, taxRate: event.target.value }))}
+                  step="0.01"
+                  type="number"
+                  value={productForm.taxRate}
+                />
+              </WorkspaceField>
+              <WorkspaceField label="Sale price (PKR)">
+                <input
+                  inputMode="decimal"
+                  onChange={(event) => setProductForm((form) => ({
+                    ...form,
+                    discountedPrice: event.target.value,
+                    onSale: Boolean(event.target.value),
+                  }))}
+                  value={productForm.discountedPrice}
+                />
+              </WorkspaceField>
+              <WorkspaceField label="Minimum stock">
+                <input
+                  inputMode="decimal"
+                  onChange={(event) => setProductForm((form) => ({ ...form, minStock: event.target.value }))}
+                  value={productForm.minStock}
+                />
+              </WorkspaceField>
+              <WorkspaceField label="Reorder point">
+                <input
+                  inputMode="decimal"
+                  onChange={(event) => setProductForm((form) => ({ ...form, reorderPoint: event.target.value }))}
+                  value={productForm.reorderPoint}
+                />
+              </WorkspaceField>
+              <WorkspaceField label="Maximum stock">
+                <input
+                  inputMode="decimal"
+                  onChange={(event) => setProductForm((form) => ({ ...form, maxStock: event.target.value }))}
+                  value={productForm.maxStock}
+                />
+              </WorkspaceField>
+              {productForm.id && (
+                <WorkspaceField label="Catalog status">
+                  <select
+                    onChange={(event) => setProductForm((form) => ({ ...form, isActive: event.target.value === "active" }))}
+                    value={productForm.isActive ? "active" : "inactive"}
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </WorkspaceField>
+              )}
+              <WorkspaceField label="Product image" hint="PNG, JPEG, WebP or GIF · max 2 MB">
+                <input accept="image/png,image/jpeg,image/webp,image/gif" onChange={importProductImage} type="file" />
+              </WorkspaceField>
+            </div>
+            {productForm.imagePath.startsWith("data:image/") && (
+              <div className="product-image-preview">
+                <img src={productForm.imagePath} alt="Product preview" />
+                <button
+                  className="secondary-button"
+                  onClick={() => setProductForm((form) => ({ ...form, imagePath: "" }))}
+                  type="button"
+                >
+                  Remove image
+                </button>
+              </div>
+            )}
+            <div className="workspace-form-actions">
+              <button className="secondary-button" onClick={() => setProductDialogOpen(false)} type="button">Cancel</button>
+              <button className="primary-button" disabled={productSaving} type="submit">
+                {productSaving ? <LoaderCircle size={14} className="spin" /> : <Save size={14} />}
+                {productSaving ? "Saving…" : "Save product"}
+              </button>
+            </div>
+          </form>
+        </WorkspaceDialog>
       )}
 
       {categoryDialogOpen && (

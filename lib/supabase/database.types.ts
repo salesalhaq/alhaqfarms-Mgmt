@@ -170,6 +170,31 @@ export interface Database {
         image_path: string | null;
         server_updated_at: string;
       }>;
+      expense_categories: Table<{
+        id: string;
+        name: string;
+        is_active: boolean;
+        created_by: string | null;
+        created_at: string;
+        updated_at: string;
+        deleted_at: string | null;
+        server_updated_at: string;
+      }>;
+      expenses: Table<{
+        id: string;
+        branch_id: string;
+        category_id: string;
+        description: string;
+        amount_paisa: number;
+        payment_method: string;
+        reference: string | null;
+        notes: string | null;
+        spent_at: string;
+        recorded_by: string | null;
+        created_at: string;
+        deleted_at: string | null;
+        server_updated_at: string;
+      }>;
       products: Table<{
         id: string;
         category_id: string | null;

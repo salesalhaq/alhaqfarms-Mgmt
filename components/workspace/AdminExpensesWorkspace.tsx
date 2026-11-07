@@ -1,10 +1,12 @@
 "use client";
 
-import { AlertCircle, LoaderCircle, Plus, RefreshCw, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { AlertCircle, LoaderCircle, Plus, RefreshCw, Search, Save } from "lucide-react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { WorkspaceDialog, WorkspaceError, WorkspaceField, WorkspaceSuccess } from "@/components/workspace/WorkspaceDialog";
 import { formatMoney } from "@/lib/format";
+import { postWorkspaceAction } from "@/lib/workspace/write-client";
 
 interface ExpenseCategory {
   id: string;
@@ -45,6 +47,26 @@ interface PageItem {
   description: string;
 }
 
+interface ExpenseForm {
+  branchId: string;
+  categoryId: string;
+  description: string;
+  amount: string;
+  paymentMethod: string;
+  reference: string;
+  notes: string;
+}
+
+const EMPTY_EXPENSE_FORM: ExpenseForm = {
+  branchId: "",
+  categoryId: "",
+  description: "",
+  amount: "",
+  paymentMethod: "cash",
+  reference: "",
+  notes: "",
+};
+
 function localDateKey(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -79,8 +101,19 @@ export function AdminExpensesWorkspace({ item }: { item: PageItem }) {
   const [reloadKey, setReloadKey] = useState(0);
   const [branchName, setBranchName] = useState("All accessible branches");
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
+  const [expenseDialogOpen, setExpenseDialogOpen] = useState(false);
+  const [expenseForm, setExpenseForm] = useState<ExpenseForm>(EMPTY_EXPENSE_FORM);
+  const [expenseSaving, setExpenseSaving] = useState(false);
+  const [expenseError, setExpenseError] = useState<string | null>(null);
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+  const [categoryName, setCategoryName] = useState("");
+  const [categorySaving, setCategorySaving] = useState(false);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState("");
 
   const isAdmin = staff?.role === "admin";
+  const isHqAdmin = staff?.role === "admin" && !staff.branch_id;
+  const canRecordExpense = staff?.role === "admin" || staff?.role === "manager";
 
   useEffect(() => {
     if (staff?.role === "admin" && !branchId) setBranchId("all");
@@ -150,33 +183,87 @@ export function AdminExpensesWorkspace({ item }: { item: PageItem }) {
     return branches.find((branch) => branch.id === branchId)?.name || "Your branch";
   }, [branchId, branches, staff]);
 
+  const openExpenseDialog = () => {
+    setExpenseError(null);
+    setSuccessMessage("");
+    setExpenseForm({
+      ...EMPTY_EXPENSE_FORM,
+      branchId: branchId !== "all" ? branchId : branches[0]?.id || "",
+      categoryId: categories[0]?.id || "",
+    });
+    setExpenseDialogOpen(true);
+  };
+
+  const recordExpense = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const amountText = expenseForm.amount.trim();
+    if (!/^\d+(?:\.\d{1,2})?$/.test(amountText)) {
+      setExpenseError("Amount must be a positive amount with up to 2 decimal places.");
+      return;
+    }
+    const amountPaisa = Math.round(Number(amountText) * 100);
+    if (!Number.isSafeInteger(amountPaisa) || amountPaisa < 1) {
+      setExpenseError("Expense amount must be greater than zero.");
+      return;
+    }
+
+    setExpenseSaving(true);
+    setExpenseError(null);
+    try {
+      await postWorkspaceAction("/api/workspace/expense", {
+        ...expenseForm,
+        amountPaisa,
+      });
+      setExpenseDialogOpen(false);
+      setSuccessMessage("Expense recorded.");
+      setReloadKey((value) => value + 1);
+    } catch (saveError) {
+      setExpenseError(saveError instanceof Error ? saveError.message : "The expense could not be recorded.");
+    } finally {
+      setExpenseSaving(false);
+    }
+  };
+
+  const saveExpenseCategory = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setCategorySaving(true);
+    setCategoryError(null);
+    try {
+      await postWorkspaceAction("/api/workspace/expense-category", { name: categoryName });
+      setCategoryDialogOpen(false);
+      setCategoryName("");
+      setSuccessMessage("Expense category added.");
+      setReloadKey((value) => value + 1);
+    } catch (saveError) {
+      setCategoryError(saveError instanceof Error ? saveError.message : "The expense category could not be saved.");
+    } finally {
+      setCategorySaving(false);
+    }
+  };
+
   return (
     <div className="daily-report-print">
       <div className="page-heading">
         <div>
           <p className="eyebrow page">{item.section}</p>
           <h1>{item.title}</h1>
-          <p>{item.description} This workspace remains read-only and respects the signed-in staff branch scope.</p>
+          <p>{item.description} Expenses are recorded to an accessible branch and remain immutable after posting.</p>
         </div>
         <div className="heading-actions">
-          <button
-            className="secondary-button"
-            type="button"
-            disabled
-            title="Adding expense categories is a Windows desktop workflow."
-          >
+          {isHqAdmin && <button className="secondary-button" type="button" onClick={() => {
+            setCategoryName("");
+            setCategoryError(null);
+            setCategoryDialogOpen(true);
+          }}>
             <Plus size={14} /> Category
-          </button>
-          <button
-            className="primary-button"
-            type="button"
-            disabled
-            title="Expense creation and edits require a secure approval workflow before any write action can be enabled."
-          >
+          </button>}
+          {canRecordExpense && <button className="primary-button" type="button" onClick={openExpenseDialog}>
             <Plus size={14} /> Record expense
-          </button>
+          </button>}
         </div>
       </div>
+
+      <WorkspaceSuccess message={successMessage} />
 
       <div className="daily-report-toolbar daily-report-no-print">
         {isAdmin && (
@@ -320,6 +407,120 @@ export function AdminExpensesWorkspace({ item }: { item: PageItem }) {
             </div>
           </section>
         </>
+      )}
+
+      {expenseDialogOpen && (
+        <WorkspaceDialog
+          eyebrow="Expenses"
+          onClose={() => setExpenseDialogOpen(false)}
+          title="Record expense"
+        >
+          <form className="workspace-form" onSubmit={recordExpense}>
+            <WorkspaceError message={expenseError} />
+            <div className="workspace-form-grid">
+              <WorkspaceField label="Branch">
+                <select
+                  onChange={(event) => setExpenseForm((form) => ({ ...form, branchId: event.target.value }))}
+                  required
+                  value={expenseForm.branchId}
+                >
+                  <option value="">Choose a branch</option>
+                  {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                </select>
+              </WorkspaceField>
+              <WorkspaceField label="Category">
+                <select
+                  onChange={(event) => setExpenseForm((form) => ({ ...form, categoryId: event.target.value }))}
+                  required
+                  value={expenseForm.categoryId}
+                >
+                  <option value="">Choose a category</option>
+                  {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                </select>
+              </WorkspaceField>
+              <WorkspaceField label="Description">
+                <input
+                  maxLength={200}
+                  onChange={(event) => setExpenseForm((form) => ({ ...form, description: event.target.value }))}
+                  required
+                  value={expenseForm.description}
+                />
+              </WorkspaceField>
+              <WorkspaceField label="Amount (PKR)">
+                <input
+                  inputMode="decimal"
+                  onChange={(event) => setExpenseForm((form) => ({ ...form, amount: event.target.value }))}
+                  required
+                  value={expenseForm.amount}
+                />
+              </WorkspaceField>
+              <WorkspaceField label="Payment method">
+                <select
+                  onChange={(event) => setExpenseForm((form) => ({ ...form, paymentMethod: event.target.value }))}
+                  value={expenseForm.paymentMethod}
+                >
+                  <option value="cash">Cash</option>
+                  <option value="bank_transfer">Bank transfer</option>
+                  <option value="card">Card</option>
+                  <option value="jazzcash">JazzCash</option>
+                  <option value="easypaisa">Easypaisa</option>
+                  <option value="other">Other</option>
+                </select>
+              </WorkspaceField>
+              <WorkspaceField label="Reference">
+                <input
+                  maxLength={100}
+                  onChange={(event) => setExpenseForm((form) => ({ ...form, reference: event.target.value }))}
+                  value={expenseForm.reference}
+                />
+              </WorkspaceField>
+              <WorkspaceField label="Notes">
+                <textarea
+                  maxLength={500}
+                  onChange={(event) => setExpenseForm((form) => ({ ...form, notes: event.target.value }))}
+                  rows={3}
+                  value={expenseForm.notes}
+                />
+              </WorkspaceField>
+            </div>
+            {!categories.length && <p className="notice">No expense categories are available. An HQ administrator must add one first.</p>}
+            <div className="workspace-form-actions">
+              <button className="secondary-button" onClick={() => setExpenseDialogOpen(false)} type="button">Cancel</button>
+              <button className="primary-button" disabled={expenseSaving || !categories.length} type="submit">
+                {expenseSaving ? <LoaderCircle size={14} className="spin" /> : <Save size={14} />}
+                {expenseSaving ? "Recording…" : "Record expense"}
+              </button>
+            </div>
+          </form>
+        </WorkspaceDialog>
+      )}
+
+      {categoryDialogOpen && (
+        <WorkspaceDialog
+          eyebrow="Expenses"
+          onClose={() => setCategoryDialogOpen(false)}
+          title="Add expense category"
+        >
+          <form className="workspace-form" onSubmit={saveExpenseCategory}>
+            <WorkspaceError message={categoryError} />
+            <WorkspaceField label="Category name">
+              <input
+                autoFocus
+                maxLength={100}
+                onChange={(event) => setCategoryName(event.target.value)}
+                required
+                value={categoryName}
+              />
+            </WorkspaceField>
+            <div className="workspace-form-actions">
+              <button className="secondary-button" onClick={() => setCategoryDialogOpen(false)} type="button">Cancel</button>
+              <button className="primary-button" disabled={categorySaving} type="submit">
+                {categorySaving ? <LoaderCircle size={14} className="spin" /> : <Save size={14} />}
+                {categorySaving ? "Saving…" : "Add category"}
+              </button>
+            </div>
+          </form>
+        </WorkspaceDialog>
       )}
     </div>
   );

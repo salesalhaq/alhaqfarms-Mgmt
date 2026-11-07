@@ -183,7 +183,7 @@ Replace every disabled desktop control with a real dialog, in desktop screen ord
 1. `ProductsWorkspace` — New/Edit product (incl. weight-barcode code), category save.
 2. `VendorsWorkspace` — New/Edit supplier, activate/deactivate.
 3. `CustomerAccountsWorkspace` — New/Edit account, activate/deactivate, invoice/payment.
-4. `AdminExpensesWorkspace` — Record expense, category save.
+4. `AdminExpensesWorkspace` — Record expense, category save. Web writes and HQ-category visibility are implemented; apply migration `009_expense_category_visibility.sql` before branch managers record expenses.
 5. `InventoryWorkspace` — Adjust stock, record stocktake.
 6. `PurchasingWorkspace` / `ReceiveStockWorkspace` — purchase order create/receive/cancel, direct receipt, supplier payment/return.
 7. `TransfersWorkspace` — create/dispatch/receive/cancel.

@@ -252,7 +252,7 @@ begin
 
     v_return_id := gen_random_uuid();
     v_return_number := 'RET-' || to_char(v_now at time zone 'UTC', 'YYMMDDHH24MISS')
-      || '-' || upper(encode(gen_random_bytes(3), 'hex'));
+      || '-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6));
     insert into public.returns (
       id, client_return_id, return_number, branch_id, sale_id, shift_id, status,
       reason, notes, refund_total_paisa, restock_total_milli, created_by,

@@ -87,6 +87,7 @@ export async function GET(request: Request) {
       branch_id: string | null;
       details_json: unknown;
     }> = [];
+    let eventsError: string | undefined;
 
     try {
       const since = new Date();
@@ -102,9 +103,11 @@ export async function GET(request: Request) {
         .limit(EVENT_LIMIT);
       if (!eventsResult.error) {
         events = (eventsResult.data || []) as typeof events;
+      } else {
+        eventsError = eventsResult.error.message;
       }
-    } catch {
-      events = [];
+    } catch (error) {
+      eventsError = error instanceof Error ? error.message : "Could not load recent synchronization events.";
     }
 
     const rows = devices.map((device) => ({
@@ -142,6 +145,7 @@ export async function GET(request: Request) {
         lastSeenAt: seen[0] || null,
         eventCount: events.length,
       },
+      eventsError,
       readOnly: true,
       note: "This page shows cloud-side device registration and recent synchronization events. The desktop sync outbox, retries, and connection credentials stay on each Windows terminal.",
       generatedAt: new Date().toISOString(),

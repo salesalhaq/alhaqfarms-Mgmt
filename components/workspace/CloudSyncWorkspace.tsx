@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, ArrowUpDown, Cloud, DownloadCloud, LifeBuoy, LoaderCircle, RefreshCw, UploadCloud, WifiOff } from "lucide-react";
+import { AlertCircle, Cloud, LoaderCircle, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
@@ -45,6 +45,7 @@ interface CloudSyncResponse {
     eventCount?: number;
   };
   note?: string;
+  eventsError?: string;
   error?: string;
 }
 
@@ -98,7 +99,8 @@ export function CloudSyncWorkspace({ item }: { item: WorkspaceModule }) {
     { label: "Devices", value: summary.devices.toLocaleString(), note: `${summary.online} seen in the last 15 minutes` },
     { label: "Approved", value: summary.approved.toLocaleString(), note: "Trusted terminals" },
     { label: "Pending", value: summary.pending.toLocaleString(), note: "Waiting for approval" },
-    { label: "Last sync", value: summary.lastSeenAt ? formatDateTime(summary.lastSeenAt) : "Never", note: payload?.branchName || "Branch scope" },
+    { label: "Revoked", value: summary.revoked.toLocaleString(), note: "Access disabled" },
+    { label: "Last device seen", value: summary.lastSeenAt ? formatDateTime(summary.lastSeenAt) : "Never", note: payload?.branchName || "Branch scope" },
   ] : [];
 
   return (
@@ -107,23 +109,11 @@ export function CloudSyncWorkspace({ item }: { item: WorkspaceModule }) {
         <div>
           <p className="eyebrow page">{item.section}</p>
           <h1>{item.title}</h1>
-          <p>{item.description} Device connectivity and recent synchronization events are shown from the cloud ledger.</p>
+          <p>{item.description} Monitor registered devices and recent synchronization events from the cloud ledger.</p>
         </div>
         <div className="heading-actions">
           <button className="button secondary" type="button" onClick={() => setReloadKey((value) => value + 1)} disabled={loading}>
             {loading ? <><LoaderCircle className="spin" size={15} /> Loading…</> : <><RefreshCw size={15} /> Refresh</>}
-          </button>
-          <button className="secondary-button" type="button" disabled title="Pushing local changes is a Windows desktop workflow.">
-            <UploadCloud size={14} /> Push now
-          </button>
-          <button className="secondary-button" type="button" disabled title="Pulling cloud changes is a Windows desktop workflow.">
-            <DownloadCloud size={14} /> Pull now
-          </button>
-          <button className="primary-button" type="button" disabled title="Running a full sync is a Windows desktop workflow.">
-            <ArrowUpDown size={14} /> Sync now
-          </button>
-          <button className="secondary-button" type="button" disabled title="Disconnecting the cloud account is a Windows desktop workflow.">
-            <WifiOff size={14} /> Disconnect
           </button>
         </div>
       </div>
@@ -132,23 +122,6 @@ export function CloudSyncWorkspace({ item }: { item: WorkspaceModule }) {
         <Cloud size={16} />
         <span>{payload?.note || "The desktop sync outbox, retries, and connection credentials stay on each Windows terminal."}</span>
       </div>
-
-      <section className="card panel" aria-label="HQ support session">
-        <div className="section-heading">
-          <div><p className="eyebrow page">Support</p><h2>HQ support session</h2></div>
-          <LifeBuoy size={18} aria-hidden="true" />
-        </div>
-        <p>Remote support lets an HQ administrator inspect this terminal&apos;s sync diagnostics and trigger a pull. Support sessions start and end on the Windows host.</p>
-        <div className="heading-actions">
-          <button className="secondary-button" type="button" disabled title="Requesting a support action is a Windows desktop workflow.">Request support action</button>
-          <button className="secondary-button" type="button" disabled title="Starting an HQ support session is a Windows desktop workflow.">Start HQ support session</button>
-          <button className="secondary-button" type="button" disabled title="Viewing local diagnostics is a Windows desktop workflow.">View diagnostics</button>
-          <button className="secondary-button" type="button" disabled title="Running a full sync is a Windows desktop workflow.">Run full sync</button>
-          <button className="secondary-button" type="button" disabled title="Pulling updates is a Windows desktop workflow.">Pull updates</button>
-          <button className="secondary-button" type="button" disabled title="Retrying failed uploads is a Windows desktop workflow.">Retry failed uploads</button>
-          <button className="secondary-button" type="button" disabled title="Ending the HQ support session is a Windows desktop workflow.">End support</button>
-        </div>
-      </section>
 
       <div className="daily-report-toolbar daily-report-no-print">
         {staff?.role === "admin" && (
@@ -160,12 +133,6 @@ export function CloudSyncWorkspace({ item }: { item: WorkspaceModule }) {
             </select>
           </label>
         )}
-        <div className="heading-actions" aria-label="Desktop synchronization actions">
-          <button className="secondary-button" type="button" disabled title="Testing the cloud connection is a Windows desktop workflow.">Test connection</button>
-          <button className="secondary-button" type="button" disabled title="Retrying failed uploads is a Windows desktop workflow.">Retry all</button>
-          <button className="secondary-button" type="button" disabled title="Clearing sent outbox rows is a Windows desktop workflow.">Clear sent</button>
-          <button className="secondary-button" type="button" disabled title="Resolving sync errors is a Windows desktop workflow.">Resolve all</button>
-        </div>
       </div>
 
       {error && (
@@ -215,6 +182,7 @@ export function CloudSyncWorkspace({ item }: { item: WorkspaceModule }) {
               <strong>Recent synchronization events · last 7 days</strong>
               <TableDocumentTools tableId="cloud-sync-events" title={`${item.title} events`} disabled={!payload.events.length} />
             </div>
+            {payload.eventsError && <p className="error-banner" role="alert">{payload.eventsError}</p>}
             <table id="cloud-sync-events">
               <thead><tr><th>When</th><th>Branch</th><th>Action</th><th>Record</th><th>Details</th></tr></thead>
               <tbody>
@@ -231,9 +199,10 @@ export function CloudSyncWorkspace({ item }: { item: WorkspaceModule }) {
             </table>
           </section>
 
-          <p className="list-limit-note">
-            Read-only cloud view. Push/pull controls, retries, and local outbox inspection remain on the Windows desktop app.
-          </p>
+          <div className="notice info" role="note">
+            <Cloud size={16} />
+            <span>Cloud monitoring is read-only here. To change a PC&apos;s connection, push or pull data, retry its local outbox, or manage an HQ support session, use that PC&apos;s Windows app.</span>
+          </div>
         </>
       )}
     </>

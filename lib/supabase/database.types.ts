@@ -606,6 +606,10 @@ export interface Database {
         Args: { p_branch_id: string };
         Returns: Json;
       };
+      staff_manage_branch: {
+        Args: { p_action: string; p_branch_id: string; p_payload: Json };
+        Returns: Json;
+      };
       staff_manage_web_order: {
         Args: { p_action: string; p_payload: Json };
         Returns: Json;

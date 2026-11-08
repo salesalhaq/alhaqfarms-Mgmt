@@ -58,6 +58,7 @@ import { useAppearance } from "@/components/AppearanceProvider";
 import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import type { BusinessSettings } from "@/lib/business-settings";
 import { appThemes, themeGroups } from "@/lib/themes";
+import { StorefrontCheckoutWorkspace } from "@/components/workspace/StorefrontCheckoutWorkspace";
 
 type SettingsTab =
   | "profile"
@@ -86,6 +87,30 @@ interface BranchSetting {
   is_default: boolean;
   is_active: boolean;
 }
+
+interface BranchDraft {
+  id: string;
+  code: string;
+  name: string;
+  address: string;
+  phone: string;
+  email: string;
+  timezone: string;
+  receiptPrefix: string;
+  isActive: boolean;
+}
+
+const EMPTY_BRANCH_DRAFT: BranchDraft = {
+  id: "",
+  code: "",
+  name: "",
+  address: "",
+  phone: "",
+  email: "",
+  timezone: "Asia/Karachi",
+  receiptPrefix: "POS",
+  isActive: true,
+};
 
 interface PermissionSetting {
   branch_id: string;
@@ -560,6 +585,11 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [defaultBranchBusy, setDefaultBranchBusy] = useState<string | null>(null);
+  const [branchDraft, setBranchDraft] = useState<BranchDraft>(EMPTY_BRANCH_DRAFT);
+  const [branchDialogOpen, setBranchDialogOpen] = useState(false);
+  const [branchBusy, setBranchBusy] = useState(false);
+  const [branchError, setBranchError] = useState<string | null>(null);
+  const [branchNotice, setBranchNotice] = useState<string | null>(null);
   const [credentialDialogOpen, setCredentialDialogOpen] = useState(false);
   const [credentialMode, setCredentialMode] = useState<"pin" | "password">("pin");
   const [currentSecret, setCurrentSecret] = useState("");
@@ -641,6 +671,55 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
       setError(saveError instanceof Error ? saveError.message : "The default branch could not be changed.");
     } finally {
       setDefaultBranchBusy(null);
+    }
+  };
+  const openBranchDialog = (branch?: BranchSetting) => {
+    setBranchDraft(branch ? {
+      id: branch.id,
+      code: branch.code,
+      name: branch.name,
+      address: branch.address || "",
+      phone: branch.phone || "",
+      email: branch.email || "",
+      timezone: branch.timezone || "Asia/Karachi",
+      receiptPrefix: branch.receipt_prefix || "POS",
+      isActive: branch.is_active,
+    } : EMPTY_BRANCH_DRAFT);
+    setBranchError(null);
+    setBranchDialogOpen(true);
+  };
+  const closeBranchDialog = () => {
+    if (branchBusy) return;
+    setBranchDialogOpen(false);
+    setBranchError(null);
+  };
+  const saveBranch = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setBranchBusy(true);
+    setBranchError(null);
+    setBranchNotice(null);
+    try {
+      const { id, ...branch } = branchDraft;
+      const response = await fetch("/api/workspace/settings", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save_branch",
+          mode: id ? "update" : "create",
+          ...(id ? { branchId: id } : {}),
+          branch,
+        }),
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || "The branch could not be saved.");
+      setBranchDialogOpen(false);
+      setBranchNotice(id ? "Branch details saved." : "Branch added.");
+      setReloadKey((key) => key + 1);
+    } catch (saveError) {
+      setBranchError(saveError instanceof Error ? saveError.message : "The branch could not be saved.");
+    } finally {
+      setBranchBusy(false);
     }
   };
   const openCredentialDialog = () => {
@@ -749,7 +828,7 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
             <RefreshCw size={13} /> Refresh
           </button>
           {activeTab === "branches" && settings?.profile.role === "admin" && settings.profile.branchId === null && (
-            <button type="button" className="primary-button" disabled title="Adding branches is a Windows desktop workflow.">
+            <button type="button" className="primary-button" disabled={branchBusy} onClick={() => openBranchDialog()}>
               <Plus size={14} /> Add branch
             </button>
           )}
@@ -964,8 +1043,9 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
         )}
 
         {activeTab === "branches" && <section className="card settings-workspace-panel">
+          <WorkspaceSuccess message={branchNotice} />
           <h2>Branches</h2>
-          <p>Only branches returned for this authenticated user's existing access are shown. HQ administrators can choose the default branch.</p>
+          <p>Manage branch details and receipt prefixes. Deactivating a branch preserves its records and removes it from active branch selectors.</p>
           <ReadOnlyTable
             headers={["Branch", "Code", "Status", "Address", "Timezone", "Receipt prefix", "Default", "Contact", "Actions"]}
             rows={settings.branches.map((branch) => [
@@ -989,7 +1069,11 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
                     Make default
                   </button>
                 )}
-                <button className="secondary-button" type="button" disabled title="Editing branch details requires the branch administration workflow."><Pencil size={12} /> Edit</button>
+                {settings.profile.role === "admin" && settings.profile.branchId === null && (
+                  <button className="secondary-button" type="button" disabled={branchBusy} onClick={() => openBranchDialog(branch)}>
+                    <Pencil size={12} /> Edit
+                  </button>
+                )}
               </div>,
             ])}
             emptyMessage="No branches are available to this account."
@@ -1033,43 +1117,9 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
           <p className="settings-workspace-note">Permission management controls are disabled in this workspace.</p>
         </>}
 
-        {activeTab === "storefront" && (settings.storefront
-          ? <>
-            <div className="heading-actions" aria-label="Desktop storefront actions">
-              <DesktopAction title="Changing storefront payment accounts is a Windows desktop workflow.">Payment accounts</DesktopAction>
-              <DesktopAction title="Changing delivery areas is a Windows desktop workflow.">Add delivery area</DesktopAction>
-              <DesktopAction primary title="Saving storefront checkout settings is a Windows desktop workflow."><Save size={13} /> Save checkout settings</DesktopAction>
-            </div>
-            <section className="card settings-workspace-panel">
-              <h2>Cash on delivery</h2>
-              <p>Read-only values from the branch-scoped storefront settings table.</p>
-              <ReadOnlyTable
-                headers={["Branch", "Status", "Maximum order amount"]}
-                rows={settings.storefront.cashOnDelivery.map((entry) => [
-                  branchNames.get(entry.branch_id) || "Assigned branch",
-                  entry.is_active ? "Enabled" : "Disabled",
-                  entry.max_order_amount_paisa === null ? "No maximum configured" : formatMoney(entry.max_order_amount_paisa),
-                ])}
-                emptyMessage="No synced cash-on-delivery settings were found."
-              />
-            </section>
-            <section className="card settings-workspace-panel">
-              <h2>Delivery areas</h2>
-              <ReadOnlyTable
-                headers={["Branch", "Area", "Status", "Delivery charge", "Free delivery threshold"]}
-                rows={settings.storefront.deliveryAreas.map((area) => [
-                  branchNames.get(area.branch_id) || "Assigned branch",
-                  area.area_name,
-                  area.is_active ? "Active" : "Inactive",
-                  formatMoney(area.delivery_charge_paisa),
-                  formatMoney(area.free_delivery_threshold_paisa),
-                ])}
-                emptyMessage="No synced delivery areas were found."
-              />
-            </section>
-            <p className="settings-workspace-note">Payment account numbers, QR data, credentials, and checkout controls are not exposed here.</p>
-          </>
-          : <section className="card settings-workspace-panel"><h2>Storefront checkout</h2><p>These settings are available to manager and admin roles only under the existing database policies.</p></section>)}
+        {activeTab === "storefront" && settings.profile.role === "admin" && settings.profile.branchId === null && (
+          <StorefrontCheckoutWorkspace branches={settings.branches} />
+        )}
 
         {activeTab === "cloud" && <>
           <div className="heading-actions" aria-label="Desktop cloud access actions">
@@ -1322,6 +1372,54 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
           </form>
         </WorkspaceDialog>
       )}
+      {branchDialogOpen && settings?.profile.role === "admin" && settings.profile.branchId === null && (
+        <WorkspaceDialog
+          title={branchDraft.id ? `Edit ${branchDraft.name || "branch"}` : "Add branch"}
+          eyebrow="Branches"
+          label={branchDraft.id ? "Edit branch details" : "Add branch"}
+          onClose={closeBranchDialog}
+          footer={(
+            <>
+              <button className="button secondary" disabled={branchBusy} onClick={closeBranchDialog} type="button">Cancel</button>
+              <button className="button" disabled={branchBusy} form="settings-branch-form" type="submit">
+                {branchBusy ? "Saving…" : "Save branch"}
+              </button>
+            </>
+          )}
+        >
+          <form className="form-stack" id="settings-branch-form" onSubmit={(event) => void saveBranch(event)}>
+            <div className="workspace-form-grid">
+              <WorkspaceField label="Branch code">
+                <input autoCapitalize="characters" maxLength={20} pattern="[A-Za-z0-9][A-Za-z0-9_-]*" placeholder="MAIN" required value={branchDraft.code} onChange={(event) => setBranchDraft({ ...branchDraft, code: event.target.value.toUpperCase() })} />
+              </WorkspaceField>
+              <WorkspaceField label="Receipt prefix">
+                <input autoCapitalize="characters" maxLength={12} pattern="[A-Za-z0-9_-]+" placeholder="POS" required value={branchDraft.receiptPrefix} onChange={(event) => setBranchDraft({ ...branchDraft, receiptPrefix: event.target.value.toUpperCase() })} />
+              </WorkspaceField>
+              <WorkspaceField label="Branch name">
+                <input maxLength={200} required value={branchDraft.name} onChange={(event) => setBranchDraft({ ...branchDraft, name: event.target.value })} />
+              </WorkspaceField>
+              <WorkspaceField label="Address">
+                <input maxLength={300} value={branchDraft.address} onChange={(event) => setBranchDraft({ ...branchDraft, address: event.target.value })} />
+              </WorkspaceField>
+              <WorkspaceField label="Phone">
+                <input maxLength={40} value={branchDraft.phone} onChange={(event) => setBranchDraft({ ...branchDraft, phone: event.target.value })} />
+              </WorkspaceField>
+              <WorkspaceField label="Email">
+                <input type="email" maxLength={254} value={branchDraft.email} onChange={(event) => setBranchDraft({ ...branchDraft, email: event.target.value })} />
+              </WorkspaceField>
+              <WorkspaceField label="Timezone">
+                <input maxLength={100} placeholder="Asia/Karachi" required value={branchDraft.timezone} onChange={(event) => setBranchDraft({ ...branchDraft, timezone: event.target.value })} />
+              </WorkspaceField>
+            </div>
+            <label className="workspace-checkbox">
+              <input checked={branchDraft.isActive} onChange={(event) => setBranchDraft({ ...branchDraft, isActive: event.target.checked })} type="checkbox" />
+              <span>Branch is active</span>
+            </label>
+            <p className="settings-workspace-note">The receipt prefix applies to new receipts. Deactivating a branch keeps its existing records.</p>
+            <WorkspaceError message={branchError} />
+          </form>
+        </WorkspaceDialog>
+      )}
       <style jsx>{`
         .settings-workspace { display: grid; gap: 14px; }
         .workspace-toolbar { align-items: center; justify-content: space-between; }
@@ -1332,7 +1430,7 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
         .settings-tabs-menu { position: relative; z-index: 2; width: fit-content; }
         .settings-tabs-menu-trigger { display: inline-flex; min-height: 38px; align-items: center; gap: 9px; border: 1px solid var(--line); border-radius: 9px; padding: 0 12px; color: var(--ink); background: var(--surface); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
         .settings-tabs-menu-trigger:hover, .settings-tabs-menu-trigger[aria-expanded="true"] { border-color: var(--green); }
-        .settings-tabs-menu-list { position: absolute; top: calc(100% + 6px); left: 0; display: grid; width: min(300px, calc(100vw - 48px)); max-height: min(65vh, 480px); gap: 3px; overflow-y: auto; border: 1px solid var(--line); border-radius: 11px; padding: 6px; background: var(--surface); box-shadow: var(--shadow); }
+        .settings-tabs-menu-list { position: absolute; top: calc(100% + 6px); left: 0; display: grid; width: min(280px, calc(100vw - 32px)); grid-template-columns: minmax(0, 1fr); gap: 3px; overflow: visible; border: 1px solid var(--line); border-radius: 11px; padding: 6px; background: var(--surface); box-shadow: var(--shadow); }
         .settings-tabs-menu-list button { display: flex; min-height: 37px; align-items: center; gap: 9px; border: 1px solid transparent; border-radius: 7px; padding: 0 9px; color: var(--muted); background: transparent; font: inherit; font-size: 11px; text-align: left; cursor: pointer; }
         .settings-tabs-menu-list button:hover, .settings-tabs-menu-list button.active { border-color: var(--line); color: var(--green-dark); background: var(--surface-soft); }
         .settings-workspace-panel { min-width: 0; padding: 18px; }

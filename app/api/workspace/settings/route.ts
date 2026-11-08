@@ -2,8 +2,12 @@ import { authenticateStaff, authenticationResponse } from "@/lib/server/staff-au
 import {
   assertHqAdmin,
   assertSameOrigin,
+  readBoolean,
   readJsonBody,
+  readOptionalText,
+  readText,
   readUuid,
+  WriteError,
   writeFailure,
 } from "@/lib/server/write";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -169,6 +173,58 @@ export async function POST(request: Request) {
     assertSameOrigin(request);
     assertHqAdmin(authentication.identity);
     const body = await readJsonBody(request);
+    if (body.action === "save_branch") {
+      const mode = readText(body.mode, "Branch action", 10);
+      if (mode !== "create" && mode !== "update") throw new WriteError("Choose add or edit for the branch.");
+      const branchId = mode === "create"
+        ? crypto.randomUUID()
+        : readUuid(body.branchId, "Branch");
+      if (!body.branch || typeof body.branch !== "object" || Array.isArray(body.branch)) {
+        throw new WriteError("Enter the branch details.");
+      }
+      const input = body.branch as Record<string, unknown>;
+      const code = readText(input.code, "Branch code", 20).toUpperCase();
+      const name = readText(input.name, "Branch name", 200);
+      const address = readOptionalText(input.address, "Address", 300);
+      const phone = readOptionalText(input.phone, "Phone", 40);
+      const email = readOptionalText(input.email, "Email", 254);
+      const timezone = readText(input.timezone, "Timezone", 100);
+      const receiptPrefix = readText(input.receiptPrefix, "Receipt prefix", 12).toUpperCase();
+      const isActive = readBoolean(input.isActive, "Branch status");
+      if (!/^[A-Z0-9][A-Z0-9_-]*$/.test(code)) {
+        throw new WriteError("Branch code may contain only letters, numbers, underscores, and hyphens.");
+      }
+      if (!/^[A-Z0-9_-]+$/.test(receiptPrefix)) {
+        throw new WriteError("Receipt prefix may contain only letters, numbers, underscores, and hyphens.");
+      }
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        throw new WriteError("Enter a valid branch email address.");
+      }
+      try {
+        new Intl.DateTimeFormat("en-US", { timeZone: timezone });
+      } catch {
+        throw new WriteError("Enter a valid timezone, such as Asia/Karachi.");
+      }
+
+      const branch = {
+        code,
+        name,
+        address,
+        phone,
+        email,
+        timezone,
+        receiptPrefix,
+        isActive,
+      };
+      const { data, error } = await authentication.client.rpc("staff_manage_branch", {
+        p_action: mode,
+        p_branch_id: branchId,
+        p_payload: branch,
+      });
+      if (error) throw error;
+      return authenticationResponse(request, authentication, { branch: data });
+    }
+
     if (body.action !== "set_default_branch") {
       return authenticationResponse(request, authentication, { error: "Choose a valid settings action." }, 400);
     }

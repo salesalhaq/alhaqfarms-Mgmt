@@ -3,18 +3,18 @@
 import {
   ArrowLeftRight, BarChart3, Beef, BookUser, Boxes, BriefcaseBusiness, Building2,
   ClipboardList, Cloud, Factory, FlaskConical, Globe, LayoutDashboard, LogOut,
-  MonitorSmartphone, Package, PackageCheck, PanelsTopLeft, Receipt, RotateCcw,
+  Maximize2, Minimize2, MonitorSmartphone, Package, PackageCheck, PanelsTopLeft, Receipt, RotateCcw,
   Settings, ShoppingCart, Store, Tag, Tags, TrendingUp, Truck, Users, Wallet, Warehouse,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AppearanceProvider } from "@/components/AppearanceProvider";
 import { BusinessSettingsProvider } from "@/components/BusinessSettingsProvider";
 import { BrandLockup } from "@/components/BrandLockup";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
-import { workspaceSections } from "@/lib/workspace-modules";
+import { workspaceModules, workspaceSections, type WorkspaceModule } from "@/lib/workspace-modules";
 
 const icons: Record<string, LucideIcon> = {
   overview: LayoutDashboard,
@@ -61,12 +61,68 @@ const icons: Record<string, LucideIcon> = {
 
 const managerOnly = new Set(["purchasing", "transfers", "stock-reports"]);
 const adminSections = new Set(["Admin", "Farm ERP"]);
+const routeTitles: Record<string, Pick<WorkspaceModule, "section" | "title">> = {
+  "/workspace/admin-reports": { section: "Admin", title: "Admin reports" },
+  "/workspace/store-reports": { section: "Store portal", title: "Store reports" },
+};
+const pageTitleOverrides: Record<string, string> = {
+  sales: "Sales history",
+  returns: "Returns & refunds",
+  products: "Product catalog",
+  transfers: "Stock transfers",
+};
 
 export function ManagementShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { staff, branches, canViewOrders, loading, error, signOut } = useStaffAuth();
   const assignedBranch = branches.find((branch) => branch.id === staff?.branch_id);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fullscreenError, setFullscreenError] = useState<string | null>(null);
+  const pageHeading = useMemo(() => {
+    if (pathname.startsWith("/orders")) {
+      return workspaceModules.find((item) => item.slug === "online-orders")
+        || { section: "Operations", title: "Online orders" };
+    }
+    if (pathname === "/") {
+      return workspaceModules.find((item) => item.slug === "overview")
+        || { section: "Operations", title: "Overview" };
+    }
+    const route = routeTitles[pathname];
+    if (route) return route;
+    const prefix = "/workspace/";
+    if (pathname.startsWith(prefix)) {
+      const slug = pathname.slice(prefix.length).split("/")[0];
+      const module = workspaceModules.find((item) => item.slug === slug);
+      if (module) return { ...module, title: pageTitleOverrides[slug] || module.title };
+    }
+    return { section: "Workspace", title: "Staff workspace" };
+  }, [pathname]);
+
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await document.documentElement.requestFullscreen();
+      }
+      setFullscreenError(null);
+    } catch (fullscreenFailure) {
+      setFullscreenError(fullscreenFailure instanceof Error
+        ? fullscreenFailure.message
+        : "Fullscreen mode could not be changed.");
+    }
+  }, []);
+
+  useEffect(() => {
+    const updateFullscreen = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+      setFullscreenError(null);
+    };
+    document.addEventListener("fullscreenchange", updateFullscreen);
+    updateFullscreen();
+    return () => document.removeEventListener("fullscreenchange", updateFullscreen);
+  }, []);
 
   useEffect(() => {
     if (!loading && !staff && !error) router.replace("/login");
@@ -134,9 +190,23 @@ export function ManagementShell({ children }: { children: ReactNode }) {
       </aside>
       <div className="main-area">
         <header className="topbar">
-          <span className="topbar-kicker">Staff management workspace</span>
+          <div className="topbar-title-block" aria-live="polite">
+            <span className="topbar-kicker">{pageHeading.section.toUpperCase()}</span>
+            <h1 className="topbar-title">{pageHeading.title}</h1>
+          </div>
           <div className="topbar-right">
+            {fullscreenError && <span className="fullscreen-error" role="status">{fullscreenError}</span>}
             <span className="branch-pill"><Store size={13} />{assignedBranch?.name || "HQ · All branches"}</span>
+            <button
+              className="icon-button fullscreen-toggle"
+              type="button"
+              onClick={() => void toggleFullscreen()}
+              aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              aria-pressed={isFullscreen}
+              title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+            >
+              {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            </button>
           </div>
         </header>
         <main className="content">

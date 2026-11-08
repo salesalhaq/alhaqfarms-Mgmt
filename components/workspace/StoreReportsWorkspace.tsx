@@ -43,6 +43,7 @@ interface StoreReportsResponse {
   byDay: StoreReportDay[];
   payments: StoreReportPaymentRow[];
   products: StoreReportProductRow[];
+  truncated?: boolean;
   generatedAt: string;
   error?: string;
 }
@@ -209,6 +210,11 @@ export function StoreReportsWorkspace({ item }: { item: PageItem }) {
 
       {!loading && report && (
         <>
+          {report.truncated && (
+            <div className="notice" role="status">
+              This report reached the per-period record limit. Narrow the date range for complete totals.
+            </div>
+          )}
           <div className="daily-report-metrics">
             {summaryCards.map((card) => (
               <div className={`metric-card ${card.tone}`} key={card.label}>

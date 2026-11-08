@@ -2,7 +2,11 @@ import { authenticateStaff, authenticationResponse, isUuid } from "@/lib/server/
 
 export const dynamic = "force-dynamic";
 
-const VALID_REPORTS = new Set(["sales", "returns", "payments", "tax"]);
+const VALID_REPORTS = new Set(["all", "sales", "returns", "payments", "tax"]);
+const SALE_LIMIT = 5_000;
+const RETURN_LIMIT = 2_000;
+const PAGE_SIZE = 1_000;
+const ID_CHUNK = 100;
 
 function isValidDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -33,6 +37,9 @@ export async function GET(request: Request) {
   const authentication = await authenticateStaff(request);
   if (!authentication.ok) {
     return authenticationResponse(request, authentication, { error: authentication.error }, authentication.status);
+  }
+  if (authentication.identity.staff.role !== "admin") {
+    return authenticationResponse(request, authentication, { error: "Admin reports are available to administrators only." }, 403);
   }
 
   const parameters = new URL(request.url).searchParams;
@@ -83,59 +90,64 @@ export async function GET(request: Request) {
   const fromIso = startOfDay(fromDate);
   const toIso = endOfDay(toDate);
 
-  const saleQuery = authentication.client
-    .from("pos_sales")
-    .select("id, branch_id, total_paisa, discount_paisa, tax_paisa, paid_paisa, completed_at")
-    .is("deleted_at", null)
-    .neq("status", "void")
-    .gte("completed_at", fromIso)
-    .lt("completed_at", toIso)
-    .in("branch_id", selectedBranchIds);
-
-  const returnQuery = authentication.client
-    .from("returns")
-    .select("id, branch_id, refund_total_paisa, created_at")
-    .is("deleted_at", null)
-    .eq("status", "completed")
-    .gte("created_at", fromIso)
-    .lt("created_at", toIso)
-    .in("branch_id", selectedBranchIds);
-
-  const saleIdsPromise = authentication.client
-    .from("pos_sales")
-    .select("id")
-    .is("deleted_at", null)
-    .neq("status", "void")
-    .gte("completed_at", fromIso)
-    .lt("completed_at", toIso)
-    .in("branch_id", selectedBranchIds)
-    .then(({ data, error }) => {
-      if (error) throw new Error(error.message);
-      return (data || []).map((row) => row.id);
-    });
-
-  const [saleResult, returnResult, saleIds] = await Promise.all([
-    saleQuery,
-    returnQuery,
-    saleIdsPromise,
-  ]);
-
-  if (saleResult.error) throw new Error(saleResult.error.message);
-  if (returnResult.error) throw new Error(returnResult.error.message);
-
-  const sales = saleResult.data || [];
-  const returns = returnResult.data || [];
-  const paymentResult = saleIds.length
-    ? await authentication.client
-      .from("pos_sale_payments")
-      .select("sale_id, method, amount_paisa")
-      .in("sale_id", saleIds)
+  const sales: Array<{ id: string; total_paisa: number; discount_paisa: number; tax_paisa: number }> = [];
+  for (let offset = 0; offset < SALE_LIMIT; offset += PAGE_SIZE) {
+    const result = await authentication.client
+      .from("pos_sales")
+      .select("id, branch_id, total_paisa, discount_paisa, tax_paisa, paid_paisa, completed_at")
       .is("deleted_at", null)
-    : { data: [] as Array<{ sale_id: string; method: string; amount_paisa: number }>, error: null };
+      .neq("status", "void")
+      .gte("completed_at", fromIso)
+      .lt("completed_at", toIso)
+      .in("branch_id", selectedBranchIds)
+      .order("completed_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (result.error) throw new Error(result.error.message);
+    const page = (result.data || []) as typeof sales;
+    sales.push(...page);
+    if (page.length < PAGE_SIZE) break;
+  }
 
-  if (paymentResult.error) throw new Error(paymentResult.error.message);
+  const returns: Array<{ id: string; refund_total_paisa: number; completed_at: string }> = [];
+  for (let offset = 0; offset < RETURN_LIMIT; offset += PAGE_SIZE) {
+    const result = await authentication.client
+      .from("returns")
+      .select("id, branch_id, refund_total_paisa, completed_at")
+      .is("deleted_at", null)
+      .eq("status", "completed")
+      .gte("completed_at", fromIso)
+      .lt("completed_at", toIso)
+      .in("branch_id", selectedBranchIds)
+      .order("completed_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (result.error) throw new Error(result.error.message);
+    const page = (result.data || []) as typeof returns;
+    returns.push(...page);
+    if (page.length < PAGE_SIZE) break;
+  }
 
-  const paymentRows = paymentResult.data || [];
+  const paymentRows: Array<{ method: string; amount_paisa: number }> = [];
+  let paymentTruncated = false;
+  const saleIds = sales.map((sale) => sale.id);
+  for (let offset = 0; offset < saleIds.length; offset += ID_CHUNK) {
+    const ids = saleIds.slice(offset, offset + ID_CHUNK);
+    for (let rowOffset = 0; rowOffset < 100_000; rowOffset += PAGE_SIZE) {
+      const result = await authentication.client
+        .from("pos_sale_payments")
+        .select("sale_id, method, amount_paisa")
+        .in("sale_id", ids)
+        .is("deleted_at", null)
+        .order("id", { ascending: true })
+        .range(rowOffset, rowOffset + PAGE_SIZE - 1);
+      if (result.error) throw new Error(result.error.message);
+      const page = result.data || [];
+      paymentRows.push(...page);
+      if (page.length < PAGE_SIZE) break;
+      if (rowOffset + PAGE_SIZE >= 100_000) paymentTruncated = true;
+    }
+  }
   const paymentByMethod = toCurrencyGroup(paymentRows as Array<{ method: string; amount_paisa: number }>);
 
   const summary = {
@@ -149,10 +161,11 @@ export async function GET(request: Request) {
     discountPaisa: sales.reduce((total, sale) => total + Number(sale.discount_paisa || 0), 0),
     taxPaisa: sales.reduce((total, sale) => total + Number(sale.tax_paisa || 0), 0),
   };
+  const truncated = sales.length >= SALE_LIMIT || returns.length >= RETURN_LIMIT || paymentTruncated;
   summary.netSalesPaisa = summary.grossSalesPaisa - summary.refundsPaisa;
 
-  const rows = (() => {
-    if (reportType === "sales") {
+  const buildRows = (type: string) => {
+    if (type === "sales") {
       return [
         {
           label: "Gross sales",
@@ -178,7 +191,7 @@ export async function GET(request: Request) {
       ];
     }
 
-    if (reportType === "returns") {
+    if (type === "returns") {
       return [
         {
           label: "Returned value",
@@ -204,7 +217,7 @@ export async function GET(request: Request) {
       ];
     }
 
-    if (reportType === "payments") {
+    if (type === "payments") {
       return paymentByMethod.length
         ? paymentByMethod.map((entry) => ({
             label: entry.method,
@@ -245,7 +258,15 @@ export async function GET(request: Request) {
         tone: "amber",
       },
     ];
-  })();
+  };
+  const reportTypes = ["sales", "returns", "payments", "tax"] as const;
+  const reports = reportTypes.reduce<Record<string, ReturnType<typeof buildRows>>>((result, type) => {
+    result[type] = buildRows(type);
+    return result;
+  }, {});
+  const rows = reportType === "all"
+    ? reportTypes.flatMap((type) => reports[type].map((row) => ({ ...row, reportType: type })))
+    : buildRows(reportType);
 
   return authenticationResponse(request, authentication, {
     branchId: selectedBranchIds.length === 1 ? selectedBranchIds[0] : null,
@@ -253,6 +274,8 @@ export async function GET(request: Request) {
     report: reportType,
     generatedAt: new Date().toISOString(),
     summary,
+    truncated,
+    reports: reportType === "all" ? reports : undefined,
     rows,
   });
 }

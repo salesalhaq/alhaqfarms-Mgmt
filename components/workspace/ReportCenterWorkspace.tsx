@@ -1,12 +1,13 @@
 "use client";
 
 import {
-  ArrowRight, BarChart3, ClipboardList, Download, Factory, LoaderCircle, Package, Printer, Receipt,
+  ArrowRight, BarChart3, ClipboardList, Factory, LoaderCircle, Package, Receipt,
   RefreshCw, RotateCcw, TrendingUp, Wallet,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
+import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { formatMoney } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 
@@ -54,18 +55,38 @@ const REPORT_GROUPS: Array<{ title: string; detail: string; links: ReportLink[] 
   },
 ];
 
+type SummaryType = "sales" | "returns" | "payments" | "tax";
+
+interface SummaryRow {
+  label: string;
+  branch: string;
+  valuePaisa: number;
+  secondary: string;
+  tone: "green" | "amber" | "blue" | "purple";
+  reportType?: SummaryType;
+}
+
 interface SummaryReport {
+  branchName: string;
   summary: {
-    receipts: number;
-    grossPaisa: number;
+    receiptCount: number;
+    grossSalesPaisa: number;
     discountPaisa: number;
     taxPaisa: number;
+    refundsPaisa: number;
+    netSalesPaisa: number;
   };
-  returns: { count: number; refundPaisa: number };
-  netPaisa: number;
+  rows: SummaryRow[];
   truncated?: boolean;
   error?: string;
 }
+
+const SUMMARY_CHOICES: Array<{ id: SummaryType; title: string; description: string }> = [
+  { id: "sales", title: "Sales summary", description: "Gross sales, refunds, net sales, receipts, and discounts." },
+  { id: "returns", title: "Returns & refunds", description: "Completed refunds and their share of gross sales." },
+  { id: "payments", title: "Payment mix", description: "Captured totals by payment method." },
+  { id: "tax", title: "Tax & discounts", description: "Tax collected, average ticket, and discounts." },
+];
 
 function localDateKey(date: Date): string {
   const year = date.getFullYear();
@@ -87,6 +108,7 @@ export function ReportCenterWorkspace({ item }: { item: WorkspaceModule }) {
   const [fromDate, setFromDate] = useState(defaultFrom);
   const [toDate, setToDate] = useState(defaultTo);
   const [branchId, setBranchId] = useState(staff?.role === "admin" ? "all" : staff?.branch_id || "");
+  const [selectedReports, setSelectedReports] = useState<SummaryType[]>(SUMMARY_CHOICES.map((choice) => choice.id));
   const [summary, setSummary] = useState<SummaryReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -104,12 +126,12 @@ export function ReportCenterWorkspace({ item }: { item: WorkspaceModule }) {
     setLoading(true);
     setError(null);
 
-    const parameters = new URLSearchParams({ from: fromDate, to: toDate, report: "sales" });
+    const parameters = new URLSearchParams({ from: fromDate, to: toDate, report: "all" });
     if (branchId) parameters.set("branchId", branchId);
 
     void (async () => {
       try {
-        const response = await fetch(`/api/workspace/sales-reports?${parameters.toString()}`, {
+        const response = await fetch(`/api/workspace/admin-reports?${parameters.toString()}`, {
           cache: "no-store",
           credentials: "same-origin",
         });
@@ -130,11 +152,25 @@ export function ReportCenterWorkspace({ item }: { item: WorkspaceModule }) {
   }, [branchId, fromDate, reloadKey, staff, toDate]);
 
   const cards = summary ? [
-    { label: "Gross sales", value: formatMoney(summary.summary.grossPaisa), note: `${summary.summary.receipts} receipts` },
-    { label: "Refunds", value: formatMoney(summary.returns.refundPaisa), note: `${summary.returns.count} completed returns` },
-    { label: "Net sales", value: formatMoney(summary.netPaisa), note: `${formatMoney(summary.summary.discountPaisa)} discounts` },
+    { label: "Gross sales", value: formatMoney(summary.summary.grossSalesPaisa), note: `${summary.summary.receiptCount} receipts` },
+    { label: "Refunds", value: formatMoney(summary.summary.refundsPaisa), note: "Completed returns" },
+    { label: "Net sales", value: formatMoney(summary.summary.netSalesPaisa), note: `${formatMoney(summary.summary.discountPaisa)} discounts` },
     { label: "Tax collected", value: formatMoney(summary.summary.taxPaisa), note: "Across completed receipts" },
   ] : [];
+  const selectedRows = summary?.rows.filter((row) => row.reportType && selectedReports.includes(row.reportType)) || [];
+  const applyPreset = (days: number | "month") => {
+    const end = new Date();
+    const start = new Date(end);
+    if (days === "month") start.setDate(1);
+    else start.setDate(start.getDate() - days + 1);
+    setFromDate(localDateKey(start));
+    setToDate(localDateKey(end));
+  };
+  const toggleReport = (report: SummaryType) => {
+    setSelectedReports((current) => current.includes(report)
+      ? current.filter((entry) => entry !== report)
+      : [...current, report]);
+  };
 
   return (
     <>
@@ -147,12 +183,6 @@ export function ReportCenterWorkspace({ item }: { item: WorkspaceModule }) {
         <div className="heading-actions">
           <button className="button secondary" type="button" onClick={() => setReloadKey((value) => value + 1)} disabled={loading}>
             {loading ? <><LoaderCircle className="spin" size={15} /> Loading…</> : <><RefreshCw size={15} /> Refresh</>}
-          </button>
-          <button className="secondary-button" type="button" disabled title="Exporting the selected reports is a Windows desktop workflow.">
-            <Download size={14} /> Export selected
-          </button>
-          <button className="primary-button" type="button" disabled title="Printing the selected reports is a Windows desktop workflow.">
-            <Printer size={14} /> Print selected
           </button>
         </div>
       </div>
@@ -175,11 +205,38 @@ export function ReportCenterWorkspace({ item }: { item: WorkspaceModule }) {
           <span>To</span>
           <input type="date" value={toDate} min={fromDate} onChange={(event) => setToDate(event.target.value)} />
         </label>
+        <div className="heading-actions" role="group" aria-label="Quick date ranges">
+          <button className="button secondary" type="button" onClick={() => applyPreset(7)}>7 days</button>
+          <button className="button secondary" type="button" onClick={() => applyPreset(30)}>30 days</button>
+          <button className="button secondary" type="button" onClick={() => applyPreset("month")}>This month</button>
+        </div>
       </div>
 
       {error && <div className="notice" role="alert">{error}</div>}
 
       {loading && !summary && <div className="card loading"><LoaderCircle size={18} className="spin" /> Loading report summary…</div>}
+
+      <section className="card panel" aria-label="Select report summaries">
+        <div className="section-heading">
+          <div><p className="eyebrow page">Report summaries</p><h2>Choose what to include</h2></div>
+          <div className="heading-actions">
+            <button className="button secondary" type="button" onClick={() => setSelectedReports(SUMMARY_CHOICES.map((choice) => choice.id))}>Select all</button>
+            <button className="button secondary" type="button" onClick={() => setSelectedReports([])}>Clear</button>
+          </div>
+        </div>
+        <div className="report-center-options">
+          {SUMMARY_CHOICES.map((choice) => (
+            <label className="report-center-option card" key={choice.id}>
+              <input
+                type="checkbox"
+                checked={selectedReports.includes(choice.id)}
+                onChange={() => toggleReport(choice.id)}
+              />
+              <span><strong>{choice.title}</strong><small>{choice.description}</small></span>
+            </label>
+          ))}
+        </div>
+      </section>
 
       {summary && (
         <section className="dashboard-stats" aria-label="Report center summary">
@@ -190,6 +247,38 @@ export function ReportCenterWorkspace({ item }: { item: WorkspaceModule }) {
               <small>{card.note}</small>
             </article>
           ))}
+        </section>
+      )}
+      {summary?.truncated && (
+        <div className="notice" role="status">
+          The report reached its per-period record limit. Narrow the date range for complete totals.
+        </div>
+      )}
+
+      {summary && (
+        <section className="card table-wrap workspace-table" aria-label="Selected report summaries">
+          <div className="table-document-heading">
+            <strong>Selected summaries · {fromDate} to {toDate}</strong>
+            <TableDocumentTools
+              tableId="report-center-selected"
+              title={`Report center ${summary.branchName}`}
+              disabled={!selectedRows.length || loading}
+            />
+          </div>
+          <table id="report-center-selected">
+            <thead><tr><th>Report</th><th>Branch</th><th>Measure</th><th>Value</th><th>Notes</th></tr></thead>
+            <tbody>
+              {selectedRows.length ? selectedRows.map((row) => (
+                <tr key={`${row.reportType}-${row.label}-${row.branch}`}>
+                  <td>{SUMMARY_CHOICES.find((choice) => choice.id === row.reportType)?.title || row.reportType}</td>
+                  <td>{row.branch}</td>
+                  <td>{row.label}</td>
+                  <td>{formatMoney(row.valuePaisa)}</td>
+                  <td>{row.secondary}</td>
+                </tr>
+              )) : <tr><td colSpan={5} className="empty">Select at least one report summary to print or export.</td></tr>}
+            </tbody>
+          </table>
         </section>
       )}
 
@@ -213,7 +302,6 @@ export function ReportCenterWorkspace({ item }: { item: WorkspaceModule }) {
 
       <p className="list-limit-note">
         Reports are read-only and follow your signed-in branch access. Document export controls are available inside each report.
-        {summary?.truncated ? " The selected period is very busy, so the summary is capped — narrow the dates inside a report for exact totals." : ""}
       </p>
     </>
   );

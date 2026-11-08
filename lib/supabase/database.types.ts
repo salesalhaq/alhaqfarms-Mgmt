@@ -458,6 +458,12 @@ export interface Database {
         notes: string | null;
         occurred_at: string;
       }>;
+      web_business_settings: Table<{
+        id: string;
+        settings: Json;
+        updated_at: string;
+        updated_by: string;
+      }>;
     };
     Views: Record<string, never>;
     Functions: {

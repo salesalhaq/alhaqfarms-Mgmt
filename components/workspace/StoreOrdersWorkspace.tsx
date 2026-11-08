@@ -3,11 +3,11 @@
 import { AlertCircle, CheckCircle2, CreditCard, Eye, LoaderCircle, Package, RefreshCw, Search, Truck, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
+import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import type { Database } from "@/lib/supabase/database.types";
-import { DEFAULT_BRAND_NAME } from "@/lib/branding";
 import { formatReportDate } from "@/lib/print/document";
 import { generateOnlineOrdersDocument } from "@/lib/print/reports";
 
@@ -109,6 +109,7 @@ function initialDateRange(): [string, string] {
 
 export function StoreOrdersWorkspace({ item, initialOrderId }: { item: WorkspaceModule; initialOrderId?: string }) {
   const { staff, branches } = useStaffAuth();
+  const { settings: businessSettings } = useBusinessSettings();
   const openedInitialOrderId = useRef<string | null>(null);
   const [from, to] = useMemo(initialDateRange, []);
   const [fromDate, setFromDate] = useState(from);
@@ -427,7 +428,11 @@ export function StoreOrdersWorkspace({ item, initialOrderId }: { item: Workspace
                     search ? `Search: ${search}` : "",
                   ].filter(Boolean).join(" · "),
                 }, {
-                  branding: { businessName: DEFAULT_BRAND_NAME },
+                  branding: {
+                    businessName: businessSettings.businessName,
+                    businessTagline: businessSettings.businessTagline,
+                    logoDataUrl: businessSettings.logoDataUrl,
+                  },
                   orientationPreference: orientation,
                   branch: reportBranchName,
                   printedBy: staff?.full_name || "Staff",

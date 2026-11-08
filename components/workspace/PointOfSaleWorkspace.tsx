@@ -6,12 +6,12 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
+import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import { formatMoney, formatQuantity } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { ReceiptDocument } from "@/components/workspace/ReceiptDocument";
 import {
   buildReceiptQrData,
-  DEFAULT_RECEIPT_SETTINGS,
   receiptPageCss,
   receiptPageSize,
 } from "@/lib/print/receipt";
@@ -192,6 +192,7 @@ function roundedTaxPaisa(amountPaisa: number, rateBps: number, taxMode: "inclusi
 
 export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
   const { staff, branches } = useStaffAuth();
+  const { settings: receiptSettings } = useBusinessSettings();
   const canViewAllDiscountRequests = staff?.role === "admin" && !staff.branch_id;
   const [branchId, setBranchId] = useState(staff?.branch_id || "");
   const [approvalBranchFilter, setApprovalBranchFilter] = useState("all");
@@ -1043,8 +1044,8 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
     await waitForReceiptQr();
     const element = document.querySelector(".receipt-print");
     const result = await printReceiptElementViaBridge(element, {
-      pageCss: receiptPageCss(DEFAULT_RECEIPT_SETTINGS),
-      pageSize: receiptPageSize(DEFAULT_RECEIPT_SETTINGS),
+      pageCss: receiptPageCss(receiptSettings),
+      pageSize: receiptPageSize(receiptSettings),
       title: `Receipt ${completedSale.receiptNumber}`,
     });
     if (!result.printed) window.print();
@@ -1349,7 +1350,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
           </p>}
           {completedSale && (
             <ReceiptDocument
-              settings={DEFAULT_RECEIPT_SETTINGS}
+              settings={receiptSettings}
               branchName={branches.find((branch) => branch.id === branchId)?.name || "Your branch"}
               documentLabel="SALE RECEIPT"
               metadata={[
@@ -1381,9 +1382,22 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
                 ...(completedLoyaltyDiscountPaisa > 0
                   ? [{ label: `${completedLoyaltyPoints} loyalty points`, value: `− ${formatMoney(completedLoyaltyDiscountPaisa)}` }]
                   : []),
-                ...(completedSale.taxPaisa > 0
-                  ? [{ label: `Tax (${completedSale.taxMode})`, value: formatMoney(completedSale.taxPaisa) }]
-                  : []),
+                ...(!receiptSettings.showTaxOnReceipt || completedSale.taxPaisa <= 0
+                  ? []
+                  : receiptSettings.taxDisplay === "detailed"
+                    ? [...new Set(completedLines.map((line) => line.product.tax_rate_bps || 0))]
+                      .filter((rate) => rate > 0)
+                      .map((rate) => ({
+                        label: `Tax ${rate / 100}%`,
+                        value: formatMoney(completedLines
+                          .filter((line) => (line.product.tax_rate_bps || 0) === rate)
+                          .reduce((sum, line) => {
+                            const subtotal = Math.round(productPrice(line.product) * line.quantityMilli / 1000);
+                            const discount = completedLineDiscounts[line.product.id] || 0;
+                            return sum + roundedTaxPaisa(subtotal - discount, rate, completedSale.taxMode);
+                          }, 0)),
+                      }))
+                    : [{ label: `Tax (${completedSale.taxMode})`, value: formatMoney(completedSale.taxPaisa) }]),
                 { label: "Total", value: formatMoney(completedSale.totalPaisa), emphasis: true },
                 ...(completedSale.duePaisa > 0
                   ? [{ label: "Credit due", value: formatMoney(completedSale.duePaisa) }]

@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
+import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
@@ -13,13 +14,11 @@ import { ReceiptDocument } from "@/components/workspace/ReceiptDocument";
 import { formatReportDate, formatReportMoney, formatReportQuantity } from "@/lib/print/document";
 import {
   buildReceiptQrData,
-  DEFAULT_RECEIPT_SETTINGS,
   receiptPageCss,
   receiptPageSize,
 } from "@/lib/print/receipt";
 import { waitForReceiptQr } from "@/lib/print/print-window";
 import { printReceiptElementViaBridge } from "@/lib/print/bridge-print";
-import { DEFAULT_BRAND_NAME } from "@/lib/branding";
 import { generateSalesHistoryDocument } from "@/lib/print/reports";
 
 interface SaleBase {
@@ -132,6 +131,7 @@ function saleStatusTone(status: string): string {
 
 export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
   const { staff, branches } = useStaffAuth();
+  const { settings: receiptSettings } = useBusinessSettings();
   const isHqAdmin = staff?.role === "admin" && staff.branch_id === null;
   const [from, to] = useMemo(initialDateRange, []);
   const [fromDate, setFromDate] = useState(from);
@@ -154,7 +154,6 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
   const [saleDetails, setSaleDetails] = useState<SaleDetails | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const receiptSettings = DEFAULT_RECEIPT_SETTINGS;
   const reportBranchName = branchId === "all"
     ? "All branches"
     : branches.find((branch) => branch.id === branchId)?.name || "Your branch";
@@ -387,7 +386,11 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
                     customerSearch ? `Customer: ${customerSearch}` : "",
                   ].filter(Boolean).join(" · "),
                 }, {
-                  branding: { businessName: DEFAULT_BRAND_NAME },
+                  branding: {
+                    businessName: receiptSettings.businessName,
+                    businessTagline: receiptSettings.businessTagline,
+                    logoDataUrl: receiptSettings.logoDataUrl,
+                  },
                   orientationPreference: orientation,
                   branch: reportBranchName,
                   printedBy: staff?.full_name || "Staff",

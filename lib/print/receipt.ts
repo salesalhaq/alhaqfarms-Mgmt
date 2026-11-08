@@ -10,6 +10,7 @@ export interface ReceiptSettings {
   businessAddress: string;
   businessPhone: string;
   businessEmail: string;
+  businessWebsite: string;
   logoDataUrl: string;
   showLogoOnReceipt: boolean;
   showTaxOnReceipt: boolean;
@@ -25,6 +26,7 @@ export const DEFAULT_RECEIPT_SETTINGS: ReceiptSettings = {
   businessAddress: "",
   businessPhone: "",
   businessEmail: "",
+  businessWebsite: "",
   logoDataUrl: "",
   showLogoOnReceipt: true,
   showTaxOnReceipt: true,

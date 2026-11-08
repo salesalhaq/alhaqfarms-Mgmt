@@ -2,7 +2,7 @@
 
 import { ChevronDown, Download, Eye, FileDown, Printer } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { DEFAULT_BRAND_NAME } from "@/lib/branding";
+import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import {
   generateTableDocument,
   type GeneratedDocument,
@@ -91,6 +91,7 @@ export function TableDocumentTools({
    */
   buildDocument?: (orientation: PrintOrientation) => GeneratedDocument | null;
 }) {
+  const { settings: businessSettings } = useBusinessSettings();
   const [orientation, setOrientation] = useState<PrintOrientation>("auto");
   const [openMenu, setOpenMenu] = useState<"print" | "export" | null>(null);
   const [preview, setPreview] = useState<
@@ -145,7 +146,11 @@ export function TableDocumentTools({
       columns: data.columns,
       rows: data.rows,
       orientation,
-      branding: { businessName: DEFAULT_BRAND_NAME },
+      branding: {
+        businessName: businessSettings.businessName,
+        businessTagline: businessSettings.businessTagline,
+        logoDataUrl: businessSettings.logoDataUrl,
+      },
       metadata: {
         printedAt: new Date(),
         printedBy: "Staff",

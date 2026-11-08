@@ -68,6 +68,7 @@ export function ReceiptDocument({
           {settings.businessAddress ? <small>{settings.businessAddress}</small> : null}
           {settings.businessPhone ? <small>{settings.businessPhone}</small> : null}
           {settings.businessEmail ? <small>{settings.businessEmail}</small> : null}
+          {settings.businessWebsite ? <small>{settings.businessWebsite}</small> : null}
           <strong className="receipt-document-label">{documentLabel}</strong>
         </header>
         <div className="receipt-meta">
@@ -102,7 +103,7 @@ export function ReceiptDocument({
             </div>
           ))}
         </div>
-        {policy ? <p className="receipt-thanks">{policy}</p> : null}
+        {policy || settings.returnPolicy ? <p className="receipt-thanks">{policy || settings.returnPolicy}</p> : null}
         {qr ? <ReceiptQr value={qr.value} label={qr.label} /> : null}
         <footer className="receipt-thanks">{footer ?? settings.receiptFooter}</footer>
       </article>

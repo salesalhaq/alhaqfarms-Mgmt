@@ -3,6 +3,7 @@
 import { AlertCircle, Download, Eye, LoaderCircle, Printer, RefreshCw, X } from "lucide-react";
 import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
+import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import { formatDateTime, formatMoney, formatQuantity, labelize } from "@/lib/format";
 import type {
   StaffDailyReportClose,
@@ -11,7 +12,6 @@ import type {
 } from "@/lib/supabase/database.types";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
-import { DEFAULT_BRAND_NAME } from "@/lib/branding";
 import { formatReportMoney, type GeneratedDocument } from "@/lib/print/document";
 import { generateDailyReportDocument } from "@/lib/print/report-daily";
 import { printHtmlDocument } from "@/lib/print/print-window";
@@ -19,7 +19,6 @@ import { loadPrinterSettings } from "@/lib/print/printer-settings";
 import { printHtmlViaBridge, printReceiptElementViaBridge } from "@/lib/print/bridge-print";
 import { postWorkspaceAction } from "@/lib/workspace/write-client";
 import {
-  DEFAULT_RECEIPT_SETTINGS,
   receiptPageCss,
   receiptWidth,
 } from "@/lib/print/receipt";
@@ -114,6 +113,7 @@ function ValueBars({ title, items }: { title: string; items: { label: string; am
 
 export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
   const { staff, branches } = useStaffAuth();
+  const { settings: receiptSettings } = useBusinessSettings();
   const [date, setDate] = useState(() => localDateInput(new Date()));
   const [branchId, setBranchId] = useState("");
   const [report, setReport] = useState<DailyReportResponse | null>(null);
@@ -130,7 +130,6 @@ export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
   const isAdmin = staff?.role === "admin";
   const isHqAdmin = isAdmin && staff?.branch_id === null;
   const canCloseDay = isAdmin || staff?.role === "manager";
-  const receiptSettings = DEFAULT_RECEIPT_SETTINGS;
   const branchName = branchId === "all"
     ? "All branches"
     : branches.find((branch) => branch.id === branchId)?.name || "Your branch";
@@ -140,7 +139,11 @@ export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
     if (!report) return null;
     return generateDailyReportDocument(
       { ...report, branchName },
-      { branding: { businessName: DEFAULT_BRAND_NAME } },
+      { branding: {
+        businessName: receiptSettings.businessName,
+        businessTagline: receiptSettings.businessTagline,
+        logoDataUrl: receiptSettings.logoDataUrl,
+      } },
     );
   };
 

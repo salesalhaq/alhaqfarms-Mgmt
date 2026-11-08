@@ -11,6 +11,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 import { AppearanceProvider } from "@/components/AppearanceProvider";
+import { BusinessSettingsProvider } from "@/components/BusinessSettingsProvider";
 import { BrandLockup } from "@/components/BrandLockup";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { workspaceSections } from "@/lib/workspace-modules";
@@ -91,6 +92,7 @@ export function ManagementShell({ children }: { children: ReactNode }) {
 
   return (
     <AppearanceProvider staffId={staff.user_id}>
+    <BusinessSettingsProvider staffId={staff.user_id}>
     <div className="app-shell">
       <aside className="sidebar">
         <BrandLockup className="brand-row" />
@@ -127,7 +129,7 @@ export function ManagementShell({ children }: { children: ReactNode }) {
             <div className="avatar">{staff.full_name.trim().slice(0, 1).toUpperCase()}</div>
             <div><strong>{staff.full_name}</strong><small>{staff.role}{assignedBranch ? ` · ${assignedBranch.code}` : " · HQ"}</small></div>
           </div>
-          <button className="button link" onClick={() => void signOut()} type="button"><LogOut size={15} /> Sign out</button>
+          <button className="button link" onClick={() => void signOut()} type="button"><LogOut size={15} /><span>Sign out</span></button>
         </div>
       </aside>
       <div className="main-area">
@@ -147,6 +149,7 @@ export function ManagementShell({ children }: { children: ReactNode }) {
         </main>
       </div>
     </div>
+    </BusinessSettingsProvider>
     </AppearanceProvider>
   );
 }

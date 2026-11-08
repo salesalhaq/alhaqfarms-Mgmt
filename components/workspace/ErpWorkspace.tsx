@@ -7,10 +7,10 @@ import {
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
+import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
-import { DEFAULT_BRAND_NAME } from "@/lib/branding";
 import type { GeneratedDocument, PrintOrientation } from "@/lib/print/document";
 import { generateErpReportDocument } from "@/lib/print/reports";
 import { printHtmlDocument } from "@/lib/print/print-window";
@@ -152,6 +152,7 @@ function EmptyRow({ colSpan, children }: { colSpan: number; children: React.Reac
 
 export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
   const { staff, branches } = useStaffAuth();
+  const { settings: businessSettings } = useBusinessSettings();
   const isHqAdmin = staff?.role === "admin" && !staff.branch_id;
   const today = localDateKey(new Date());
   const defaultFrom = `${today.slice(0, 7)}-01`;
@@ -193,7 +194,11 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
   const buildErpDocument = (orientation: PrintOrientation): GeneratedDocument | null => {
     if (!report) return null;
     return generateErpReportDocument(report, {
-      branding: { businessName: DEFAULT_BRAND_NAME },
+      branding: {
+        businessName: businessSettings.businessName,
+        businessTagline: businessSettings.businessTagline,
+        logoDataUrl: businessSettings.logoDataUrl,
+      },
       orientationPreference: orientation,
       branch: branchId === "all"
         ? "All branches"

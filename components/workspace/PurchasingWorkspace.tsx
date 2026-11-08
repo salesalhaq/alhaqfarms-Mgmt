@@ -4,12 +4,12 @@ import { AlertCircle, Eye, LoaderCircle, Plus, RefreshCw, Save, Search, Truck, X
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
+import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { WorkspaceDialog, WorkspaceError, WorkspaceField, WorkspaceSuccess } from "@/components/workspace/WorkspaceDialog";
 import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
 import { postWorkspaceAction } from "@/lib/workspace/write-client";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
-import { DEFAULT_BRAND_NAME } from "@/lib/branding";
 import { generateSupplierDirectoryDocument } from "@/lib/print/reports";
 
 interface PurchaseOrder {
@@ -163,6 +163,7 @@ function moneyToPaisa(value: string): number | null {
 
 export function PurchasingWorkspace({ item }: { item: WorkspaceModule }) {
   const { staff, branches } = useStaffAuth();
+  const { settings: businessSettings } = useBusinessSettings();
   const [view, setView] = useState<View>("orders");
   const [branchId, setBranchId] = useState(staff?.role === "admin" && !staff.branch_id ? "all" : staff?.branch_id || "");
   const [search, setSearch] = useState("");
@@ -638,7 +639,11 @@ export function PurchasingWorkspace({ item }: { item: WorkspaceModule }) {
                         })),
                         branchName: reportBranchName,
                       }, {
-                        branding: { businessName: DEFAULT_BRAND_NAME },
+                        branding: {
+                          businessName: businessSettings.businessName,
+                          businessTagline: businessSettings.businessTagline,
+                          logoDataUrl: businessSettings.logoDataUrl,
+                        },
                         orientationPreference: orientation,
                         branch: reportBranchName,
                         printedBy: staff?.full_name || "Staff",

@@ -3,6 +3,7 @@
 import { AlertCircle, LoaderCircle, Pencil, Plus, RefreshCw, Save, Search, Tags, X } from "lucide-react";
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
+import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import {
   WorkspaceCheckbox,
@@ -12,7 +13,6 @@ import {
   WorkspaceSuccess,
 } from "@/components/workspace/WorkspaceDialog";
 import { formatMoney, formatQuantity } from "@/lib/format";
-import { DEFAULT_BRAND_NAME } from "@/lib/branding";
 import { generateProductCatalogDocument } from "@/lib/print/reports";
 import { postWorkspaceAction } from "@/lib/workspace/write-client";
 import { useWorkspaceAction } from "@/lib/workspace/use-workspace-action";
@@ -218,6 +218,7 @@ async function optimizeCatalogImage(file: File): Promise<string> {
 
 export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
   const { staff, branches } = useStaffAuth();
+  const { settings: businessSettings } = useBusinessSettings();
   const isAdmin = staff?.role === "admin";
   const isHqAdmin = staff?.role === "admin" && !staff.branch_id;
   const [branchId, setBranchId] = useState(staff?.role === "admin" && !staff.branch_id ? "all" : staff?.branch_id || "");
@@ -519,7 +520,11 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
             disabled={loading || Boolean(error) || !products.length}
             buildDocument={(orientation) => products.length
               ? generateProductCatalogDocument({ products, branchName }, {
-                  branding: { businessName: DEFAULT_BRAND_NAME },
+                  branding: {
+                    businessName: businessSettings.businessName,
+                    businessTagline: businessSettings.businessTagline,
+                    logoDataUrl: businessSettings.logoDataUrl,
+                  },
                   orientationPreference: orientation,
                   branch: branchName,
                   printedBy: staff?.full_name || "Staff",

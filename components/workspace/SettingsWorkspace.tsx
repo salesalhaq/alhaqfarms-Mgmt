@@ -11,6 +11,7 @@ import {
   Eye,
   FolderOpen,
   KeyRound,
+  Menu,
   Monitor,
   Palette,
   Pencil,
@@ -29,7 +30,7 @@ import {
   UserRound,
   Wifi,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import {
   DEFAULT_SCALE_SETTINGS,
   loadScaleSettings,
@@ -54,6 +55,8 @@ import {
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { WorkspaceDialog, WorkspaceError, WorkspaceField, WorkspaceSuccess } from "@/components/workspace/WorkspaceDialog";
 import { useAppearance } from "@/components/AppearanceProvider";
+import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
+import type { BusinessSettings } from "@/lib/business-settings";
 import { appThemes, themeGroups } from "@/lib/themes";
 
 type SettingsTab =
@@ -542,8 +545,17 @@ function ReadOnlyTable({ headers, rows, emptyMessage }: {
 
 export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
   const { themeId, setThemeId } = useAppearance();
+  const {
+    settings: businessSettings,
+    loading: businessSettingsLoading,
+    error: businessSettingsLoadError,
+    saveSettings: saveBusinessSettings,
+    reload: reloadBusinessSettings,
+  } = useBusinessSettings();
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
+  const [settingsTabsOpen, setSettingsTabsOpen] = useState(false);
+  const settingsTabsRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -556,6 +568,32 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
   const [credentialBusy, setCredentialBusy] = useState(false);
   const [credentialError, setCredentialError] = useState<string | null>(null);
   const [credentialNotice, setCredentialNotice] = useState<string | null>(null);
+  const [businessDraft, setBusinessDraft] = useState<BusinessSettings>(businessSettings);
+  const [businessSaving, setBusinessSaving] = useState(false);
+  const [businessError, setBusinessError] = useState<string | null>(null);
+  const [businessNotice, setBusinessNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!businessSettingsLoading) setBusinessDraft(businessSettings);
+  }, [businessSettings, businessSettingsLoading]);
+
+  useEffect(() => {
+    if (!settingsTabsOpen) return undefined;
+    const dismiss = (event: PointerEvent) => {
+      if (event.target instanceof Node && !settingsTabsRef.current?.contains(event.target)) {
+        setSettingsTabsOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSettingsTabsOpen(false);
+    };
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [settingsTabsOpen]);
 
   useEffect(() => {
     let active = true;
@@ -651,6 +689,42 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
       setCredentialBusy(false);
     }
   };
+  const updateBusinessDraft = <K extends keyof BusinessSettings>(key: K, value: BusinessSettings[K]) => {
+    setBusinessDraft((current) => ({ ...current, [key]: value }));
+    setBusinessError(null);
+    setBusinessNotice(null);
+  };
+  const uploadBusinessLogo = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type)) {
+      setBusinessError("Choose a PNG, JPEG, WebP, or GIF image for the shop logo.");
+      return;
+    }
+    if (file.size > 1.5 * 1024 * 1024) {
+      setBusinessError("Shop logo must be smaller than 1.5 MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => updateBusinessDraft("logoDataUrl", String(reader.result || ""));
+    reader.onerror = () => setBusinessError("The shop logo could not be read.");
+    reader.readAsDataURL(file);
+  };
+  const submitBusinessSettings = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setBusinessSaving(true);
+    setBusinessError(null);
+    setBusinessNotice(null);
+    try {
+      await saveBusinessSettings(businessDraft);
+      setBusinessNotice("Shop branding and receipt settings were saved.");
+    } catch (saveError) {
+      setBusinessError(saveError instanceof Error ? saveError.message : "Shop settings could not be saved.");
+    } finally {
+      setBusinessSaving(false);
+    }
+  };
   const visibleTabs = useMemo(() => settings
     ? TABS.filter(({ roles, requiresHq }) => (!roles || roles.includes(settings.profile.role))
       && (!requiresHq || (settings.profile.role === "admin" && settings.profile.branchId === null)))
@@ -682,19 +756,37 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
         </div>
       </div>
 
-      <nav className="settings-workspace-tabs" aria-label="Settings sections">
-        {visibleTabs.map(({ id, label, icon: Icon }) => (
-          <button
-            type="button"
-            key={id}
-            className={activeTab === id ? "active" : ""}
-            aria-current={activeTab === id ? "page" : undefined}
-            onClick={() => setActiveTab(id)}
-          >
-            <Icon size={14} /> {label}
-          </button>
-        ))}
-      </nav>
+      <div className="settings-tabs-menu" ref={settingsTabsRef}>
+        <button
+          type="button"
+          className="settings-tabs-menu-trigger"
+          aria-expanded={settingsTabsOpen}
+          aria-controls="settings-tabs-menu-list"
+          aria-label={`Settings tabs: ${visibleTabs.find(({ id }) => id === activeTab)?.label || "Choose a section"}`}
+          onClick={() => setSettingsTabsOpen((open) => !open)}
+        >
+          <Menu size={16} />
+          <span>{visibleTabs.find(({ id }) => id === activeTab)?.label || "Settings sections"}</span>
+        </button>
+        {settingsTabsOpen && (
+          <nav className="settings-tabs-menu-list" id="settings-tabs-menu-list" aria-label="Settings sections">
+            {visibleTabs.map(({ id, label, icon: Icon }) => (
+              <button
+                type="button"
+                key={id}
+                className={activeTab === id ? "active" : ""}
+                aria-current={activeTab === id ? "page" : undefined}
+                onClick={() => {
+                  setActiveTab(id);
+                  setSettingsTabsOpen(false);
+                }}
+              >
+                <Icon size={14} /> {label}
+              </button>
+            ))}
+          </nav>
+        )}
+      </div>
 
       {loading && <section className="card"><p>Loading settings…</p></section>}
       {error && <section className="card" role="alert"><p>{error}</p></section>}
@@ -782,33 +874,94 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
           </section>
         )}
 
-        {activeTab === "shop" && <LocalOnlyPanel
-          title="Shop & branding"
-          description="Business identity, receipt text, logo, and shop default appearance are stored in the desktop app's local settings, not in the cloud tables used by this workspace."
-          fields={[
-            { label: "Business name", wide: true },
-            { label: "Business address", wide: true },
-            { label: "Business phone" },
-            { label: "Email" },
-            { label: "Website" },
-            { label: "Tagline" },
-            { label: "Currency (ISO code)" },
-            { label: "Receipt footer", wide: true },
-            { label: "Return policy", type: "textarea", wide: true },
-            { label: "Show logo on receipts", type: "checkbox" },
-            { label: "Show tax breakdown", type: "checkbox" },
-            { label: "Shop theme", type: "select", options: ["Light", "Dark", "System"] },
-            { label: "Density", type: "select", options: ["Comfortable", "Compact"] },
-            { label: "Corners", type: "select", options: ["Large", "Soft", "Sharp"] },
-            { label: "Enable glass effects for new staff and devices", type: "checkbox", wide: true },
-          ]}
-          actions={<>
-            <DesktopAction title="Uploading a shop logo is a Windows desktop workflow."><Upload size={13} /> Upload logo</DesktopAction>
-            <DesktopAction title="Removing the shop logo is a Windows desktop workflow.">Remove</DesktopAction>
-            <DesktopAction primary title="Saving shop branding is a Windows desktop workflow."><Save size={13} /> Save settings</DesktopAction>
-          </>}
-          note="Business identity, receipt text, logo, and shop default appearance are stored in the desktop app's local settings. Nothing is inferred here, and all controls are disabled."
-        />}
+        {activeTab === "shop" && (
+          <section className="card settings-workspace-panel">
+            <div className="settings-business-heading">
+              <div>
+                <h2>Shop &amp; branding</h2>
+                <p>These shared settings are used on web receipts for all staff accounts.</p>
+              </div>
+              <button type="button" className="secondary-button" disabled={businessSettingsLoading || businessSaving} onClick={reloadBusinessSettings}>
+                <RefreshCw size={13} /> Reload
+              </button>
+            </div>
+            <form className="settings-business-form" onSubmit={(event) => void submitBusinessSettings(event)}>
+              <fieldset disabled={businessSettingsLoading || businessSaving}>
+              <div className="settings-business-logo">
+                <div className="settings-business-logo-preview">
+                  {businessDraft.logoDataUrl ? <img src={businessDraft.logoDataUrl} alt="Shop logo preview" /> : <Store size={23} />}
+                </div>
+                <div>
+                  <strong>Shop logo</strong>
+                  <small>PNG, JPEG, WebP, or GIF. Maximum 1.5 MB.</small>
+                  <div className="settings-business-logo-actions">
+                    <label className="secondary-button">
+                      <Upload size={13} /> Upload logo
+                      <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" disabled={businessSettingsLoading || businessSaving} onChange={uploadBusinessLogo} />
+                    </label>
+                    {businessDraft.logoDataUrl && (
+                      <button className="secondary-button" type="button" disabled={businessSaving} onClick={() => updateBusinessDraft("logoDataUrl", "")}>
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="workspace-form-grid">
+                <WorkspaceField label="Business name">
+                  <input maxLength={200} value={businessDraft.businessName} onChange={(event) => updateBusinessDraft("businessName", event.target.value)} />
+                </WorkspaceField>
+                <WorkspaceField label="Tagline">
+                  <input maxLength={200} value={businessDraft.businessTagline} onChange={(event) => updateBusinessDraft("businessTagline", event.target.value)} />
+                </WorkspaceField>
+                <WorkspaceField label="Business address">
+                  <input maxLength={500} value={businessDraft.businessAddress} onChange={(event) => updateBusinessDraft("businessAddress", event.target.value)} />
+                </WorkspaceField>
+                <WorkspaceField label="Business phone">
+                  <input maxLength={50} value={businessDraft.businessPhone} onChange={(event) => updateBusinessDraft("businessPhone", event.target.value)} />
+                </WorkspaceField>
+                <WorkspaceField label="Email">
+                  <input type="email" maxLength={254} value={businessDraft.businessEmail} onChange={(event) => updateBusinessDraft("businessEmail", event.target.value)} />
+                </WorkspaceField>
+                <WorkspaceField label="Website">
+                  <input type="url" maxLength={254} placeholder="https://" value={businessDraft.businessWebsite} onChange={(event) => updateBusinessDraft("businessWebsite", event.target.value)} />
+                </WorkspaceField>
+                <WorkspaceField label="Receipt footer">
+                  <input maxLength={300} value={businessDraft.receiptFooter} onChange={(event) => updateBusinessDraft("receiptFooter", event.target.value)} />
+                </WorkspaceField>
+                <WorkspaceField label="Receipt paper size">
+                  <select value={businessDraft.paperSize} onChange={(event) => updateBusinessDraft("paperSize", event.target.value as BusinessSettings["paperSize"])}>
+                    <option value="80mm">80 mm</option>
+                    <option value="58mm">58 mm</option>
+                    <option value="A4">A4</option>
+                  </select>
+                </WorkspaceField>
+                <WorkspaceField label="Return policy">
+                  <textarea maxLength={2000} rows={3} value={businessDraft.returnPolicy} onChange={(event) => updateBusinessDraft("returnPolicy", event.target.value)} />
+                </WorkspaceField>
+                <WorkspaceField label="Tax on receipts">
+                  <select value={businessDraft.taxDisplay} onChange={(event) => updateBusinessDraft("taxDisplay", event.target.value as BusinessSettings["taxDisplay"])}>
+                    <option value="summary">Summary</option>
+                    <option value="detailed">Break down by rate</option>
+                  </select>
+                </WorkspaceField>
+              </div>
+              <div className="settings-business-checks">
+                <label><input type="checkbox" checked={businessDraft.showLogoOnReceipt} onChange={(event) => updateBusinessDraft("showLogoOnReceipt", event.target.checked)} /> Show logo on receipts</label>
+                <label><input type="checkbox" checked={businessDraft.showTaxOnReceipt} onChange={(event) => updateBusinessDraft("showTaxOnReceipt", event.target.checked)} /> Show tax breakdown</label>
+              </div>
+              </fieldset>
+              <p className="settings-workspace-note">Receipt and business details are shared across the web workspace. Currency and shop-wide visual defaults remain managed separately; the web workspace currently displays amounts in PKR.</p>
+              <WorkspaceError message={businessSettingsLoadError || businessError} />
+              <WorkspaceSuccess message={businessNotice} />
+              <div className="workspace-form-actions">
+                <button className="primary-button" disabled={businessSettingsLoading || businessSaving || Boolean(businessSettingsLoadError)} type="submit">
+                  <Save size={13} /> {businessSaving ? "Saving…" : "Save shop settings"}
+                </button>
+              </div>
+            </form>
+          </section>
+        )}
 
         {activeTab === "branches" && <section className="card settings-workspace-panel">
           <h2>Branches</h2>
@@ -1176,9 +1329,12 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
         .workspace-toolbar p { margin: 0; color: var(--muted); font-size: 12px; }
         .settings-workspace-actions { display: flex; align-items: center; gap: 8px; }
         .settings-workspace-table { display: grid; gap: 8px; min-width: 0; }
-        .settings-workspace-tabs { display: flex; gap: 6px; overflow-x: auto; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
-        .settings-workspace-tabs button { display: inline-flex; min-height: 36px; flex: 0 0 auto; align-items: center; gap: 7px; border: 1px solid transparent; border-radius: 9px; padding: 0 10px; color: var(--muted); background: transparent; font: inherit; font-size: 11px; cursor: pointer; }
-        .settings-workspace-tabs button:hover, .settings-workspace-tabs button.active { border-color: var(--line); color: var(--green-dark); background: var(--surface); }
+        .settings-tabs-menu { position: relative; z-index: 2; width: fit-content; }
+        .settings-tabs-menu-trigger { display: inline-flex; min-height: 38px; align-items: center; gap: 9px; border: 1px solid var(--line); border-radius: 9px; padding: 0 12px; color: var(--ink); background: var(--surface); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
+        .settings-tabs-menu-trigger:hover, .settings-tabs-menu-trigger[aria-expanded="true"] { border-color: var(--green); }
+        .settings-tabs-menu-list { position: absolute; top: calc(100% + 6px); left: 0; display: grid; width: min(300px, calc(100vw - 48px)); max-height: min(65vh, 480px); gap: 3px; overflow-y: auto; border: 1px solid var(--line); border-radius: 11px; padding: 6px; background: var(--surface); box-shadow: var(--shadow); }
+        .settings-tabs-menu-list button { display: flex; min-height: 37px; align-items: center; gap: 9px; border: 1px solid transparent; border-radius: 7px; padding: 0 9px; color: var(--muted); background: transparent; font: inherit; font-size: 11px; text-align: left; cursor: pointer; }
+        .settings-tabs-menu-list button:hover, .settings-tabs-menu-list button.active { border-color: var(--line); color: var(--green-dark); background: var(--surface-soft); }
         .settings-workspace-panel { min-width: 0; padding: 18px; }
         .settings-workspace-panel h2 { margin: 0 0 8px; color: var(--ink); font-size: 15px; }
         .settings-workspace-panel > p { margin: 0 0 14px; color: var(--muted); font-size: 11px; line-height: 1.55; }
@@ -1193,6 +1349,21 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
         .settings-workspace-check { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 10px; font-weight: 700; }
         .settings-workspace-check input[type="checkbox"] { width: 16px; height: 16px; }
         .settings-workspace-note { margin: 13px 0 0 !important; border-left: 3px solid var(--amber); padding: 8px 10px; background: var(--surface-soft); }
+        .settings-business-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+        .settings-business-heading p { margin: 0 0 14px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+        .settings-business-form { display: grid; gap: 14px; }
+        .settings-business-form fieldset { display: grid; gap: 14px; min-width: 0; border: 0; margin: 0; padding: 0; }
+        .settings-business-logo { display: flex; align-items: center; gap: 13px; }
+        .settings-business-logo-preview { display: grid; width: 76px; height: 64px; flex: 0 0 76px; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: var(--surface-soft); }
+        .settings-business-logo-preview img { width: 100%; height: 100%; object-fit: contain; }
+        .settings-business-logo strong, .settings-business-logo small { display: block; }
+        .settings-business-logo strong { font-size: 11px; }
+        .settings-business-logo small { margin-top: 4px; color: var(--muted); font-size: 9px; }
+        .settings-business-logo-actions { display: flex; gap: 7px; margin-top: 8px; }
+        .settings-business-logo-actions input[type="file"] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+        .settings-business-checks { display: flex; flex-wrap: wrap; gap: 12px 20px; }
+        .settings-business-checks label { display: inline-flex; align-items: center; gap: 7px; color: var(--ink); font-size: 11px; }
+        .settings-business-checks input { accent-color: var(--green); }
         .settings-appearance-group { display: grid; gap: 9px; margin-top: 20px; }
         .settings-appearance-group h3 { margin: 0; color: var(--muted); font-size: 11px; font-weight: 700; }
         .settings-appearance-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 10px; }
@@ -1206,8 +1377,8 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
         .settings-scale-grid .field { margin: 0; }
         @media (max-width: 640px) {
           .settings-workspace-panel { padding: 14px; }
-          .settings-workspace-tabs { margin-right: -4px; }
           .settings-workspace-actions { align-items: stretch; }
+          .settings-business-heading { align-items: flex-start; }
         }
       `}</style>
     </section>

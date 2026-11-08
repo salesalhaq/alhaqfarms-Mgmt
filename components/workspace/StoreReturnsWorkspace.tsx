@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
+import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
@@ -14,7 +15,6 @@ import { waitForReceiptQr } from "@/lib/print/print-window";
 import { printReceiptElementViaBridge } from "@/lib/print/bridge-print";
 import {
   buildReturnReceiptQrData,
-  DEFAULT_RECEIPT_SETTINGS,
   receiptPageCss,
   receiptPageSize,
 } from "@/lib/print/receipt";
@@ -103,7 +103,7 @@ function returnStatusTone(status: string): string {
 
 export function StoreReturnsWorkspace({ item }: { item: WorkspaceModule }) {
   const { staff, branches } = useStaffAuth();
-  const receiptSettings = DEFAULT_RECEIPT_SETTINGS;
+  const { settings: receiptSettings } = useBusinessSettings();
   const [from, to] = useMemo(initialDateRange, []);
   const [fromDate, setFromDate] = useState(from);
   const [toDate, setToDate] = useState(to);

@@ -3,10 +3,10 @@
 import { AlertCircle, LoaderCircle, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
+import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import { formatMoney, formatQuantity } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
-import { DEFAULT_BRAND_NAME } from "@/lib/branding";
 import { generateBranchInventoryDocument } from "@/lib/print/reports";
 
 interface StockReportProduct {
@@ -59,6 +59,7 @@ function stockStatus(product: StockReportProduct): { label: string; tone: string
 
 export function StockReportsWorkspace({ item }: { item: WorkspaceModule }) {
   const { staff, branches } = useStaffAuth();
+  const { settings: businessSettings } = useBusinessSettings();
   const [branchId, setBranchId] = useState("all");
   const [report, setReport] = useState<StockReportsResponse | null>(null);
   const [search, setSearch] = useState("");
@@ -253,7 +254,11 @@ export function StockReportsWorkspace({ item }: { item: WorkspaceModule }) {
                 disabled={!visibleProducts.length || loading}
                 buildDocument={(orientation) => visibleProducts.length
                   ? generateBranchInventoryDocument({ products: visibleProducts, branchName: report.branchName }, {
-                      branding: { businessName: DEFAULT_BRAND_NAME },
+                      branding: {
+                        businessName: businessSettings.businessName,
+                        businessTagline: businessSettings.businessTagline,
+                        logoDataUrl: businessSettings.logoDataUrl,
+                      },
                       orientationPreference: orientation,
                       branch: report.branchName,
                       printedBy: staff?.full_name || "Staff",

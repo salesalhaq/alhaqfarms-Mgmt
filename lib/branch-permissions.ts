@@ -53,17 +53,17 @@ export const BRANCH_ACTIONS = [
 ] as const;
 
 export const WEB_ORDER_ACTIONS = [
-  { id: "accept", label: "Accept orders" },
-  { id: "pack", label: "Pack orders" },
-  { id: "dispatch", label: "Dispatch orders" },
-  { id: "deliver", label: "Mark orders delivered" },
-  { id: "verify_payment", label: "Verify payments" },
-  { id: "cancel", label: "Cancel orders" },
+  { id: "accept", label: "Accept order" },
+  { id: "pack", label: "Pack order (deducts stock)" },
+  { id: "dispatch", label: "Dispatch delivery" },
+  { id: "deliver", label: "Complete handover / pickup" },
+  { id: "verify_payment", label: "Verify Easypaisa / JazzCash payment" },
+  { id: "cancel", label: "Cancel order" },
 ] as const;
 
 export const INVENTORY_ACTIONS = [
   { id: "record_stock_movement", label: "Record stock movements" },
-  { id: "record_stocktake", label: "Record stocktakes" },
+  { id: "record_stocktake", label: "Record and review physical stocktakes" },
 ] as const;
 
 export type BranchModuleId = (typeof BRANCH_MODULES)[number]["id"];

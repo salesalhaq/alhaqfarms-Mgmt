@@ -1,6 +1,7 @@
 import { authenticateStaff, authenticationResponse } from "@/lib/server/staff-auth";
 import {
   assertHqAdmin,
+  assertBranchAccess,
   assertSameOrigin,
   readBoolean,
   readJsonBody,
@@ -209,13 +210,13 @@ export async function POST(request: Request) {
 
   try {
     assertSameOrigin(request);
-    assertHqAdmin(authentication.identity);
     const body = await readJsonBody(request);
     if (body.action === "save_permissions") {
-      const branchId = readUuid(body.branchId, "Branch");
-      if (!authentication.identity.branches.some((branch) => branch.id === branchId)) {
-        throw new WriteError("Choose an active branch you can manage.", 403);
+      if (authentication.identity.staff.role !== "admin") {
+        throw new WriteError("Only an administrator can manage permissions.", 403);
       }
+      const branchId = readUuid(body.branchId, "Branch");
+      assertBranchAccess(authentication.identity, branchId);
       if (!isRecord(body.permissions)) throw new WriteError("Provide the permission settings to save.");
 
       const settingsClient = authentication.client as unknown as SupabaseClient;
@@ -410,6 +411,8 @@ export async function POST(request: Request) {
 
       return authenticationResponse(request, authentication, { saved: true });
     }
+
+    assertHqAdmin(authentication.identity);
 
     if (body.action === "save_branch") {
       const mode = readText(body.mode, "Branch action", 10);

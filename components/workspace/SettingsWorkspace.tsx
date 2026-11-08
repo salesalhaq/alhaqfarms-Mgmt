@@ -162,7 +162,7 @@ const TABS: { id: SettingsTab; label: string; icon: typeof UserRound; roles?: st
   { id: "shop", label: "Shop & branding", icon: Store, roles: ["admin"] },
   { id: "storefront", label: "Storefront checkout", icon: Truck, roles: ["admin"], requiresHq: true },
   { id: "branches", label: "Branches", icon: Building2, roles: ["admin"] },
-  { id: "permissions", label: "Permissions", icon: ShieldCheck, roles: ["admin"], requiresHq: true },
+  { id: "permissions", label: "Permissions", icon: ShieldCheck, roles: ["admin"] },
   { id: "cloud", label: "Cloud access", icon: Cloud, roles: ["admin"] },
   { id: "tax", label: "Tax & loyalty", icon: Database, roles: ["admin"] },
   { id: "printers", label: "Printers", icon: Printer, roles: ["admin", "manager"] },

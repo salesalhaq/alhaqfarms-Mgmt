@@ -155,6 +155,7 @@ export function PermissionsWorkspace({
   const [branchId, setBranchId] = useState("");
   const [draft, setDraft] = useState<PermissionDraft | null>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(EMPTY_FEEDBACK);
+  const isSaving = Object.values(feedback).some((panel) => panel.busy);
 
   useEffect(() => {
     const initialBranch = availableBranches.find((branch) => branch.is_default) || availableBranches[0];
@@ -179,10 +180,13 @@ export function PermissionsWorkspace({
       const nextView = mode === "view" ? allowed : currentAccess.view || allowed;
       const nextManage = mode === "manage" ? allowed && nextView : currentAccess.manage && nextView;
       const actions = { ...current.actions };
-      if (!nextView) {
+      if (!nextView || mode === "manage") {
         for (const action of BRANCH_ACTIONS) {
           if (action.moduleId === moduleId) {
-            actions[action.id] = { ...actions[action.id], [role]: false };
+            actions[action.id] = {
+              ...actions[action.id],
+              [role]: nextView && mode === "manage" ? allowed : false,
+            };
           }
         }
       }
@@ -255,7 +259,7 @@ export function PermissionsWorkspace({
         <p>Changes apply only to the selected branch. Administrators retain full access.</p>
         <label className="settings-permission-branch">
           <span>Branch</span>
-          <select value={branchId} onChange={(event) => {
+          <select value={branchId} disabled={isSaving} onChange={(event) => {
             setBranchId(event.target.value);
             setFeedback(EMPTY_FEEDBACK);
           }}>
@@ -269,11 +273,11 @@ export function PermissionsWorkspace({
       {draft && <>
         <section className="card settings-workspace-panel settings-permission-panel">
           <h2>Online order permissions</h2>
-          <p>Choose which cashier and manager actions are allowed. Missing overrides follow the Windows app defaults.</p>
+          <p>Choose which cashier and manager roles can perform each order step. Administrators always retain access; unconfigured actions default to allowed.</p>
           {panelStatus("webOrders")}
           <div className="table-wrap">
             <table className="workspace-table settings-permission-table">
-              <thead><tr><th>Order action</th><th>Cashier</th><th>Manager</th></tr></thead>
+              <thead><tr><th>Order action</th><th>Cashier</th><th>Manager</th><th>Admin</th></tr></thead>
               <tbody>
                 {WEB_ORDER_ACTIONS.map((action) => (
                   <tr key={action.id}>
@@ -283,6 +287,7 @@ export function PermissionsWorkspace({
                         <PermissionCheckbox
                           checked={draft.webOrders[action.id][role]}
                           label={`${role} access to ${action.label.toLowerCase()}`}
+                          disabled={isSaving}
                           onChange={(allowed) => setDraft((current) => current && ({
                             ...current,
                             webOrders: {
@@ -293,13 +298,14 @@ export function PermissionsWorkspace({
                         />
                       </td>
                     ))}
+                    <td><span className="settings-permission-admin">Always allowed</span></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
           <div className="heading-actions">
-            <button type="button" className="primary-button" disabled={feedback.webOrders.busy} onClick={() => void save("webOrders", draft.webOrders)}>
+            <button type="button" className="primary-button" disabled={isSaving} onClick={() => void save("webOrders", draft.webOrders)}>
               <Save size={13} /> {feedback.webOrders.busy ? "Saving…" : "Save order permissions"}
             </button>
           </div>
@@ -307,7 +313,7 @@ export function PermissionsWorkspace({
 
         <section className="card settings-workspace-panel settings-permission-panel">
           <h2>Branch module permissions</h2>
-          <p>Control module visibility, management access, and separate actions for cashier and manager roles.</p>
+          <p>View allows opening pages, reading details, filtering, and exporting reports. Manage allows operational changes. Separate actions can grant specific tasks independently. Cloud sync is blocked by default for branch roles; only grant access when appropriate. Administrators retain access, while system and permission administration stay restricted.</p>
           {panelStatus("modules")}
           <div className="table-wrap">
             <table className="workspace-table settings-permission-table">
@@ -315,6 +321,7 @@ export function PermissionsWorkspace({
                 <tr>
                   <th scope="col" rowSpan={2}>Module</th>
                   {PERMISSION_ROLES.map((role) => <th scope="colgroup" colSpan={2} key={role}>{role === "cashier" ? "Cashier" : "Manager"}</th>)}
+                  <th scope="col" rowSpan={2}>Admin</th>
                 </tr>
                 <tr>
                   {PERMISSION_ROLES.flatMap((role) => [
@@ -332,25 +339,41 @@ export function PermissionsWorkspace({
                         <PermissionCheckbox
                           checked={draft.modules[module.id][role][mode]}
                           label={`${role} ${mode} access to ${module.label}`}
-                          disabled={mode === "manage" && !draft.modules[module.id][role].view}
+                          disabled={isSaving || (mode === "manage" && !draft.modules[module.id][role].view)}
                           onChange={(allowed) => updateModuleAccess(module.id, role, mode, allowed)}
                         />
                       </td>
                     )))}
+                    <td><span className="settings-permission-admin">Always allowed</span></td>
                   </tr>
                 ))}
-                <tr><th scope="row" colSpan={5}>Separate actions</th></tr>
+              </tbody>
+            </table>
+          </div>
+          <h3 className="settings-permission-subheading">Separate actions</h3>
+          <p>Separate actions can be granted independently from general page management. Granting one also enables viewing its page.</p>
+          <div className="table-wrap">
+            <table className="workspace-table settings-permission-table">
+              <thead><tr><th>Action</th><th>Cashier</th><th>Manager</th><th>Admin</th></tr></thead>
+              <tbody>
                 {BRANCH_ACTIONS.map((action) => (
                   <tr key={action.id}>
                     <th scope="row">{action.label}</th>
                     {PERMISSION_ROLES.map((role) => (
-                      <td key={role} colSpan={2}>
+                      <td key={role}>
                         <PermissionCheckbox
                           checked={draft.actions[action.id][role]}
                           label={`${role} access to ${action.label.toLowerCase()}`}
-                          disabled={!draft.modules[action.moduleId][role].view}
+                          disabled={isSaving}
                           onChange={(allowed) => setDraft((current) => current && ({
                             ...current,
+                            modules: allowed ? {
+                              ...current.modules,
+                              [action.moduleId]: {
+                                ...current.modules[action.moduleId],
+                                [role]: { ...current.modules[action.moduleId][role], view: true },
+                              },
+                            } : current.modules,
                             actions: {
                               ...current.actions,
                               [action.id]: { ...current.actions[action.id], [role]: allowed },
@@ -359,13 +382,14 @@ export function PermissionsWorkspace({
                         />
                       </td>
                     ))}
+                    <td><span className="settings-permission-admin">Always allowed</span></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
           <div className="heading-actions">
-            <button type="button" className="primary-button" disabled={feedback.modules.busy} onClick={() => void save("modules", { modules: draft.modules, actions: draft.actions })}>
+            <button type="button" className="primary-button" disabled={isSaving} onClick={() => void save("modules", { modules: draft.modules, actions: draft.actions })}>
               <Save size={13} /> {feedback.modules.busy ? "Saving…" : "Save module permissions"}
             </button>
           </div>
@@ -381,7 +405,8 @@ export function PermissionsWorkspace({
                 key={action.id}
                 checked={draft.inventory[action.id]}
                 label={action.label}
-                displayLabel={action.label}
+                displayLabel={`${action.label}: ${draft.inventory[action.id] ? "Allowed" : "Blocked"}`}
+                disabled={isSaving}
                 onChange={(allowed) => setDraft((current) => current && ({
                   ...current,
                   inventory: { ...current.inventory, [action.id]: allowed },
@@ -390,7 +415,7 @@ export function PermissionsWorkspace({
             ))}
           </div>
           <div className="heading-actions">
-            <button type="button" className="primary-button" disabled={feedback.inventory.busy} onClick={() => void save("inventory", draft.inventory)}>
+            <button type="button" className="primary-button" disabled={isSaving} onClick={() => void save("inventory", draft.inventory)}>
               <Save size={13} /> {feedback.inventory.busy ? "Saving…" : "Save inventory permissions"}
             </button>
           </div>

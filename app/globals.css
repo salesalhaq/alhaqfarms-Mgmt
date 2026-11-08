@@ -229,6 +229,9 @@ h1, h2, h3 { font-family: "Segoe UI", Arial, sans-serif; }
 .settings-permission-table { min-width: 680px; }
 .settings-permission-table th:first-child { min-width: 170px; white-space: normal; }
 .settings-permission-table td { min-width: 98px; padding: 8px; }
+.settings-permission-admin { color: var(--muted); font-size: 10px; font-weight: 600; white-space: nowrap; }
+.settings-permission-subheading { margin: 18px 0 6px; color: var(--ink); font-size: 12px; }
+.settings-permission-panel > .settings-permission-subheading + p { margin-bottom: 12px; }
 .settings-permission-checkbox { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); font-size: 10px; font-weight: 600; white-space: nowrap; cursor: pointer; }
 .settings-permission-checkbox input { width: 15px; height: 15px; margin: 0; accent-color: var(--green); }
 .settings-permission-checkbox input:disabled { cursor: not-allowed; }

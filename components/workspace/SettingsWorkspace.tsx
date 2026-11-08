@@ -60,6 +60,7 @@ import type { BusinessSettings } from "@/lib/business-settings";
 import { appThemes, themeGroups } from "@/lib/themes";
 import { StorefrontCheckoutWorkspace } from "@/components/workspace/StorefrontCheckoutWorkspace";
 import { PermissionsWorkspace } from "@/components/workspace/PermissionsWorkspace";
+import { CloudAccessWorkspace } from "@/components/workspace/CloudAccessWorkspace";
 
 type SettingsTab =
   | "profile"
@@ -163,7 +164,7 @@ const TABS: { id: SettingsTab; label: string; icon: typeof UserRound; roles?: st
   { id: "storefront", label: "Storefront checkout", icon: Truck, roles: ["admin"], requiresHq: true },
   { id: "branches", label: "Branches", icon: Building2, roles: ["admin"] },
   { id: "permissions", label: "Permissions", icon: ShieldCheck, roles: ["admin"] },
-  { id: "cloud", label: "Cloud access", icon: Cloud, roles: ["admin"] },
+  { id: "cloud", label: "Cloud access", icon: Cloud, roles: ["admin"], requiresHq: true },
   { id: "tax", label: "Tax & loyalty", icon: Database, roles: ["admin"] },
   { id: "printers", label: "Printers", icon: Printer, roles: ["admin", "manager"] },
   { id: "scale", label: "Scale", icon: Scale, roles: ["admin", "manager"] },
@@ -1085,24 +1086,9 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
           <StorefrontCheckoutWorkspace branches={settings.branches} />
         )}
 
-        {activeTab === "cloud" && <>
-          <div className="heading-actions" aria-label="Desktop cloud access actions">
-            <DesktopAction title="Opening the Cloud sync workspace from Settings is a Windows desktop workflow."><Cloud size={13} /> Open Cloud Sync</DesktopAction>
-            <DesktopAction title="Refreshing cloud accounts is a Windows desktop workflow."><RefreshCw size={13} /> Refresh accounts</DesktopAction>
-            <DesktopAction primary title="Assigning cloud accounts is a Windows desktop workflow."><Plus size={14} /> Assign cloud account</DesktopAction>
-          </div>
-          <section className="card settings-workspace-panel">
-            <h2><Cloud size={14} /> Cloud access</h2>
-            <p>The signed-in cloud staff record and accessible branches are shown in Profile &amp; security. The existing staff-account RLS does not expose a branch-wide account directory to this workspace.</p>
-            <div className="settings-workspace-disabled-grid">
-              <DesktopControl field={{ label: "Email", type: "text" }} />
-              <DesktopControl field={{ label: "Full name", type: "text" }} />
-              <DesktopControl field={{ label: "Role", type: "select", options: ["Cashier", "Manager", "Admin"] }} />
-              <DesktopControl field={{ label: "Branch", type: "select", options: settings.branches.filter((branch) => branch.is_active).map((branch) => `${branch.name} (${branch.code})`) }} />
-            </div>
-            <p className="settings-workspace-note">Account assignment and credential administration are disabled; no staff accounts or credentials are inferred. Use the Staff accounts page for the read-only roster available to HQ administrators.</p>
-          </section>
-        </>}
+        {activeTab === "cloud" && settings.profile.role === "admin" && settings.profile.branchId === null && (
+          <CloudAccessWorkspace branches={settings.branches} />
+        )}
 
         {activeTab === "tax" && <>
           <LocalOnlyPanel
@@ -1437,6 +1423,7 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
         .settings-appearance-option-label svg { flex: 0 0 auto; color: var(--green); }
         .settings-scale-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 10px; }
         .settings-scale-grid .field { margin: 0; }
+        .settings-cloud-access-form { display: grid; gap: 12px; }
         @media (max-width: 640px) {
           .settings-workspace-panel { padding: 14px; }
           .settings-workspace-actions { align-items: stretch; }

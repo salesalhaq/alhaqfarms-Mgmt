@@ -471,6 +471,32 @@ export interface Database {
         Args: { p_product_id: string };
         Returns: number;
       };
+      list_cloud_staff: {
+        Args: Record<string, never>;
+        Returns: {
+          user_id: string;
+          local_staff_id: string;
+          branch_id: string | null;
+          branch_code: string | null;
+          branch_name: string | null;
+          email: string;
+          full_name: string;
+          role: string;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        }[];
+      };
+      provision_cloud_staff: {
+        Args: {
+          p_email: string;
+          p_full_name: string;
+          p_role: string;
+          p_branch_code: string;
+          p_local_staff_id: string | null;
+        };
+        Returns: Json;
+      };
       complete_staff_web_enrollment: {
         Args: { p_staff_id: string; p_user_id: string };
         Returns: boolean;

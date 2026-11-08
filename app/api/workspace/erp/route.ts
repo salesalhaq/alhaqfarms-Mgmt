@@ -735,7 +735,7 @@ async function loadFarmStores(
 ): Promise<ErpList> {
   let query = client
     .from("branches")
-    .select("id,code,name,address,phone,receipt_prefix,is_active,is_default,created_at")
+    .select("id,code,name,address,phone,email,timezone,receipt_prefix,is_active,is_default,created_at")
     .is("deleted_at", null)
     .order("is_default", { ascending: false })
     .order("is_active", { ascending: false })

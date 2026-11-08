@@ -19,6 +19,7 @@ import { ErpProductionActions } from "@/components/workspace/ErpProductionAction
 import { ErpSpiceActions } from "@/components/workspace/ErpSpiceActions";
 import { ErpBulkSalesActions } from "@/components/workspace/ErpBulkSalesActions";
 import { ErpVendorActions, type Vendor, type VendorReceipt, type VendorRequest } from "@/components/workspace/ErpVendorActions";
+import { ErpFarmStoreActions, type FarmStore } from "@/components/workspace/ErpFarmStoreActions";
 
 type ErpRow = Record<string, any>;
 type BranchOption = { id: string; name: string };
@@ -286,6 +287,7 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
   const [spiceBatchToComplete, setSpiceBatchToComplete] = useState<SpiceBatchAction | null>(null);
   const [bulkSaleToPay, setBulkSaleToPay] = useState<BulkSalePaymentTarget | null>(null);
   const [vendorActionRequest, setVendorActionRequest] = useState<VendorRequest | null>(null);
+  const [farmStoreToEdit, setFarmStoreToEdit] = useState<FarmStore | null>(null);
 
   const isDashboard = item.slug === "erp-dashboard";
   const isReports = item.slug === "erp-reports";
@@ -865,6 +867,8 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
                         ? "Create wholesale invoices with branch stock deduction, discounts, optional payments, and outstanding balance tracking."
                       : item.slug === "vendors"
                         ? "Manage suppliers, collect invoice payments, and record stock returns with supplier credits or replacement deliveries."
+                      : item.slug === "farm-stores"
+                        ? "Register and edit stores shared with branch settings, and review their stock, staff, sales and day-close activity."
                     : `${item.description} This workspace is a live read-only view; changes stay in the Windows app.`}
           </p>
         </div>
@@ -923,8 +927,16 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
               }}
             />
           )}
+          {!isDashboard && !isReports && isHqAdmin && item.slug === "farm-stores" && item.actionLabel && (
+            <ErpFarmStoreActions
+              actionLabel={item.actionLabel}
+              storeToEdit={farmStoreToEdit}
+              onCloseEdit={() => setFarmStoreToEdit(null)}
+              onSaved={() => setReloadKey((key) => key + 1)}
+            />
+          )}
           {!isDashboard && !isReports && item.actionLabel
-            && !["production", "spice", "bulk-sales", "vendors"].includes(item.slug) && (
+            && !["production", "spice", "bulk-sales", "vendors", "farm-stores"].includes(item.slug) && (
             <button
               className="primary-button"
               type="button"
@@ -1122,6 +1134,8 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
                   }),
                   (row) => setVendorActionRequest({ kind: "edit", vendor: row as Vendor }),
                   (row) => setVendorActionRequest({ kind: "toggle", vendor: row as Vendor }),
+                  (row) => setFarmStoreToEdit(row as FarmStore),
+                  isHqAdmin,
                 )}</tbody>
               </table>
             </div>
@@ -1845,6 +1859,8 @@ function renderBody(
   recordBulkPayment: (row: ErpRow) => void,
   editVendor: (row: ErpRow) => void,
   toggleVendor: (row: ErpRow) => void,
+  editFarmStore: (row: ErpRow) => void,
+  canManageStores: boolean,
 ) {
   const detailCell = (row: ErpRow) => {
     if (!canOpenDetail) return null;
@@ -2008,7 +2024,15 @@ function renderBody(
       <td className="nowrap">{row.last_close ? formatDay(row.last_close.business_date) : "—"}<small>{row.last_close ? formatMoney(row.last_close.difference_paisa) : "No close"}</small></td>
       <td><span className={`status ${row.is_active ? "green" : "red"}`}>{row.is_active ? "Active" : "Inactive"}</span></td>
       <td className="row-actions">
-        <button className="secondary-button" type="button" disabled title="Editing farm stores is a Windows desktop workflow."><Pencil size={12} /> Edit</button>
+        <button
+          className="secondary-button"
+          type="button"
+          disabled={!canManageStores}
+          onClick={() => editFarmStore(row)}
+          title={canManageStores ? `Edit ${row.name}.` : "Only an HQ administrator can manage stores."}
+        >
+          <Pencil size={12} /> Edit
+        </button>
       </td>
     </tr>
   ));

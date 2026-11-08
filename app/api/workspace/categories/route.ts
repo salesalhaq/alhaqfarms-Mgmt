@@ -66,6 +66,47 @@ export async function POST(request: Request) {
     assertHqAdmin(authentication.identity);
 
     const body = await readJsonBody(request, MAX_CATEGORY_BODY_BYTES);
+    if (body.action === "delete") {
+      const categoryId = readOptionalUuid(body.id, "Category");
+      if (!categoryId) throw new WriteError("Choose a category to delete.");
+      const { data: category, error: categoryError } = await authentication.client
+        .from("categories")
+        .select("id,name")
+        .eq("id", categoryId)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (categoryError) throw categoryError;
+      if (!category) throw new WriteError("That category no longer exists.", 404);
+      const { count, error: productCountError } = await authentication.client
+        .from("products")
+        .select("id", { count: "exact", head: true })
+        .eq("category_id", categoryId)
+        .is("deleted_at", null);
+      if (productCountError) throw productCountError;
+      if (count) {
+        throw new WriteError(
+          `This category is used by ${count} active product${count === 1 ? "" : "s"}. Move or delete those products before deleting the category.`,
+          409,
+        );
+      }
+      const now = new Date().toISOString();
+      const { data, error } = await authentication.client.from("categories")
+        .update({ deleted_at: now, updated_at: now })
+        .eq("id", categoryId)
+        .is("deleted_at", null)
+        .select("id")
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) throw new WriteError("That category was already deleted.", 409);
+      await insertAuditEvent(authentication.client, authentication.identity, {
+        action: "category.deleted",
+        entityType: "category",
+        entityId: categoryId,
+        details: { name: category.name },
+      });
+      return authenticationResponse(request, authentication, { success: true });
+    }
+
     const id = readOptionalUuid(body.id, "Category");
     const name = readText(body.name, "Category name", 120);
     const description = readOptionalText(body.description, "Description", 1000);

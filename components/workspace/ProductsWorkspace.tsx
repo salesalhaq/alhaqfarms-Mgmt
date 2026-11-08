@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, LoaderCircle, Pencil, Plus, RefreshCw, Save, Search, Tags, X } from "lucide-react";
+import { AlertCircle, LoaderCircle, Pencil, Plus, RefreshCw, Save, Search, Tags, Trash2, X } from "lucide-react";
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
@@ -25,6 +25,7 @@ interface ProductRow {
   image_path: string | null;
   cost_price_paisa: number;
   category_name: string;
+  fbr_pct_category_id: string;
   fbr_pct_code: string;
   fbr_pct_category_name: string;
   sku: string | null;
@@ -42,6 +43,13 @@ interface ProductRow {
 }
 
 interface CategoryOption { id: string; name: string; }
+
+interface FbrPctOption {
+  id: string;
+  name: string;
+  pct_code: string;
+  description: string;
+}
 
 interface CategoryRow {
   id: string;
@@ -87,6 +95,7 @@ interface ProductForm {
   price: string;
   cost: string;
   taxRate: string;
+  fbrPctCategoryId: string;
   onSale: boolean;
   discountedPrice: string;
   minStock: string;
@@ -106,6 +115,7 @@ const EMPTY_PRODUCT_FORM: ProductForm = {
   price: "",
   cost: "0",
   taxRate: "0",
+  fbrPctCategoryId: "",
   onSale: false,
   discountedPrice: "",
   minStock: "0",
@@ -236,7 +246,10 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
   const [productDialogOpen, setProductDialogOpen] = useState(false);
   const [productForm, setProductForm] = useState<ProductForm>(EMPTY_PRODUCT_FORM);
   const [productSaving, setProductSaving] = useState(false);
+  const [productDeletingId, setProductDeletingId] = useState<string | null>(null);
   const [productError, setProductError] = useState<string | null>(null);
+  const [pctOptions, setPctOptions] = useState<FbrPctOption[]>([]);
+  const [pctLoading, setPctLoading] = useState(false);
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [categoryList, setCategoryList] = useState<CategoryRow[]>([]);
   const [categoryLoading, setCategoryLoading] = useState(false);
@@ -313,6 +326,35 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
     }
   };
 
+  const loadPctOptions = async (product?: ProductRow) => {
+    setPctLoading(true);
+    try {
+      const response = await fetch("/api/workspace/fbr-pct-categories", {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      const result = await response.json() as { rows?: FbrPctOption[]; error?: string };
+      if (!response.ok) throw new Error(result.error || "Could not load FBR PCT categories.");
+      const options = result.rows || [];
+      const currentId = product?.fbr_pct_category_id || "";
+      if (currentId && !options.some((option) => option.id === currentId)) {
+        options.push({
+          id: currentId,
+          name: product?.fbr_pct_category_name || "Existing classification",
+          pct_code: product?.fbr_pct_code || "",
+          description: "Existing product classification",
+        });
+      }
+      setPctOptions(options);
+      return true;
+    } catch (loadError) {
+      setProductError(loadError instanceof Error ? loadError.message : "Could not load FBR PCT categories.");
+      return false;
+    } finally {
+      setPctLoading(false);
+    }
+  };
+
   const openCategories = async () => {
     setCategoryDialogOpen(true);
     setCategoryForm(EMPTY_CATEGORY_FORM);
@@ -378,7 +420,36 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
     setReloadKey((key) => key + 1);
   };
 
-  const openProductEditor = (product?: ProductRow) => {
+  const deleteCategory = async (category: CategoryRow) => {
+    if (!window.confirm(`Delete category "${category.name}"? This is only allowed when no active products use it.`)) return;
+    const result = await categoryAction.run(() => postWorkspaceAction<{ success: boolean }>(
+      "/api/workspace/categories",
+      { action: "delete", id: category.id },
+    ));
+    if (!result) return;
+    if (categoryForm.id === category.id) setCategoryForm(EMPTY_CATEGORY_FORM);
+    categoryAction.setMessage(`Category "${category.name}" deleted.`);
+    await loadCategories();
+    setReloadKey((key) => key + 1);
+  };
+
+  const deleteProduct = async (product: ProductRow) => {
+    if (!window.confirm(`Delete product "${product.name}"? It will be removed from the active catalog; historical sales will be retained.`)) return;
+    setProductDeletingId(product.id);
+    setError(null);
+    setSaveMessage("");
+    try {
+      await postWorkspaceAction("/api/workspace/product", { action: "delete", id: product.id });
+      setSaveMessage(`Product "${product.name}" deleted.`);
+      setReloadKey((key) => key + 1);
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "The product could not be deleted.");
+    } finally {
+      setProductDeletingId(null);
+    }
+  };
+
+  const openProductEditor = async (product?: ProductRow) => {
     setProductError(null);
     setSaveMessage("");
     setProductForm(product ? {
@@ -391,6 +462,7 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
       price: moneyInput(product.price_paisa),
       cost: moneyInput(product.cost_price_paisa),
       taxRate: (product.tax_rate_bps / 100).toFixed(2).replace(/\.?0+$/, ""),
+      fbrPctCategoryId: product.fbr_pct_category_id || "",
       onSale: product.on_sale,
       discountedPrice: moneyInput(product.discounted_price_paisa),
       minStock: formatQuantity(product.min_stock_milli),
@@ -400,6 +472,7 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
       imagePath: product.image_path || "",
     } : EMPTY_PRODUCT_FORM);
     setProductDialogOpen(true);
+    await loadPctOptions(product);
   };
 
   const saveProduct = async (event: FormEvent<HTMLFormElement>) => {
@@ -417,6 +490,7 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
         pricePaisa: parsePaisa(productForm.price, "Price"),
         costPricePaisa: parsePaisa(productForm.cost || "0", "Cost price"),
         taxRateBps: Math.round(Number(productForm.taxRate || 0) * 100),
+        fbrPctCategoryId: productForm.fbrPctCategoryId || null,
         onSale: productForm.onSale,
         discountedPricePaisa: productForm.discountedPrice
           ? parsePaisa(productForm.discountedPrice, "Sale price")
@@ -590,6 +664,9 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
                     <button className="secondary-button" type="button" disabled={!isHqAdmin} onClick={() => openProductEditor(product)} title={isHqAdmin ? `Edit ${product.name}.` : "Only an HQ administrator can manage products."}>
                       <Pencil size={13} /> Edit
                     </button>
+                    <button className="secondary-button" type="button" disabled={!isHqAdmin || productDeletingId !== null} onClick={() => void deleteProduct(product)} title={isHqAdmin ? `Delete ${product.name} from the active catalog.` : "Only an HQ administrator can manage products."}>
+                      {productDeletingId === product.id ? <LoaderCircle size={13} className="spin" /> : <Trash2 size={13} />} Delete
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -675,6 +752,20 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
                   value={productForm.taxRate}
                 />
               </WorkspaceField>
+              <WorkspaceField label="FBR PCT category" hint="Optional · selected from existing product tax classifications.">
+                <select
+                  disabled={pctLoading}
+                  onChange={(event) => setProductForm((form) => ({ ...form, fbrPctCategoryId: event.target.value }))}
+                  value={productForm.fbrPctCategoryId}
+                >
+                  <option value="">{pctLoading ? "Loading PCT categories…" : "Not classified"}</option>
+                  {pctOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {[option.pct_code, option.name].filter(Boolean).join(" · ")}
+                    </option>
+                  ))}
+                </select>
+              </WorkspaceField>
               <WorkspaceField label="Sale price (PKR)">
                 <input
                   inputMode="decimal"
@@ -736,7 +827,7 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
             )}
             <div className="workspace-form-actions">
               <button className="secondary-button" onClick={() => setProductDialogOpen(false)} type="button">Cancel</button>
-              <button className="primary-button" disabled={productSaving} type="submit">
+              <button className="primary-button" disabled={productSaving || pctLoading} type="submit">
                 {productSaving ? <LoaderCircle size={14} className="spin" /> : <Save size={14} />}
                 {productSaving ? "Saving…" : "Save product"}
               </button>
@@ -774,6 +865,9 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
                     </span>
                     <button className="secondary-button" type="button" onClick={() => editCategory(category)}>
                       <Pencil size={13} /> Edit
+                    </button>
+                    <button className="secondary-button" type="button" disabled={categoryAction.pending} onClick={() => void deleteCategory(category)} title="Delete category if no active products are assigned.">
+                      {categoryAction.pending ? <LoaderCircle size={13} className="spin" /> : <Trash2 size={13} />} Delete
                     </button>
                   </div>
                 </div>

@@ -55,6 +55,10 @@ function productSkuPrefix(name: string): string {
     .toUpperCase() || "SKU";
 }
 
+function isRecord(value: Json): value is { [key: string]: Json | undefined } {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
 async function generateSku(
   client: StaffClient,
   name: string,
@@ -90,6 +94,35 @@ export async function POST(request: Request) {
     assertHqAdmin(authentication.identity);
 
     const body = await readJsonBody(request, MAX_PRODUCT_BODY_BYTES);
+    if (body.action === "delete") {
+      const productId = readOptionalUuid(body.id, "Product");
+      if (!productId) throw new WriteError("Choose a product to delete.");
+      const { data: product, error: productError } = await authentication.client
+        .from("products")
+        .select("id,name")
+        .eq("id", productId)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (productError) throw productError;
+      if (!product) throw new WriteError("Product not found.", 404);
+      const now = new Date().toISOString();
+      const { data, error } = await authentication.client.from("products")
+        .update({ deleted_at: now, updated_at: now })
+        .eq("id", productId)
+        .is("deleted_at", null)
+        .select("id")
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) throw new WriteError("The product is already deleted.", 409);
+      await insertAuditEvent(authentication.client, authentication.identity, {
+        action: "product.deleted",
+        entityType: "product",
+        entityId: productId,
+        details: { name: product.name },
+      });
+      return authenticationResponse(request, authentication, { success: true });
+    }
+
     const id = readOptionalUuid(body.id, "Product");
     const name = readText(body.name, "Product name", 200);
     const categoryId = readOptionalUuid(body.categoryId, "Category");
@@ -103,6 +136,7 @@ export async function POST(request: Request) {
     const taxRate = body.taxRateBps === undefined
       ? 0
       : readInteger(body.taxRateBps, "Tax rate", { minimum: 0, maximum: 10000 });
+    const pctSelection = readOptionalText(body.fbrPctCategoryId, "FBR PCT category", 200);
     const discountedPrice = body.discountedPricePaisa == null || body.discountedPricePaisa === ""
       ? null
       : readInteger(body.discountedPricePaisa, "Sale price", { minimum: 0 });
@@ -152,6 +186,33 @@ export async function POST(request: Request) {
 
     const productId = id || crypto.randomUUID();
     const productSku = sku || await generateSku(authentication.client, name);
+    let metadata = isRecord(existingMetadata) ? { ...existingMetadata } : {};
+    for (const key of ["fbrPctCategoryId", "fbrPctCategoryName", "fbrPctCode", "fbrPctDescription"]) {
+      delete metadata[key];
+    }
+    if (pctSelection) {
+      const { data: pctProducts, error: pctError } = await authentication.client
+        .from("products")
+        .select("metadata_json")
+        .is("deleted_at", null)
+        .limit(2000);
+      if (pctError) throw pctError;
+      const matchingMetadata = (pctProducts || [])
+        .map((product) => product.metadata_json)
+        .filter(isRecord)
+        .find((candidate) => {
+          const key = [candidate.fbrPctCategoryId, candidate.fbrPctCode, candidate.fbrPctCategoryName]
+            .find((value) => typeof value === "string" && value.trim());
+          return key === pctSelection;
+        });
+      if (!matchingMetadata) {
+        throw new WriteError("Choose an FBR PCT category from the available list.");
+      }
+      for (const key of ["fbrPctCategoryId", "fbrPctCategoryName", "fbrPctCode", "fbrPctDescription"]) {
+        if (typeof matchingMetadata[key] === "string") metadata[key] = matchingMetadata[key];
+      }
+    }
+
     const values = {
       category_id: categoryId,
       name,
@@ -168,7 +229,7 @@ export async function POST(request: Request) {
       max_stock_milli: maxStock,
       image_path: imagePath === undefined ? (id ? existingImage : null) : imagePath,
       is_active: isActive,
-      metadata_json: existingMetadata,
+      metadata_json: metadata,
       updated_at: now,
     };
 

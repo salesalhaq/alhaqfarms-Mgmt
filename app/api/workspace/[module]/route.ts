@@ -332,6 +332,7 @@ export async function GET(request: Request, context: RouteContext) {
             image_path: product.image_path,
             cost_price_paisa: Number(product.cost_price_paisa || 0),
             category_name: (product.category_id && categoryNames.get(product.category_id)) || "Uncategorized",
+            fbr_pct_category_id: readMetadata("fbrPctCategoryId") || readMetadata("fbrPctCode") || readMetadata("fbrPctCategoryName"),
             fbr_pct_code: readMetadata("fbrPctCode"),
             fbr_pct_category_name: readMetadata("fbrPctCategoryName"),
             sku: product.sku,

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
+import { postWorkspaceAction } from "@/lib/workspace/write-client";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 
 interface IncomingTransfer {
@@ -41,6 +42,7 @@ interface ReceiveStockResponse {
     unitsInTransit: number;
     receivedRecently: number;
     branchName?: string;
+    canReceive?: boolean;
   };
   note?: string;
   error?: string;
@@ -61,6 +63,19 @@ export function ReceiveStockWorkspace({ item }: { item: WorkspaceModule }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [receiveQuantities, setReceiveQuantities] = useState<Record<string, string>>({});
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+
+  const quantityToMilli = (value: string): number | null => {
+    const match = /^(\d+)(?:\.(\d{1,3}))?$/.exec(value.trim());
+    if (!match) return null;
+    const total = Number(match[1]) * 1000 + Number((match[2] || "").padEnd(3, "0"));
+    return Number.isSafeInteger(total) ? total : null;
+  };
+
+  const milliToInput = (value: number): string =>
+    (value / 1000).toFixed(3).replace(/\.?0+$/, "");
 
   useEffect(() => {
     if (!staff) return;
@@ -110,10 +125,43 @@ export function ReceiveStockWorkspace({ item }: { item: WorkspaceModule }) {
       const result = await response.json() as TransferDetail;
       if (!response.ok) throw new Error(result.error || "Could not load the transfer lines.");
       setDetail(result);
+      setReceiveQuantities(Object.fromEntries(result.items.map((line) => [line.id, milliToInput(line.quantity_milli)])));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Could not load the transfer lines.");
     } finally {
       setDetailLoading(false);
+    }
+  };
+
+  const confirmReceipt = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!detail) return;
+    const items: Array<{ itemId: string; receivedQuantityMilli: number }> = [];
+    for (const line of detail.items) {
+      const receivedQuantityMilli = quantityToMilli(receiveQuantities[line.id] || "");
+      if (receivedQuantityMilli == null || receivedQuantityMilli > line.quantity_milli) {
+        setError(`Received quantity for ${line.product_name} must be between zero and the sent quantity.`);
+        return;
+      }
+      items.push({ itemId: line.id, receivedQuantityMilli });
+    }
+    if (!window.confirm("Confirm the quantities that arrived at this branch?")) return;
+    setActionBusy(true);
+    setError(null);
+    setActionMessage(null);
+    try {
+      await postWorkspaceAction("/api/workspace/transfers", {
+        action: "receive",
+        transferId: detail.transfer.id,
+        items,
+      });
+      setActionMessage("Transfer received. Confirmed stock has been added to this branch.");
+      setReloadKey((value) => value + 1);
+      await openDetail(detail.transfer);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "The transfer could not be received.");
+    } finally {
+      setActionBusy(false);
     }
   };
 
@@ -131,7 +179,7 @@ export function ReceiveStockWorkspace({ item }: { item: WorkspaceModule }) {
         <div>
           <p className="eyebrow page">{item.section}</p>
           <h1>{item.title}</h1>
-          <p>{item.description} Confirm what actually arrived from another branch. Receiving posts stock movements from the Windows desktop app.</p>
+          <p>{item.description} Confirm what actually arrived from another branch.</p>
         </div>
         <button className="button secondary" type="button" onClick={() => setReloadKey((value) => value + 1)} disabled={loading}>
           {loading ? <><LoaderCircle className="spin" size={15} /> Loading…</> : <><RefreshCw size={15} /> Refresh</>}
@@ -140,8 +188,9 @@ export function ReceiveStockWorkspace({ item }: { item: WorkspaceModule }) {
 
       <div className="notice info" role="note">
         <PackageCheck size={16} />
-        <span>{payload?.note || "Receiving a transfer posts stock movements and remains a Windows desktop workflow. This web page is read-only."}</span>
+        <span>{payload?.note || "Confirm received quantities to post stock movements to the destination branch."}</span>
       </div>
+      {actionMessage && <div className="notice info" role="status">{actionMessage}</div>}
 
       <div className="daily-report-toolbar daily-report-no-print">
         {staff?.role === "admin" && (
@@ -216,9 +265,11 @@ export function ReceiveStockWorkspace({ item }: { item: WorkspaceModule }) {
                       <button className="button secondary" type="button" disabled={detailLoading} onClick={() => void openDetail(transfer)}>
                         <Eye size={13} /> Lines
                       </button>
-                      <button className="button secondary" type="button" disabled title="Receiving a transfer posts stock movements and is a Windows desktop workflow.">
-                        Receive
-                      </button>
+                      {payload.summary.canReceive && (
+                        <button className="button secondary" type="button" disabled={detailLoading || actionBusy} onClick={() => void openDetail(transfer)}>
+                          Receive
+                        </button>
+                      )}
                     </td>
                   </tr>
                 )) : <tr><td colSpan={staff?.role === "admin" ? 9 : 8} className="empty">Nothing is in transit to this store.</td></tr>}
@@ -284,16 +335,45 @@ export function ReceiveStockWorkspace({ item }: { item: WorkspaceModule }) {
                   )) : <tr><td colSpan={5} className="empty">This transfer has no line items.</td></tr>}
                 </tbody>
               </table>
-              <div className="heading-actions" style={{ marginTop: "12px" }}>
-                <button className="button secondary" type="button" disabled title="Confirming a receipt posts stock movements and is a Windows desktop workflow.">
-                  <PackageCheck size={13} /> Confirm receipt
-                </button>
-              </div>
+              {payload.summary.canReceive && detail.transfer.status === "dispatched" && (
+                <form className="workspace-form" onSubmit={confirmReceipt}>
+                  <h3>Confirm received quantities</h3>
+                  <p>Enter what actually arrived. Enter 0 for any missing line.</p>
+                  <div className="table-wrap">
+                    <table>
+                      <thead><tr><th>Product</th><th>Sent</th><th>Received</th></tr></thead>
+                      <tbody>
+                        {detail.items.map((line) => (
+                          <tr key={line.id}>
+                            <td>{line.product_name} <small>{line.unit_code}</small></td>
+                            <td>{formatQuantity(line.quantity_milli)} {line.unit_code}</td>
+                            <td>
+                              <input
+                                aria-label={`Received quantity for ${line.product_name}`}
+                                inputMode="decimal"
+                                required
+                                value={receiveQuantities[line.id] || ""}
+                                onChange={(event) => setReceiveQuantities((values) => ({ ...values, [line.id]: event.target.value }))}
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="workspace-form-actions">
+                    <button className="primary-button" disabled={actionBusy || !detail.items.length} type="submit">
+                      {actionBusy ? <LoaderCircle size={14} className="spin" /> : <PackageCheck size={14} />}
+                      {actionBusy ? "Receiving…" : "Confirm receipt"}
+                    </button>
+                  </div>
+                </form>
+              )}
             </section>
           )}
 
           <p className="list-limit-note">
-            Read-only view of transfers addressed to this store. Sending, dispatching, and confirming receipt stay in the Windows desktop app.
+            Dispatching is managed by the sending branch. A transfer only increases destination stock after receipt is confirmed.
           </p>
         </>
       )}

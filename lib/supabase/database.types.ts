@@ -647,6 +647,18 @@ export interface Database {
           total_count: number;
         }[];
       };
+      get_staff_transfer_branches: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          id: string;
+          name: string;
+          code: string;
+        }[];
+      };
+      staff_manage_stock_transfer: {
+        Args: { p_action: string; p_payload: Json };
+        Returns: Json;
+      };
       staff_pos_register_action: {
         Args: { p_action: string; p_payload: Json };
         Returns: Json;

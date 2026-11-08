@@ -15,7 +15,7 @@ export async function GET(request: Request) {
   }
 
   const role = authentication.identity.staff.role;
-  const client = authentication.client as unknown as { from(table: string): any };
+  const client = authentication.client as unknown as { from(table: string): any; rpc(name: string): Promise<any> };
   const parameters = new URL(request.url).searchParams;
   const branches = authentication.identity.branches;
   const branchNames = new Map(branches.map((branch) => [branch.id, branch.name]));
@@ -43,6 +43,35 @@ export async function GET(request: Request) {
     }
     selectedBranchIds = [branchId];
   }
+  const isManager = role === "manager";
+  const permissionRows = role !== "admin"
+    ? await client
+      .from("branch_module_permissions")
+      .select("branch_id,permission_key,is_allowed,updated_at,id")
+      .in("branch_id", selectedBranchIds)
+      .eq("role", role)
+      .is("deleted_at", null)
+      .order("updated_at", { ascending: false })
+      .order("id", { ascending: false })
+    : { data: [], error: null };
+  if (permissionRows.error) {
+    return authenticationResponse(request, authentication, { error: permissionRows.error.message }, 500);
+  }
+  const transferPermissionMap = new Map<string, boolean>();
+  for (const row of permissionRows.data || []) {
+    const key = `${row.branch_id}:${row.permission_key}`;
+    if (!transferPermissionMap.has(key)) transferPermissionMap.set(key, Boolean(row.is_allowed));
+  }
+  const effectiveTransferPermission = (branchId: string, key: string) =>
+    transferPermissionMap.get(`${branchId}:${key}`) ?? true;
+  const canView = role === "admin" || selectedBranchIds.some((branchId) =>
+    effectiveTransferPermission(branchId, "module:receive_stock:view"));
+  if (!canView) {
+    return authenticationResponse(request, authentication, { error: "Receive Stock is not available to your account at this branch." }, 403);
+  }
+  const canReceive = role === "admin" || (role === "manager" && selectedBranchIds.some((branchId) =>
+    effectiveTransferPermission(branchId, "module:receive_stock:view")
+      && effectiveTransferPermission(branchId, "action:receive_transfer")));
 
   try {
     if (detailId) {
@@ -67,23 +96,28 @@ export async function GET(request: Request) {
         .is("deleted_at", null)
         .order("created_at", { ascending: true });
       if (itemsError) throw itemsError;
+      const branchResult = await client.rpc("get_staff_transfer_branches");
+      if (branchResult.error) throw branchResult.error;
+      const allBranchNames = new Map((branchResult.data || []).map((branch: { id: string; name: string }) => [branch.id, branch.name]));
 
       return authenticationResponse(request, authentication, {
         transfer: {
           ...transfer,
-          from_branch_name: branchNames.get(transfer.from_branch_id) || "Branch unavailable",
-          to_branch_name: branchNames.get(transfer.to_branch_id) || "Branch unavailable",
+          from_branch_name: allBranchNames.get(transfer.from_branch_id) || "Branch unavailable",
+          to_branch_name: allBranchNames.get(transfer.to_branch_id) || "Branch unavailable",
         },
         items: items || [],
       });
     }
 
     if (!selectedBranchIds.length) {
+      const branchResult = await client.rpc("get_staff_transfer_branches");
+      if (branchResult.error) throw branchResult.error;
       return authenticationResponse(request, authentication, {
         incoming: [],
         received: [],
-        branches: branches.map((branch) => ({ id: branch.id, name: branch.name, code: branch.code })),
-        summary: { arriving: 0, unitsInTransit: 0, receivedRecently: 0 },
+        branches: branchResult.data || [],
+        summary: { arriving: 0, unitsInTransit: 0, receivedRecently: 0, canReceive },
         generatedAt: new Date().toISOString(),
       });
     }
@@ -135,12 +169,15 @@ export async function GET(request: Request) {
       }
     }
 
+    const branchResult = await client.rpc("get_staff_transfer_branches");
+    if (branchResult.error) throw branchResult.error;
+    const allBranchNames = new Map((branchResult.data || []).map((branch: { id: string; name: string }) => [branch.id, branch.name]));
     const decorate = (transfer: Record<string, string | null>) => {
       const summary = summaries.get(String(transfer.id)) || { item_count: 0, quantity_milli: 0, received_quantity_milli: 0 };
       return {
         ...transfer,
-        from_branch_name: branchNames.get(String(transfer.from_branch_id)) || "Branch unavailable",
-        to_branch_name: branchNames.get(String(transfer.to_branch_id)) || "Branch unavailable",
+        from_branch_name: allBranchNames.get(String(transfer.from_branch_id)) || "Branch unavailable",
+        to_branch_name: allBranchNames.get(String(transfer.to_branch_id)) || "Branch unavailable",
         ...summary,
       };
     };
@@ -158,12 +195,14 @@ export async function GET(request: Request) {
         receivedRecently: receivedRows.length,
         branchId: selectedBranchIds.length === 1 ? selectedBranchIds[0] : null,
         branchName: selectedBranchIds.length === 1
-          ? branchNames.get(selectedBranchIds[0]) || "Your branch"
+          ? allBranchNames.get(selectedBranchIds[0]) || "Your branch"
           : "All accessible branches",
-        canReceive: false,
+        canReceive,
       },
-      readOnly: true,
-      note: "Receiving a transfer posts stock movements and remains a Windows desktop workflow. This web page is a read-only view of transfers in transit.",
+      readOnly: !canReceive,
+      note: canReceive
+        ? "Confirm received quantities here. Only the quantity confirmed as received is added to destination stock."
+        : "You can view incoming transfers, but a manager must confirm receipt to post stock movements.",
       generatedAt: new Date().toISOString(),
     });
   } catch (error) {

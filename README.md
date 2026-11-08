@@ -29,7 +29,9 @@ The Windows app keeps a local scrypt verifier so staff can sign in offline. Supa
 
 After staff sign-in, the home page opens the Overview dashboard. The left navigation mirrors the desktop sections and routes modules under `/workspace/<module>`. Admin and Farm ERP navigation is shown only to admin accounts; cashier navigation omits manager-only purchasing, transfer, and stock-report entries. Online Orders continues to use its existing live, branch-scoped read-only pages.
 
-The product catalog uses an authenticated RLS-scoped API; HQ administrators can add, edit, and soft-delete products, assign existing FBR PCT classifications, and manage categories. Categories cannot be deleted while active products still reference them; product/category changes are audited. Sales history uses an authenticated RLS-scoped API with 25-record pagination and read-only receipt details; returns uses the same branch-scoped pattern and caps its search window at 500 recent rows. Daily report uses a security-invoker, branch-scoped RPC for uncapped totals and exposes no write actions. Point of sale supports branch-scoped register operations and checkout with server-side validation. Farm ERP uses an admin-only, RLS-scoped read API with bounded lists, aggregate totals, filters, and record details; ERP writes remain in the Windows app. The other mirrored modules currently provide the page layout and visible controls only. Filters, search, and action buttons on those preview pages do not fetch or change operational data. Build and verify each module's server-side authorization, RLS-scoped API, and workflow before enabling its controls.
+Transfers supports draft creation, dispatch, cancellation, and per-line receipt confirmation. The Transfers and Receive Stock pages use a transactional, permission-checked RPC so source deductions, destination receipts, and audit events are atomic. Purchasing supports its web order and receipt workflows. These write workflows require their listed Supabase migrations to be applied before deployment.
+
+The product catalog uses an authenticated RLS-scoped API; HQ administrators can add, edit, and soft-delete products, assign existing FBR PCT classifications, and manage categories. Categories cannot be deleted while active products still reference them; product/category changes are audited. Sales history uses an authenticated RLS-scoped API with 25-record pagination and read-only receipt details; returns uses the same branch-scoped pattern and caps its search window at 500 recent rows. Daily report uses a security-invoker, branch-scoped RPC for uncapped totals and exposes no write actions. Point of sale supports branch-scoped register operations and checkout with server-side validation. Farm ERP uses an admin-only, RLS-scoped read API with bounded lists, aggregate totals, filters, and record details; ERP writes remain in the Windows app. Modules not yet connected to an operational API remain previews; their visible controls do not change operational data until their workflows are implemented.
 
 ## Local development
 
@@ -52,6 +54,7 @@ E:\ALhaqFM APP\database\supabase\migrations\0027_staff_pos_catalog.sql
 E:\ALhaqFM APP\database\supabase\migrations\0028_staff_daily_report.sql
 E:\Alhaqfm Web\supabase\migrations\029_branch_tax_and_fbr_settings.sql
 E:\Alhaqfm Web\supabase\migrations\030_web_cloud_backups.sql
+E:\Alhaqfm Web\supabase\migrations\032_stock_transfer_workflow.sql
 ```
 
 The web migration creates branch-scoped POS and FBR settings and updates checkout/held-sale validation. Apply it before deploying this version of the web app. Configure a separate 32-byte random key (64 hex characters) as `FBR_CONFIG_ENCRYPTION_KEY` in the Cloudflare Worker secret store before administrators save FBR credentials. For local development, use a different key in `.dev.vars`; do not commit real keys. A key rotation requires re-encrypting existing credentials before replacing the old key.
@@ -81,6 +84,8 @@ To enable scheduled cloud copies, deploy the Edge Function and install its 15-mi
    ```
 
 Until these deployment steps are complete, manual local and cloud backups work, but saved automatic schedules will not run.
+
+Migration `032_stock_transfer_workflow.sql` installs the atomic create/dispatch/receive/cancel RPC and the active branch lookup used by Transfers and Receive Stock. Apply it before deploying these transfer workflows. It does not depend on the optional backup scheduler setup in migration 031. Receipt confirmation is available from either page; only confirmed quantities are added to destination stock.
 
 From `E:\ALhaqFM APP\database\supabase`, set the shared gateway secret and deploy these functions:
 

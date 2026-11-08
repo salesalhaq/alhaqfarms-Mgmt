@@ -1,8 +1,18 @@
 import { authenticateStaff, authenticationResponse, isUuid } from "@/lib/server/staff-auth";
+import {
+  assertSameOrigin,
+  readInteger,
+  readJsonBody,
+  readOptionalText,
+  readText,
+  writeFailure,
+  WriteError,
+} from "@/lib/server/write";
+import type { Json } from "@/lib/supabase/database.types";
 
 export const dynamic = "force-dynamic";
 
-type TransfersClient = { from(table: string): any };
+type TransfersClient = { from(table: string): any; rpc(name: string, args?: any): Promise<any> };
 type TransferStatus = "draft" | "dispatched" | "received" | "cancelled";
 
 const PAGE_SIZE = 25;
@@ -21,7 +31,7 @@ function pakistanDateBoundary(value: string, nextDay = false): string {
 }
 
 function schemaUnavailable(error: { code?: string }): boolean {
-  return ["42P01", "42703", "PGRST200", "PGRST204", "PGRST205"].includes(error.code || "");
+  return ["42P01", "42703", "PGRST200", "PGRST202", "PGRST204", "PGRST205"].includes(error.code || "");
 }
 
 function transferError(error: { code?: string; message?: string }): string {
@@ -56,8 +66,69 @@ export async function GET(request: Request) {
   const branchNames = new Map(branches.map((branch) => [branch.id, branch.name]));
   const isHqAdmin = authentication.identity.staff.role === "admin" && !authentication.identity.staff.branch_id;
   const detailId = parameters.get("detailId") || "";
+  const isManager = authentication.identity.staff.role === "manager";
+  const permissionRows = isManager && authentication.identity.staff.branch_id
+    ? await client
+      .from("branch_module_permissions")
+      .select("branch_id,permission_key,is_allowed,updated_at,id")
+      .eq("branch_id", authentication.identity.staff.branch_id)
+      .eq("role", "manager")
+      .is("deleted_at", null)
+      .order("updated_at", { ascending: false })
+      .order("id", { ascending: false })
+    : { data: [], error: null };
+  if (permissionRows.error) {
+    return authenticationResponse(
+      request,
+      authentication,
+      { error: transferError(permissionRows.error) },
+      schemaUnavailable(permissionRows.error) ? 503 : 500,
+    );
+  }
+  const permissionMap = new Map<string, boolean>();
+  for (const row of permissionRows.data || []) {
+    if (!permissionMap.has(row.permission_key)) permissionMap.set(row.permission_key, Boolean(row.is_allowed));
+  }
+  const effectivePermission = (key: string) => !isManager || (permissionMap.get(key) ?? true);
+  if (!effectivePermission("module:transfers:view")) {
+    return authenticationResponse(request, authentication, { error: "Transfers are not available to your account at this branch." }, 403);
+  }
 
   try {
+    const catalogBranchId = parameters.get("catalogBranchId") || "";
+    if (catalogBranchId) {
+      if (!isUuid(catalogBranchId)) {
+        return authenticationResponse(request, authentication, { error: "Choose a valid source branch." }, 400);
+      }
+      if (!branchNames.has(catalogBranchId)) {
+        return authenticationResponse(request, authentication, { error: "You cannot access that source branch." }, 403);
+      }
+      const catalogSearch = (parameters.get("catalogSearch") || "").trim().slice(0, 80);
+      const { data: products, error: catalogError } = await client.rpc("get_staff_pos_catalog", {
+        p_branch_id: catalogBranchId,
+        p_search: catalogSearch,
+        p_category_id: null,
+        p_limit: 50,
+        p_offset: 0,
+      });
+      if (catalogError) throw catalogError;
+      const productIds = (products || []).map((product: { id: string }) => product.id);
+      const { data: costs, error: costsError } = productIds.length
+        ? await client.from("products").select("id,cost_price_paisa").in("id", productIds).is("deleted_at", null)
+        : { data: [], error: null };
+      if (costsError) throw costsError;
+      const costByProduct = new Map((costs || []).map((product: { id: string; cost_price_paisa: number }) => [
+        product.id, Number(product.cost_price_paisa || 0),
+      ]));
+      return authenticationResponse(request, authentication, {
+        products: (products || []).map((product: { id: string; name: string; sku: string | null; barcode: string | null; unit_code: string; stock_milli: number }) => ({
+          ...product,
+          cost_price_paisa: costByProduct.get(product.id) || 0,
+        })),
+        total: products?.[0]?.total_count || 0,
+      });
+    }
+
     if (detailId) {
       if (!isUuid(detailId)) {
         return authenticationResponse(request, authentication, { error: "Choose a valid transfer." }, 400);
@@ -81,12 +152,14 @@ export async function GET(request: Request) {
         .is("deleted_at", null)
         .order("created_at", { ascending: true });
       if (itemsError) throw itemsError;
+      const branchResult = await client.rpc("get_staff_transfer_branches");
+      if (branchResult.error) throw branchResult.error;
 
       return authenticationResponse(request, authentication, {
         transfer: {
           ...transfer,
-          from_branch_name: branchName(branches, transfer.from_branch_id),
-          to_branch_name: branchName(branches, transfer.to_branch_id),
+          from_branch_name: branchName(branchResult.data || [], transfer.from_branch_id),
+          to_branch_name: branchName(branchResult.data || [], transfer.to_branch_id),
         },
         items: items || [],
       });
@@ -129,7 +202,23 @@ export async function GET(request: Request) {
 
     const branchScope = branchId === "all" ? branches.map((branch) => branch.id) : [branchId];
     if (!branchScope.length) {
-      return authenticationResponse(request, authentication, { rows: [], total: 0, page, pageSize: PAGE_SIZE });
+      const branchResult = await client.rpc("get_staff_transfer_branches");
+      if (branchResult.error) throw branchResult.error;
+      return authenticationResponse(request, authentication, {
+        rows: [],
+        total: 0,
+        page,
+        pageSize: PAGE_SIZE,
+        branches: branchResult.data || [],
+        accessibleBranchIds: branches.map((branch) => branch.id),
+        permissions: {
+          canCreate: effectivePermission("module:transfers:manage")
+            && effectivePermission("action:create_transfer"),
+          canManage: effectivePermission("module:transfers:manage"),
+          canReceive: effectivePermission("module:receive_stock:view")
+            && effectivePermission("action:receive_transfer"),
+        },
+      });
     }
 
     let query = client
@@ -173,6 +262,8 @@ export async function GET(request: Request) {
       summaries.set(row.transfer_id, summary);
     }
 
+    const branchResult = await client.rpc("get_staff_transfer_branches");
+    if (branchResult.error) throw branchResult.error;
     return authenticationResponse(request, authentication, {
       rows: (transfers || []).map((transfer: {
         id: string;
@@ -185,14 +276,23 @@ export async function GET(request: Request) {
         const summary = summaries.get(transfer.id) || { item_count: 0, quantity_milli: 0 };
         return {
           ...transfer,
-          from_branch_name: branchNames.get(transfer.from_branch_id) || "Branch unavailable",
-          to_branch_name: branchNames.get(transfer.to_branch_id) || "Branch unavailable",
+          from_branch_name: branchName(branchResult.data || [], transfer.from_branch_id),
+          to_branch_name: branchName(branchResult.data || [], transfer.to_branch_id),
           ...summary,
         };
       }),
       total: count || 0,
       page,
       pageSize: PAGE_SIZE,
+      branches: branchResult.data || [],
+      accessibleBranchIds: branches.map((branch) => branch.id),
+      permissions: {
+        canCreate: effectivePermission("module:transfers:manage")
+          && effectivePermission("action:create_transfer"),
+        canManage: effectivePermission("module:transfers:manage"),
+        canReceive: effectivePermission("module:receive_stock:view")
+          && effectivePermission("action:receive_transfer"),
+      },
     });
   } catch (error) {
     const message = transferError(error as { code?: string; message?: string });
@@ -202,5 +302,86 @@ export async function GET(request: Request) {
       { error: message },
       schemaUnavailable(error as { code?: string }) ? 503 : 500,
     );
+  }
+}
+
+export async function POST(request: Request) {
+  const authentication = await authenticateStaff(request);
+  if (!authentication.ok) {
+    return authenticationResponse(request, authentication, { error: authentication.error }, authentication.status);
+  }
+
+  try {
+    assertSameOrigin(request);
+    const body = await readJsonBody(request);
+    const action = readText(body.action, "Transfer action", 20);
+    if (!["create", "dispatch", "receive", "cancel"].includes(action)) {
+      throw new WriteError("Choose a supported transfer action.");
+    }
+    const idempotencyKey = readText(body.idempotencyKey, "Request key", 100);
+    let payload: Json;
+    if (action === "create") {
+      const fromBranchId = readText(body.fromBranchId, "Source branch", 64);
+      const toBranchId = readText(body.toBranchId, "Destination branch", 64);
+      if (!isUuid(fromBranchId) || !isUuid(toBranchId)) {
+        throw new WriteError("Choose valid source and destination branches.");
+      }
+      if (fromBranchId === toBranchId) throw new WriteError("Choose a different destination branch.");
+      if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > 200) {
+        throw new WriteError("A transfer must include between 1 and 200 products.");
+      }
+      const items = body.items.map((entry) => {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+          throw new WriteError("Enter a valid product on each transfer line.");
+        }
+        const line = entry as Record<string, unknown>;
+        const productId = readText(line.productId, "Product", 64);
+        if (!isUuid(productId)) throw new WriteError("Choose a valid product.");
+        return { productId, quantityMilli: readInteger(line.quantityMilli, "Quantity", { minimum: 1 }) };
+      });
+      payload = {
+        fromBranchId, toBranchId, items,
+        notes: readOptionalText(body.notes, "Transfer notes", 500),
+        idempotencyKey,
+      };
+    } else {
+      const transferId = readText(body.transferId, "Transfer", 64);
+      if (!isUuid(transferId)) throw new WriteError("Choose a valid transfer.");
+      if (action === "receive") {
+        let items: Array<{ itemId: string; receivedQuantityMilli: number }> | undefined;
+        if (body.items !== undefined) {
+          if (!Array.isArray(body.items) || body.items.length > 200) {
+            throw new WriteError("Enter valid received quantities for this transfer.");
+          }
+          items = body.items.map((entry) => {
+            if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+              throw new WriteError("Enter a valid received quantity for each transfer line.");
+            }
+            const line = entry as Record<string, unknown>;
+            const itemId = readText(line.itemId, "Transfer line", 64);
+            if (!isUuid(itemId)) throw new WriteError("Choose a valid transfer line.");
+            return {
+              itemId,
+              receivedQuantityMilli: readInteger(line.receivedQuantityMilli, "Received quantity", {
+                minimum: 0,
+              }),
+            };
+          });
+        }
+        payload = { transferId, items: items || [], idempotencyKey };
+      } else {
+        payload = { transferId, idempotencyKey };
+      }
+    }
+
+    const { data, error } = await authentication.client.rpc("staff_manage_stock_transfer", {
+      p_action: action,
+      p_payload: payload,
+    });
+    if (error?.code === "P0001") throw new WriteError(error.message);
+    if (error) throw error;
+    return authenticationResponse(request, authentication, { result: data });
+  } catch (error) {
+    return writeFailure(request, authentication, error);
   }
 }

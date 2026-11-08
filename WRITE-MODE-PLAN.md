@@ -161,9 +161,7 @@ Each RPC mirrors the desktop `BEGIN IMMEDIATE` block: validate, re-check state, 
 | --- | --- |
 | `adjustStock` | `staff_adjust_stock` |
 | `recordStocktake` | `staff_record_stocktake` |
-| `createTransfer` | `staff_create_transfer` |
-| `dispatchTransfer` | `staff_dispatch_transfer` |
-| `receiveTransfer` | `staff_receive_transfer` |
+| `createTransfer`, `dispatchTransfer`, `receiveTransfer`, `cancelTransfer` | `staff_manage_stock_transfer` (migration 032; also wired on Receive Stock) |
 | `receivePurchase` | `staff_receive_purchase` |
 | `createPurchaseOrder` | `staff_create_purchase_order` |
 | `receivePurchaseOrder` | `staff_receive_purchase_order` |
@@ -186,7 +184,7 @@ Replace every disabled desktop control with a real dialog, in desktop screen ord
 4. `AdminExpensesWorkspace` — Record expense, category save. Web writes and HQ-category visibility are implemented; apply migration `009_expense_category_visibility.sql` before branch managers record expenses.
 5. `InventoryWorkspace` — Adjust stock, record stocktake.
 6. `PurchasingWorkspace` / `ReceiveStockWorkspace` — purchase order create/receive/cancel, direct receipt, supplier payment/return.
-7. `TransfersWorkspace` — create/dispatch/receive/cancel.
+7. `TransfersWorkspace` — create/dispatch/receive/cancel. Implemented with atomic stock and audit writes; receipt is also available on `ReceiveStockWorkspace` (migration 032).
 8. `PointOfSaleWorkspace` — open/close shift, cash in/out, hold/resume, complete sale, discount approval.
 9. `StoreOrdersWorkspace` — process order.
 10. `ReturnsWorkspace` / `StoreReturnsWorkspace` — create/approve/reject/cancel/complete.
@@ -371,6 +369,7 @@ Every item below gets a web equivalent. None stay disabled with "use the desktop
 | `006_cloud_settings_tables.sql` | D | business/FBR/app/units/HR tax/device settings |
 | `007_discount_requests.sql` | D | cross-device discount approval |
 | `008_print_scale_device_settings.sql` | C/D | printer + scale prefs per device |
+| `032_stock_transfer_workflow.sql` | A2/A3 | atomic transfer lifecycle, receipt quantities, branch lookup |
 
 Each migration is applied manually by the user; the agent creates the file and states the apply step.
 

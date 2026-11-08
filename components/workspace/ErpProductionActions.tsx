@@ -106,7 +106,7 @@ export function ErpProductionActions({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const eligibleProducts = useMemo(
+  const outputProducts = useMemo(
     () => products.filter((product) => !product.category_name.toUpperCase().startsWith("RAW")),
     [products],
   );
@@ -320,7 +320,7 @@ export function ErpProductionActions({
                 <select required aria-label="Output product" value={line.productId}
                   onChange={(event) => updateLine("outputs", line.key, { productId: event.target.value })}>
                   <option value="">Choose output</option>
-                  {eligibleProducts.map((product) => <option key={product.id} value={product.id}>{product.name} · {product.unit_code}</option>)}
+                  {outputProducts.map((product) => <option key={product.id} value={product.id}>{product.name} · {product.unit_code}</option>)}
                 </select>
                 <input required aria-label="Output quantity" inputMode="decimal" placeholder="Quantity" value={line.quantity}
                   onChange={(event) => updateLine("outputs", line.key, { quantity: event.target.value })} />
@@ -346,7 +346,7 @@ export function ErpProductionActions({
                       <select required aria-label="Input product" value={line.productId}
                         onChange={(event) => updateLine("inputs", line.key, { productId: event.target.value })}>
                         <option value="">Choose input</option>
-                        {eligibleProducts.map((entry) => (
+                        {products.map((entry) => (
                           <option key={entry.id} value={entry.id}>{entry.name} · {formatQuantity(entry.stock_milli)} on hand</option>
                         ))}
                       </select>

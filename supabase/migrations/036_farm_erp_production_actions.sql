@@ -179,9 +179,6 @@ begin
     where product.id = v_product_id and product.is_active and product.deleted_at is null
     for share of product;
     if not found then raise exception 'Choose an active input product.'; end if;
-    if left(upper(coalesce(v_product.category_name,'')),3) = 'RAW' then
-      raise exception 'RAW-category products cannot be used as production inputs.';
-    end if;
     v_calculated := round(v_product.cost_price_paisa::numeric * v_quantity / 1000);
     if v_calculated > 9223372036854775807 then raise exception 'Production input cost is too large.'; end if;
     v_line_total := v_calculated::bigint;

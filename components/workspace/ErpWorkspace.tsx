@@ -14,6 +14,8 @@ import type { WorkspaceModule } from "@/lib/workspace-modules";
 import type { GeneratedDocument, PrintOrientation } from "@/lib/print/document";
 import { generateErpReportDocument } from "@/lib/print/reports";
 import { printHtmlDocument } from "@/lib/print/print-window";
+import { WorkspaceDialog, WorkspaceError, WorkspaceField } from "@/components/workspace/WorkspaceDialog";
+import { ErpProductionActions } from "@/components/workspace/ErpProductionActions";
 
 type ErpRow = Record<string, any>;
 type BranchOption = { id: string; name: string };
@@ -86,6 +88,37 @@ interface ErpResponse {
   error?: string;
 }
 
+type AnimalSpeciesOption = { id: string; name: string; is_active: number; sort_order: number };
+type AnimalProductOption = { id: string; name: string; unit_code: string; cost_price_paisa: number; stock_milli: number };
+type AnimalBatchForm = {
+  id: string;
+  branchId: string;
+  name: string;
+  speciesId: string;
+  batchType: string;
+  openingHeads: string;
+  openingCost: string;
+  openingDate: string;
+  notes: string;
+};
+type AnimalEventForm = {
+  eventType: string;
+  eventDate: string;
+  heads: string;
+  purchaseCost: string;
+  quantity: string;
+  unitCost: string;
+  productId: string;
+  notes: string;
+};
+type AnimalSpeciesForm = { id: string; name: string; sortOrder: string; isActive: boolean };
+type AnimalDialogState =
+  | { kind: "batch"; form: AnimalBatchForm; error: string | null }
+  | { kind: "event"; batchId: string; batchName: string; form: AnimalEventForm; error: string | null }
+  | { kind: "close"; batchId: string; batchName: string; error: string | null }
+  | { kind: "species-list"; error: string | null }
+  | { kind: "species-form"; form: AnimalSpeciesForm; error: string | null };
+
 const ERP_LINKS = [
   { slug: "animals", label: "Animals", detail: "Batches, head counts and feed" },
   { slug: "production", label: "Production", detail: "Runs, inputs and outputs" },
@@ -100,6 +133,14 @@ const ERP_LINKS = [
 
 const DATE_MODULES = new Set(["erp-dashboard", "production", "spice", "bulk-sales", "erp-expenses", "erp-reports"]);
 const DETAIL_MODULES = new Set(["animals", "production", "spice", "bulk-sales", "vendors", "customer-accounts"]);
+const ANIMAL_EVENT_TYPES = [
+  { value: "mortality", label: "Mortality" },
+  { value: "purchase", label: "Head purchase" },
+  { value: "feed", label: "Feed issued" },
+  { value: "weight", label: "Weight check" },
+  { value: "sale", label: "Head sold" },
+  { value: "note", label: "Note" },
+];
 
 function localDateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -115,6 +156,46 @@ function formatDay(value: string | null | undefined): string {
 function formatNumber(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "—";
   return Number(value).toLocaleString("en-PK");
+}
+
+function moneyInput(value: number): string {
+  return (Number(value || 0) / 100).toFixed(2);
+}
+
+function decimalToMinorUnits(value: string, digits: number, label: string): number {
+  const normalized = value.trim();
+  const match = normalized.match(new RegExp(`^(\\d+)(?:\\.(\\d{1,${digits}}))?$`));
+  if (!match) throw new Error(`${label} must be a non-negative number with up to ${digits} decimal places.`);
+  const whole = Number(match[1]);
+  const fraction = Number((match[2] || "").padEnd(digits, "0"));
+  const factor = 10 ** digits;
+  const result = whole * factor + fraction;
+  if (!Number.isSafeInteger(result)) throw new Error(`${label} is too large.`);
+  return result;
+}
+
+function animalToday(): string {
+  return localDateKey(new Date());
+}
+
+async function loadAnimalOptions(branchId?: string): Promise<{
+  species: AnimalSpeciesOption[];
+  products: AnimalProductOption[];
+}> {
+  const parameters = new URLSearchParams();
+  if (branchId) parameters.set("branchId", branchId);
+  const query = parameters.size ? `?${parameters.toString()}` : "";
+  const response = await fetch(`/api/workspace/erp/animals/actions${query}`, {
+    cache: "no-store",
+    credentials: "same-origin",
+  });
+  const result = await response.json() as {
+    species?: AnimalSpeciesOption[];
+    products?: AnimalProductOption[];
+    error?: string;
+  };
+  if (!response.ok) throw new Error(result.error || "Could not load animal options.");
+  return { species: result.species || [], products: result.products || [] };
 }
 
 function statusOptions(slug: string): { label: string; options: { value: string; label: string }[] } | null {
@@ -179,6 +260,12 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
   const [detail, setDetail] = useState<ErpDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [animalSpecies, setAnimalSpecies] = useState<AnimalSpeciesOption[]>([]);
+  const [animalProducts, setAnimalProducts] = useState<AnimalProductOption[]>([]);
+  const [animalDialog, setAnimalDialog] = useState<AnimalDialogState | null>(null);
+  const [animalBusy, setAnimalBusy] = useState(false);
+  const [animalOptionsLoading, setAnimalOptionsLoading] = useState(false);
+  const [animalOptionsError, setAnimalOptionsError] = useState<string | null>(null);
 
   const isDashboard = item.slug === "erp-dashboard";
   const isReports = item.slug === "erp-reports";
@@ -311,6 +398,22 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
     branchId, categoryId, debouncedSearch, from, isDashboard, item.slug, reloadKey, staff, status, to, today, trendFrom, usesDates,
   ]);
 
+  useEffect(() => {
+    if (item.slug !== "animals" || staff?.role !== "admin") return undefined;
+    let active = true;
+    setAnimalOptionsLoading(true);
+    void loadAnimalOptions().then((options) => {
+      if (active) setAnimalSpecies(options.species);
+    }).catch((loadError: unknown) => {
+      if (active) {
+        setAnimalOptionsError(loadError instanceof Error ? loadError.message : "Could not load animal species.");
+      }
+    }).finally(() => {
+      if (active) setAnimalOptionsLoading(false);
+    });
+    return () => { active = false; };
+  }, [item.slug, staff?.role]);
+
   const openDetail = async (id: string) => {
     setDetail(null);
     setDetailError(null);
@@ -348,6 +451,270 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
     setTo(today);
   };
 
+  const runAnimalAction = async (action: string, payload: Record<string, unknown>) => {
+    const response = await fetch("/api/workspace/erp/animals/actions", {
+      method: "POST",
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action, ...payload }),
+    });
+    const result = await response.json() as { error?: string; result?: ErpRow };
+    if (!response.ok) throw new Error(result.error || "Could not save the animal action.");
+    if (!result.result) throw new Error("The animal action did not return a result.");
+    return result.result;
+  };
+
+  const openAnimalBatch = (row?: ErpRow) => {
+    const activeSpecies = animalSpecies.find((species) => species.is_active === 1);
+    setAnimalDialog({
+      kind: "batch",
+      error: null,
+      form: {
+        id: row?.id || "",
+        branchId: row?.branch_id || (branchId !== "all" ? branchId : staff?.branch_id || ""),
+        name: row?.name || "",
+        speciesId: row?.species_id || activeSpecies?.id || "",
+        batchType: row?.batch_type || "terminal",
+        openingHeads: String(row?.opening_heads ?? 0),
+        openingCost: moneyInput(Number(row?.opening_cost_paisa || 0)),
+        openingDate: row?.opening_date || animalToday(),
+        notes: row?.notes || "",
+      },
+    });
+  };
+
+  const openAnimalEvent = async (record: ErpRow) => {
+    setAnimalOptionsLoading(true);
+    setAnimalOptionsError(null);
+    try {
+      const options = await loadAnimalOptions(record.branch_id);
+      setAnimalSpecies(options.species);
+      setAnimalProducts(options.products);
+      setAnimalDialog({
+        kind: "event",
+        batchId: record.id,
+        batchName: record.name,
+        error: null,
+        form: {
+          eventType: "mortality",
+          eventDate: animalToday(),
+          heads: "",
+          purchaseCost: "",
+          quantity: "",
+          unitCost: "0.00",
+          productId: "",
+          notes: "",
+        },
+      });
+    } catch (loadError) {
+      setAnimalOptionsError(loadError instanceof Error ? loadError.message : "Could not load feed products.");
+    } finally {
+      setAnimalOptionsLoading(false);
+    }
+  };
+
+  const openSpeciesManager = async () => {
+    setAnimalOptionsLoading(true);
+    setAnimalOptionsError(null);
+    try {
+      const options = await loadAnimalOptions();
+      setAnimalSpecies(options.species);
+      setAnimalDialog({ kind: "species-list", error: null });
+    } catch (loadError) {
+      setAnimalOptionsError(loadError instanceof Error ? loadError.message : "Could not load animal species.");
+    } finally {
+      setAnimalOptionsLoading(false);
+    }
+  };
+
+  const setAnimalDialogError = (error: string | null) => {
+    setAnimalDialog((current) => current ? { ...current, error } : current);
+  };
+
+  const updateAnimalBatchForm = (update: Partial<AnimalBatchForm>) => {
+    setAnimalDialog((current) => current?.kind === "batch"
+      ? { ...current, form: { ...current.form, ...update } }
+      : current);
+  };
+
+  const updateAnimalEventForm = (update: Partial<AnimalEventForm>) => {
+    setAnimalDialog((current) => current?.kind === "event"
+      ? { ...current, form: { ...current.form, ...update } }
+      : current);
+  };
+
+  const updateAnimalSpeciesForm = (update: Partial<AnimalSpeciesForm>) => {
+    setAnimalDialog((current) => current?.kind === "species-form"
+      ? { ...current, form: { ...current.form, ...update } }
+      : current);
+  };
+
+  const submitAnimalBatch = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (animalDialog?.kind !== "batch") return;
+    setAnimalBusy(true);
+    try {
+      const headsValue = animalDialog.form.openingHeads.trim();
+      if (!/^\d+$/.test(headsValue) || !Number.isSafeInteger(Number(headsValue)) || Number(headsValue) > 1000000) {
+        throw new Error("Opening head count must be between 0 and 1,000,000.");
+      }
+      if (!animalDialog.form.branchId) throw new Error("Choose a branch.");
+      const result = await runAnimalAction("save-batch", {
+        id: animalDialog.form.id || undefined,
+        branchId: animalDialog.form.branchId,
+        name: animalDialog.form.name,
+        speciesId: animalDialog.form.speciesId,
+        batchType: animalDialog.form.batchType,
+        openingHeads: Number(headsValue),
+        openingCostPaisa: decimalToMinorUnits(animalDialog.form.openingCost, 2, "Opening purchase cost"),
+        openingDate: animalDialog.form.openingDate,
+        notes: animalDialog.form.notes,
+      });
+      setAnimalDialog(null);
+      setReloadKey((key) => key + 1);
+      if (typeof result.id === "string") void openDetail(result.id);
+    } catch (saveError) {
+      setAnimalDialogError(saveError instanceof Error ? saveError.message : "Could not save the animal batch.");
+    } finally {
+      setAnimalBusy(false);
+    }
+  };
+
+  const submitAnimalEvent = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (animalDialog?.kind !== "event") return;
+    setAnimalBusy(true);
+    try {
+      const form = animalDialog.form;
+      const payload: Record<string, unknown> = {
+        batchId: animalDialog.batchId,
+        eventType: form.eventType,
+        eventDate: form.eventDate,
+        notes: form.notes,
+      };
+      if (["mortality", "purchase", "sale"].includes(form.eventType)) {
+        if (!/^\d+$/.test(form.heads.trim()) || !Number.isSafeInteger(Number(form.heads))) {
+          throw new Error("Enter a whole-number head count.");
+        }
+        payload.heads = Number(form.heads);
+      }
+      if (form.eventType === "purchase") {
+        payload.amountPaisa = decimalToMinorUnits(form.purchaseCost, 2, "Total purchase cost");
+      }
+      if (form.eventType === "feed" || form.eventType === "weight") {
+        payload.quantityMilli = decimalToMinorUnits(form.quantity, 3, "Quantity");
+      }
+      if (form.eventType === "feed") {
+        payload.unitCostPaisa = decimalToMinorUnits(form.unitCost || "0", 2, "Unit cost");
+        payload.productId = form.productId || undefined;
+      }
+      await runAnimalAction("record-event", payload);
+      const batchId = animalDialog.batchId;
+      setAnimalDialog(null);
+      setReloadKey((key) => key + 1);
+      void openDetail(batchId);
+    } catch (saveError) {
+      setAnimalDialogError(saveError instanceof Error ? saveError.message : "Could not record the animal event.");
+    } finally {
+      setAnimalBusy(false);
+    }
+  };
+
+  const submitCloseAnimalBatch = async () => {
+    if (animalDialog?.kind !== "close") return;
+    setAnimalBusy(true);
+    try {
+      const batchId = animalDialog.batchId;
+      await runAnimalAction("close-batch", { batchId });
+      setAnimalDialog(null);
+      setReloadKey((key) => key + 1);
+      void openDetail(batchId);
+    } catch (saveError) {
+      setAnimalDialogError(saveError instanceof Error ? saveError.message : "Could not close the animal batch.");
+    } finally {
+      setAnimalBusy(false);
+    }
+  };
+
+  const openSpeciesForm = (species?: AnimalSpeciesOption) => {
+    setAnimalDialog({
+      kind: "species-form",
+      error: null,
+      form: {
+        id: species?.id || "",
+        name: species?.name || "",
+        sortOrder: String(species?.sort_order ?? animalSpecies.length + 1),
+        isActive: species ? species.is_active === 1 : true,
+      },
+    });
+  };
+
+  const submitAnimalSpecies = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (animalDialog?.kind !== "species-form") return;
+    setAnimalBusy(true);
+    try {
+      const sortOrder = animalDialog.form.sortOrder.trim();
+      if (!/^\d+$/.test(sortOrder) || !Number.isSafeInteger(Number(sortOrder)) || Number(sortOrder) > 100000) {
+        throw new Error("Species sort order must be between 0 and 100,000.");
+      }
+      await runAnimalAction("save-species", {
+        id: animalDialog.form.id || undefined,
+        name: animalDialog.form.name,
+        sortOrder: Number(sortOrder),
+        isActive: animalDialog.form.isActive,
+      });
+      setAnimalDialog({ kind: "species-list", error: null });
+      setAnimalOptionsError(null);
+      try {
+        const options = await loadAnimalOptions();
+        setAnimalSpecies(options.species);
+      } catch (refreshError) {
+        const message = refreshError instanceof Error ? refreshError.message : "Could not reload animal species.";
+        setAnimalDialog((current) => current?.kind === "species-list"
+          ? { ...current, error: `Species saved, but the list could not be refreshed: ${message}` }
+          : current);
+      }
+    } catch (saveError) {
+      setAnimalDialogError(saveError instanceof Error ? saveError.message : "Could not save the animal species.");
+    } finally {
+      setAnimalBusy(false);
+    }
+  };
+
+  const toggleAnimalSpecies = async (species: AnimalSpeciesOption) => {
+    const action = species.is_active === 1 ? "deactivate-species" : "save-species";
+    if (species.is_active === 1 && !window.confirm(`Deactivate ${species.name}? Existing animal batches will keep their species history.`)) return;
+    setAnimalBusy(true);
+    setAnimalDialogError(null);
+    try {
+      if (action === "deactivate-species") {
+        await runAnimalAction(action, { id: species.id });
+      } else {
+        await runAnimalAction(action, {
+          id: species.id,
+          name: species.name,
+          sortOrder: species.sort_order,
+          isActive: true,
+        });
+      }
+      try {
+        const options = await loadAnimalOptions();
+        setAnimalSpecies(options.species);
+      } catch (refreshError) {
+        const message = refreshError instanceof Error ? refreshError.message : "Could not reload animal species.";
+        setAnimalDialog((current) => current?.kind === "species-list"
+          ? { ...current, error: `Species updated, but the list could not be refreshed: ${message}` }
+          : current);
+      }
+    } catch (saveError) {
+      setAnimalDialogError(saveError instanceof Error ? saveError.message : "Could not update the animal species.");
+    } finally {
+      setAnimalBusy(false);
+    }
+  };
+
   const visibleRows = useMemo(() => {
     if (item.slug === "bulk-sales" && paymentFilter) {
       return rows.filter((row) => {
@@ -378,6 +745,7 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
         { label: "Head count", value: formatNumber(visibleRows.reduce((total, row) => total + Number(row.head_count || 0), 0)), hint: "Live head count across loaded batches" },
         { label: "Feed cost", value: formatMoney(visibleRows.reduce((total, row) => total + Number(row.feed_paisa || 0), 0)), hint: "Recorded feed issues" },
         { label: "Purchase cost", value: formatMoney(visibleRows.reduce((total, row) => total + Number(row.purchase_paisa || 0), 0)), hint: "Opening and purchased animals" },
+        { label: "Events recorded", value: formatNumber(visibleRows.reduce((total, row) => total + Number(row.event_count || 0), 0)), hint: "Append-only ledger entries" },
       ];
     }
     if (item.slug === "production") {
@@ -467,22 +835,43 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
               ? "A live, branch-scoped snapshot of livestock, production, wholesale, receivables, payables and farm expenses."
               : isReports
                 ? "Combined farm ledgers for the selected period. Totals are computed from the records available to your signed-in branch access."
-                : `${item.description} This workspace is a live read-only view; changes stay in the Windows app.`}
+                : item.slug === "animals"
+                  ? "Manage livestock batches, head-count events, feed issues, species and batch closure."
+                  : item.slug === "production"
+                    ? "Record product and animal-based production runs, consume inputs, allocate costs and update branch stock atomically."
+                    : `${item.description} This workspace is a live read-only view; changes stay in the Windows app.`}
           </p>
         </div>
         <div className="heading-actions">
-          {!isDashboard && !isReports && item.actionLabel && (
+          {!isDashboard && !isReports && item.slug === "production" && item.actionLabel && (
+            <ErpProductionActions
+              branches={branches}
+              selectedBranchId={branchId}
+              staffBranchId={staff?.branch_id}
+              isHqAdmin={isHqAdmin}
+              actionLabel={item.actionLabel}
+              onSaved={(runId) => {
+                setReloadKey((key) => key + 1);
+                void openDetail(runId);
+              }}
+            />
+          )}
+          {!isDashboard && !isReports && item.actionLabel && item.slug !== "production" && (
             <button
               className="primary-button"
               type="button"
-              disabled
-              title="This write workflow is available in the Windows app. The web workspace is a live read-only view."
+              disabled={item.slug !== "animals" || animalOptionsLoading}
+              onClick={item.slug === "animals" ? () => openAnimalBatch() : undefined}
+              title={item.slug === "animals" ? undefined : "This write workflow is available in the Windows app."}
             >
-              <Plus size={14} /> {item.actionLabel}
+              {animalOptionsLoading && item.slug === "animals"
+                ? <LoaderCircle size={14} className="spin" />
+                : <Plus size={14} />}
+              {item.actionLabel}
             </button>
           )}
           {!isDashboard && !isReports && item.slug === "animals" && (
-            <button className="secondary-button" type="button" disabled title="Managing species is a Windows desktop workflow.">
+            <button className="secondary-button" type="button" onClick={() => void openSpeciesManager()} disabled={animalOptionsLoading}>
               <Plus size={14} /> Manage species
             </button>
           )}
@@ -526,6 +915,10 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
           </button>
         </div>
       </div>
+
+      {item.slug === "animals" && animalOptionsError && (
+        <div className="notice" role="alert"><AlertCircle size={17} /> {animalOptionsError}</div>
+      )}
 
       <section className="card" aria-label={`${item.title} controls`}>
         <div className="workspace-toolbar">
@@ -637,7 +1030,14 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
             <div className="table-wrap">
               <table id={`erp-${item.slug}`}>
                 <thead>{renderHead(item.slug, showBranchColumn, canOpenDetail)}</thead>
-                <tbody>{renderBody(item.slug, visibleRows, showBranchColumn, canOpenDetail, openDetail)}</tbody>
+                <tbody>{renderBody(
+                  item.slug,
+                  visibleRows,
+                  showBranchColumn,
+                  canOpenDetail,
+                  openDetail,
+                  (row) => openAnimalBatch(row),
+                )}</tbody>
               </table>
             </div>
             <p className="form-hint">
@@ -646,7 +1046,11 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
                 ? `Showing up to ${data.limit} records. Narrow the branch, search or date range to find older records.`
                 : isFarmStores
                   ? "Stock value is calculated from the live branch catalog when a single branch is selected."
-                  : "Live read-only records. Create and edit actions remain in the Windows app."}
+                  : item.slug === "animals"
+                    ? "Events are append-only. Mortality and sale allocate batch cost; feed issues can atomically deduct branch stock."
+                    : item.slug === "production"
+                      ? "Production runs are posted atomically with input deductions, output stock, cost allocation, and terminal-batch animal events."
+                    : "Live read-only records. Create and edit actions remain in the Windows app."}
             </p>
           </section>
 
@@ -691,10 +1095,268 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
               </div>
               {detailLoading && <div className="loading"><LoaderCircle size={18} className="spin" /> Loading record details…</div>}
               {detailError && <div className="notice" role="alert">{detailError}</div>}
-              {detail && <DetailView slug={item.slug} detail={detail} />}
+              {detail && (
+                <DetailView
+                  slug={item.slug}
+                  detail={detail}
+                  onRecordAnimalEvent={item.slug === "animals" ? openAnimalEvent : undefined}
+                  onCloseAnimalBatch={item.slug === "animals"
+                    ? (record) => setAnimalDialog({
+                      kind: "close",
+                      batchId: record.id,
+                      batchName: record.name,
+                      error: null,
+                    })
+                    : undefined}
+                />
+              )}
             </section>
           )}
         </>
+      )}
+
+      {animalDialog?.kind === "batch" && (
+        <WorkspaceDialog
+          title={animalDialog.form.id ? "Edit animal batch" : "Open animal batch"}
+          eyebrow="Farm ERP · Animals"
+          onClose={() => !animalBusy && setAnimalDialog(null)}
+          footer={(
+            <div className="workspace-form-actions">
+              <button className="button secondary" type="button" onClick={() => setAnimalDialog(null)} disabled={animalBusy}>Cancel</button>
+              <button className="button" type="submit" form="animal-batch-form" disabled={animalBusy || animalSpecies.every((species) => species.is_active !== 1)}>
+                {animalBusy ? <LoaderCircle size={14} className="spin" /> : <CheckCircle2 size={14} />}
+                {animalBusy ? "Saving…" : animalDialog.form.id ? "Save batch" : "Open batch"}
+              </button>
+            </div>
+          )}
+        >
+          <form id="animal-batch-form" className="workspace-form" onSubmit={(event) => void submitAnimalBatch(event)}>
+            <div className="workspace-form-grid">
+              <WorkspaceField label="Branch">
+                <select
+                  required
+                  value={animalDialog.form.branchId}
+                  onChange={(event) => updateAnimalBatchForm({ branchId: event.target.value })}
+                  disabled={Boolean(animalDialog.form.id)}
+                >
+                  <option value="">Choose a branch</option>
+                  {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                </select>
+              </WorkspaceField>
+              <WorkspaceField label="Batch name">
+                <input required maxLength={120} value={animalDialog.form.name} onChange={(event) => updateAnimalBatchForm({ name: event.target.value })} />
+              </WorkspaceField>
+              <WorkspaceField label="Species">
+                <select required value={animalDialog.form.speciesId} onChange={(event) => updateAnimalBatchForm({ speciesId: event.target.value })}>
+                  <option value="">Choose a species</option>
+                  {animalSpecies
+                    .filter((species) => species.is_active === 1 || species.id === animalDialog.form.speciesId)
+                    .map((species) => (
+                      <option key={species.id} value={species.id}>
+                        {species.name}{species.is_active === 1 ? "" : " (inactive)"}
+                      </option>
+                    ))}
+                </select>
+              </WorkspaceField>
+              <WorkspaceField label="Batch type">
+                <select value={animalDialog.form.batchType} onChange={(event) => updateAnimalBatchForm({ batchType: event.target.value })}>
+                  <option value="terminal">Terminal batch (meat production)</option>
+                  <option value="continuous">Continuous batch (eggs &amp; milk production)</option>
+                </select>
+              </WorkspaceField>
+              <WorkspaceField label="Opening head count">
+                <input type="number" min="0" max="1000000" step="1" required value={animalDialog.form.openingHeads} onChange={(event) => updateAnimalBatchForm({ openingHeads: event.target.value })} />
+              </WorkspaceField>
+              <WorkspaceField label="Opening purchase cost">
+                <input type="number" min="0" step="0.01" required value={animalDialog.form.openingCost} onChange={(event) => updateAnimalBatchForm({ openingCost: event.target.value })} />
+              </WorkspaceField>
+              <WorkspaceField label="Opening date">
+                <input type="date" required max={today} value={animalDialog.form.openingDate} onChange={(event) => updateAnimalBatchForm({ openingDate: event.target.value })} />
+              </WorkspaceField>
+            </div>
+            <p className="form-hint">
+              {animalDialog.form.batchType === "continuous"
+                ? "Continuous batches keep their animals for ongoing production; head count changes through mortality, sales, or culling."
+                : "Terminal batches are intended for meat production; production runs can consume animals and allocate their cost."}
+            </p>
+            <p className="form-hint">Opening purchase cost applies to the opening head count. Record later purchases as dated ledger events.</p>
+            <WorkspaceField label="Notes">
+              <textarea maxLength={500} value={animalDialog.form.notes} onChange={(event) => updateAnimalBatchForm({ notes: event.target.value })} />
+            </WorkspaceField>
+            {animalSpecies.every((species) => species.is_active !== 1) && (
+              <p className="form-hint">Add or activate a species before opening a batch.</p>
+            )}
+            <WorkspaceError message={animalDialog.error} />
+          </form>
+        </WorkspaceDialog>
+      )}
+
+      {animalDialog?.kind === "event" && (
+        <WorkspaceDialog
+          title={`Record event · ${animalDialog.batchName}`}
+          eyebrow="Farm ERP · Animals"
+          onClose={() => !animalBusy && setAnimalDialog(null)}
+          footer={(
+            <div className="workspace-form-actions">
+              <button className="button secondary" type="button" onClick={() => setAnimalDialog(null)} disabled={animalBusy}>Cancel</button>
+              <button className="button" type="submit" form="animal-event-form" disabled={animalBusy}>
+                {animalBusy ? <LoaderCircle size={14} className="spin" /> : <CheckCircle2 size={14} />}
+                {animalBusy ? "Recording…" : "Record event"}
+              </button>
+            </div>
+          )}
+        >
+          <form id="animal-event-form" className="workspace-form" onSubmit={(event) => void submitAnimalEvent(event)}>
+            <div className="workspace-form-grid">
+              <WorkspaceField label="Event type">
+                <select value={animalDialog.form.eventType} onChange={(event) => updateAnimalEventForm({ eventType: event.target.value })}>
+                  {ANIMAL_EVENT_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+                </select>
+              </WorkspaceField>
+              <WorkspaceField label="Event date">
+                <input type="date" required max={today} value={animalDialog.form.eventDate} onChange={(event) => updateAnimalEventForm({ eventDate: event.target.value })} />
+              </WorkspaceField>
+              {["mortality", "purchase", "sale"].includes(animalDialog.form.eventType) && (
+                <WorkspaceField label="Head count">
+                  <input type="number" min="1" max="100000" step="1" required value={animalDialog.form.heads} onChange={(event) => updateAnimalEventForm({ heads: event.target.value })} />
+                </WorkspaceField>
+              )}
+              {animalDialog.form.eventType === "purchase" && (
+                <WorkspaceField label="Total purchase cost" hint="Include transport or other acquisition charges.">
+                  <input type="number" min="0" step="0.01" required value={animalDialog.form.purchaseCost} onChange={(event) => updateAnimalEventForm({ purchaseCost: event.target.value })} />
+                </WorkspaceField>
+              )}
+              {["feed", "weight"].includes(animalDialog.form.eventType) && (
+                <WorkspaceField label={animalDialog.form.eventType === "feed" ? "Quantity issued" : "Total weight or measurement"} hint="Up to three decimal places.">
+                  <input type="number" min="0.001" step="0.001" required value={animalDialog.form.quantity} onChange={(event) => updateAnimalEventForm({ quantity: event.target.value })} />
+                </WorkspaceField>
+              )}
+              {animalDialog.form.eventType === "feed" && (
+                <>
+                  <WorkspaceField label="Unit cost">
+                    <input type="number" min="0" step="0.01" required value={animalDialog.form.unitCost} onChange={(event) => updateAnimalEventForm({ unitCost: event.target.value })} />
+                  </WorkspaceField>
+                  <WorkspaceField label="Deduct feed from branch stock" hint="Optional. Feed cost is quantity × unit cost.">
+                    <select
+                      value={animalDialog.form.productId}
+                      onChange={(event) => {
+                        const product = animalProducts.find((candidate) => candidate.id === event.target.value);
+                        updateAnimalEventForm({
+                          productId: event.target.value,
+                          ...(product ? { unitCost: moneyInput(product.cost_price_paisa) } : {}),
+                        });
+                      }}
+                    >
+                      <option value="">Do not change stock</option>
+                      {animalProducts.map((product) => (
+                        <option key={product.id} value={product.id}>
+                          {product.name} · {formatQuantity(product.stock_milli)} {product.unit_code} available
+                        </option>
+                      ))}
+                    </select>
+                  </WorkspaceField>
+                </>
+              )}
+            </div>
+            <WorkspaceField label="Notes">
+              <textarea maxLength={500} value={animalDialog.form.notes} onChange={(event) => updateAnimalEventForm({ notes: event.target.value })} />
+            </WorkspaceField>
+            <WorkspaceError message={animalDialog.error} />
+          </form>
+        </WorkspaceDialog>
+      )}
+
+      {animalDialog?.kind === "close" && (
+        <WorkspaceDialog
+          title="Close animal batch?"
+          eyebrow="Farm ERP · Animals"
+          onClose={() => !animalBusy && setAnimalDialog(null)}
+          footer={(
+            <div className="workspace-form-actions">
+              <button className="button secondary" type="button" onClick={() => setAnimalDialog(null)} disabled={animalBusy}>Cancel</button>
+              <button className="button" type="button" onClick={() => void submitCloseAnimalBatch()} disabled={animalBusy}>
+                {animalBusy ? <LoaderCircle size={14} className="spin" /> : <Lock size={14} />}
+                {animalBusy ? "Closing…" : "Close batch"}
+              </button>
+            </div>
+          )}
+        >
+          <p>Close <strong>{animalDialog.batchName}</strong>? Once closed, this batch cannot be edited or receive more events.</p>
+          <WorkspaceError message={animalDialog.error} />
+        </WorkspaceDialog>
+      )}
+
+      {animalDialog?.kind === "species-list" && (
+        <WorkspaceDialog
+          title="Manage animal species"
+          eyebrow="Farm ERP · Animals"
+          onClose={() => !animalBusy && setAnimalDialog(null)}
+          footer={(
+            <div className="workspace-form-actions">
+              <button className="button secondary" type="button" onClick={() => setAnimalDialog(null)} disabled={animalBusy}>Close</button>
+              <button className="button" type="button" onClick={() => openSpeciesForm()} disabled={animalBusy}>
+                <Plus size={14} /> Add species
+              </button>
+            </div>
+          )}
+        >
+          <WorkspaceError message={animalDialog.error} />
+          <div className="workspace-category-list">
+            {animalSpecies.map((species) => (
+              <div className="workspace-category-row" key={species.id}>
+                <div>
+                  <strong>{species.name}</strong>
+                  <small>Sort order {species.sort_order}</small>
+                </div>
+                <div className="workspace-inline-actions">
+                  <span className={`status ${species.is_active === 1 ? "green" : "red"}`}>
+                    {species.is_active === 1 ? "Active" : "Inactive"}
+                  </span>
+                  <button className="button secondary" type="button" onClick={() => openSpeciesForm(species)} disabled={animalBusy}>
+                    <Pencil size={12} /> Edit
+                  </button>
+                  <button className="button secondary" type="button" onClick={() => void toggleAnimalSpecies(species)} disabled={animalBusy}>
+                    {species.is_active === 1 ? "Deactivate" : "Activate"}
+                  </button>
+                </div>
+              </div>
+            ))}
+            {!animalSpecies.length && <p className="form-hint">No animal species are configured.</p>}
+          </div>
+        </WorkspaceDialog>
+      )}
+
+      {animalDialog?.kind === "species-form" && (
+        <WorkspaceDialog
+          title={animalDialog.form.id ? "Edit species" : "Add species"}
+          eyebrow="Farm ERP · Animals"
+          onClose={() => !animalBusy && setAnimalDialog({ kind: "species-list", error: null })}
+          footer={(
+            <div className="workspace-form-actions">
+              <button className="button secondary" type="button" onClick={() => setAnimalDialog({ kind: "species-list", error: null })} disabled={animalBusy}>Cancel</button>
+              <button className="button" type="submit" form="animal-species-form" disabled={animalBusy}>
+                {animalBusy ? <LoaderCircle size={14} className="spin" /> : <CheckCircle2 size={14} />}
+                {animalBusy ? "Saving…" : "Save species"}
+              </button>
+            </div>
+          )}
+        >
+          <form id="animal-species-form" className="workspace-form" onSubmit={(event) => void submitAnimalSpecies(event)}>
+            <div className="workspace-form-grid">
+              <WorkspaceField label="Species name">
+                <input required maxLength={60} value={animalDialog.form.name} onChange={(event) => updateAnimalSpeciesForm({ name: event.target.value })} />
+              </WorkspaceField>
+              <WorkspaceField label="Sort order">
+                <input type="number" min="0" max="100000" step="1" required value={animalDialog.form.sortOrder} onChange={(event) => updateAnimalSpeciesForm({ sortOrder: event.target.value })} />
+              </WorkspaceField>
+            </div>
+            <label className="workspace-checkbox">
+              <input type="checkbox" checked={animalDialog.form.isActive} onChange={(event) => updateAnimalSpeciesForm({ isActive: event.target.checked })} />
+              <span>Active and selectable for new batches</span>
+            </label>
+            <WorkspaceError message={animalDialog.error} />
+          </form>
+        </WorkspaceDialog>
       )}
 
       {reportPreview && (
@@ -1060,6 +1722,7 @@ function renderBody(
   showBranch: boolean,
   canOpenDetail: boolean,
   openDetail: (id: string) => void,
+  editAnimal: (row: ErpRow) => void,
 ) {
   const detailCell = (row: ErpRow) => {
     if (!canOpenDetail) return null;
@@ -1067,7 +1730,13 @@ function renderBody(
     if (slug === "animals") return (
       <td className="row-actions">
         {view}
-        <button className="secondary-button" type="button" disabled title="Editing animal batches is a Windows desktop workflow.">
+        <button
+          className="secondary-button"
+          type="button"
+          disabled={row.status !== "open"}
+          onClick={() => editAnimal(row)}
+          title={row.status === "open" ? "Edit animal batch" : "Closed batches cannot be edited."}
+        >
           <Pencil size={12} /> Edit
         </button>
       </td>
@@ -1253,7 +1922,17 @@ function MetaItem({ label, children }: { label: string; children: React.ReactNod
   return <div><span>{label}</span><strong>{children}</strong></div>;
 }
 
-function DetailView({ slug, detail }: { slug: string; detail: ErpDetail }) {
+function DetailView({
+  slug,
+  detail,
+  onRecordAnimalEvent,
+  onCloseAnimalBatch,
+}: {
+  slug: string;
+  detail: ErpDetail;
+  onRecordAnimalEvent?: (record: ErpRow) => void;
+  onCloseAnimalBatch?: (record: ErpRow) => void;
+}) {
   const record = detail.record;
   const items = detail.items || [];
 
@@ -1268,13 +1947,27 @@ function DetailView({ slug, detail }: { slug: string; detail: ErpDetail }) {
         <MetaItem label="Feed cost">{formatMoney(detail.summary?.feedPaisa || 0)}</MetaItem>
       </div>
       <div className="heading-actions" aria-label="Animal batch actions">
-        <button className="primary-button" type="button" disabled title="Recording animal events is a Windows desktop workflow."><Plus size={13} /> Record event</button>
-        <button className="secondary-button" type="button" disabled title="Closing animal batches is a Windows desktop workflow."><Lock size={12} /> Close batch</button>
+        <button
+          className="primary-button"
+          type="button"
+          disabled={record.status !== "open" || !onRecordAnimalEvent}
+          onClick={() => onRecordAnimalEvent?.(record)}
+        >
+          <Plus size={13} /> Record event
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          disabled={record.status !== "open" || !onCloseAnimalBatch}
+          onClick={() => onCloseAnimalBatch?.(record)}
+        >
+          <Lock size={12} /> Close batch
+        </button>
       </div>
       {record.notes && <p>{record.notes}</p>}
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Date</th><th>Event</th><th className="numeric-cell">Heads</th><th className="numeric-cell">Quantity</th><th className="numeric-cell">Amount</th><th>Notes</th></tr></thead>
+          <thead><tr><th>Date</th><th>Event</th><th className="numeric-cell">Heads</th><th className="numeric-cell">Quantity</th><th className="numeric-cell">Cost</th><th>Product</th><th>Notes</th><th>Recorded by</th></tr></thead>
           <tbody>{items.length ? items.map((event) => (
             <tr key={event.id}>
               <td className="nowrap">{formatDay(event.event_date)}</td>
@@ -1282,9 +1975,11 @@ function DetailView({ slug, detail }: { slug: string; detail: ErpDetail }) {
               <td className="numeric-cell">{event.heads_delta > 0 ? "+" : ""}{formatNumber(event.heads_delta)}</td>
               <td className="numeric-cell">{formatQuantity(event.quantity_milli)}</td>
               <td className="numeric-cell">{formatMoney(event.amount_paisa)}</td>
+              <td>{event.product_name || "—"}</td>
               <td>{event.notes || "—"}</td>
+              <td>{event.recorded_by_name || "—"}</td>
             </tr>
-          )) : <EmptyRow colSpan={6}>No batch events have been recorded.</EmptyRow>}</tbody>
+          )) : <EmptyRow colSpan={8}>No batch events have been recorded.</EmptyRow>}</tbody>
         </table>
       </div>
     </>

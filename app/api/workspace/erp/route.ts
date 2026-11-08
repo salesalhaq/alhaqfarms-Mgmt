@@ -227,14 +227,36 @@ async function loadAnimalDetail(client: ErpClient, id: string, names: Map<string
 
   const { data: events, error: eventError } = await client
     .from("animal_batch_events")
-    .select("id,event_date,event_type,heads_delta,quantity_milli,unit_cost_paisa,amount_paisa,notes,product_id,created_at")
+    .select("id,event_date,event_type,heads_delta,quantity_milli,unit_cost_paisa,amount_paisa,notes,product_id,recorded_by,created_at")
     .eq("batch_id", id)
     .is("deleted_at", null)
     .order("event_date", { ascending: false })
+    .order("created_at", { ascending: false })
     .limit(AGGREGATE_LIMIT);
   if (eventError) throw eventError;
 
-  const items = (events || []) as ErpRow[];
+  const rawItems = (events || []) as ErpRow[];
+  const productIds = [...new Set(rawItems.map((event) => event.product_id).filter((value): value is string => typeof value === "string"))];
+  const actorIds = [...new Set(rawItems.map((event) => event.recorded_by).filter((value): value is string => typeof value === "string"))];
+  const [productsResult, actorsResult] = await Promise.all([
+    productIds.length
+      ? client.from("products").select("id,name").in("id", productIds).is("deleted_at", null)
+      : Promise.resolve({ data: [], error: null }),
+    actorIds.length
+      ? client.from("staff_profiles").select("id,full_name").in("id", actorIds).is("deleted_at", null)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (productsResult.error) throw productsResult.error;
+  if (actorsResult.error) throw actorsResult.error;
+  const productNames = new Map<string, string>();
+  const actorNames = new Map<string, string>();
+  for (const product of (productsResult.data || []) as ErpRow[]) productNames.set(product.id, product.name);
+  for (const actor of (actorsResult.data || []) as ErpRow[]) actorNames.set(actor.id, actor.full_name);
+  const items: ErpRow[] = rawItems.map((event) => ({
+    ...event,
+    product_name: event.product_id ? productNames.get(event.product_id) || null : null,
+    recorded_by_name: event.recorded_by ? actorNames.get(event.recorded_by) || null : null,
+  }));
   const headCount = Number(batch.opening_heads || 0) + sum(items, "heads_delta");
   const feedItems = items.filter((event) => event.event_type === "feed");
   const purchaseItems = items.filter((event) => event.event_type === "purchase");

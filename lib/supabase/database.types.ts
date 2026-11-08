@@ -469,6 +469,51 @@ export interface Database {
         Args: { p_staff_id: string; p_user_id: string };
         Returns: boolean;
       };
+      list_staff_accounts: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          user_id: string | null;
+          full_name: string;
+          email: string | null;
+          username: string | null;
+          role: string;
+          branch_id: string | null;
+          branch_name: string;
+          is_active: boolean;
+          web_enrolled: boolean;
+          pin_configured: boolean;
+          created_at: string;
+          updated_at: string;
+          deleted_at: string | null;
+          permanently_deleted_at: string | null;
+        }[];
+      };
+      staff_manage_account: {
+        Args: { p_action: string; p_payload: Json };
+        Returns: Json;
+      };
+      issue_staff_credential_invitation: {
+        Args: { p_staff_id: string };
+        Returns: Json;
+      };
+      anonymize_cloud_staff_profile: {
+        Args: { p_local_staff_id: string };
+        Returns: Json;
+      };
+      authorize_staff_admin_credential_reset: {
+        Args: { p_staff_id: string };
+        Returns: Json;
+      };
+      set_staff_shared_credential_by_admin: {
+        Args: {
+          p_actor_user_id: string;
+          p_staff_id: string;
+          p_mode: string;
+          p_new_secret: string;
+        };
+        Returns: number;
+      };
       get_staff_overview_metrics: {
         Args: { p_branch_id: string | null; p_day_start: string; p_day_end: string };
         Returns: {

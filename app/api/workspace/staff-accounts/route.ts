@@ -1,8 +1,21 @@
 import { authenticateStaff, authenticationResponse, isUuid } from "@/lib/server/staff-auth";
+import {
+  assertHqAdmin,
+  assertSameOrigin,
+  readBoolean,
+  readJsonBody,
+  readText,
+  writeFailure,
+  WriteError,
+} from "@/lib/server/write";
 
 export const dynamic = "force-dynamic";
 
-const STAFF_LIMIT = 500;
+function throwRpcError(error: { code?: string; message?: string } | null): void {
+  if (!error) return;
+  if (error.code === "P0001") throw new WriteError(error.message || "The staff account action was rejected.");
+  throw error;
+}
 
 export async function GET(request: Request) {
   const authentication = await authenticateStaff(request);
@@ -10,11 +23,11 @@ export async function GET(request: Request) {
     return authenticationResponse(request, authentication, { error: authentication.error }, authentication.status);
   }
 
-  if (authentication.identity.staff.role !== "admin") {
+  if (authentication.identity.staff.role !== "admin" || authentication.identity.staff.branch_id) {
     return authenticationResponse(
       request,
       authentication,
-      { error: "Staff accounts are available to administrators only." },
+      { error: "Staff accounts are available to the HQ administrator only." },
       403,
     );
   }
@@ -23,7 +36,7 @@ export async function GET(request: Request) {
   const requestedBranch = parameters.get("branchId") || "";
   const roleFilter = (parameters.get("role") || "").toLowerCase();
   const statusFilter = (parameters.get("status") || "").toLowerCase();
-  const search = (parameters.get("search") || "").trim().toLowerCase();
+  const search = (parameters.get("search") || "").trim().toLowerCase().slice(0, 100);
 
   if (requestedBranch && requestedBranch !== "all" && !isUuid(requestedBranch)) {
     return authenticationResponse(request, authentication, { error: "Choose a valid branch." }, 400);
@@ -39,25 +52,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    // cloud_staff only exposes the signed-in user's own row through RLS, so the
-    // desktop roster is read through the same SECURITY DEFINER RPC it uses.
-    const client = authentication.client as unknown as {
-      rpc(name: string): Promise<{
-        data: Array<{
-          user_id: string | null;
-          local_staff_id: string | null;
-          branch_id: string | null;
-          branch_name: string | null;
-          email: string;
-          full_name: string;
-          role: string;
-          is_active: boolean;
-          created_at: string;
-        }> | null;
-        error: { message: string; code?: string } | null;
-      }>;
-    };
-    const { data, error } = await client.rpc("list_cloud_staff");
+    const { data, error } = await authentication.client.rpc("list_staff_accounts");
     if (error) {
       if (error.code === "42501") {
         return authenticationResponse(
@@ -71,30 +66,16 @@ export async function GET(request: Request) {
     }
 
     const rows = (data || [])
-      .slice(0, STAFF_LIMIT)
-      .map((member) => ({
-        id: member.user_id || member.local_staff_id || member.email,
-        user_id: member.user_id,
-        local_staff_id: member.local_staff_id,
-        full_name: member.full_name,
-        email: member.email,
-        username: member.email ? member.email.split("@")[0] : "",
-        role: member.role,
-        branch_id: member.branch_id,
-        branch_name: member.branch_name
-          || (member.branch_id ? branchNames.get(member.branch_id) || "Branch unavailable" : "Head office"),
-        is_active: Boolean(member.is_active),
-        web_enrolled: Boolean(member.user_id),
-        created_at: member.created_at,
-      }))
       .filter((member) => {
         if (requestedBranch && requestedBranch !== "all" && member.branch_id !== requestedBranch) return false;
         if (roleFilter && roleFilter !== "all" && member.role !== roleFilter) return false;
+        if (statusFilter === "archived" && !member.deleted_at) return false;
+        if (statusFilter !== "archived" && member.deleted_at) return false;
         if (statusFilter === "active" && !member.is_active) return false;
         if (statusFilter === "inactive" && member.is_active) return false;
         if (!search) return true;
         return [member.full_name, member.email, member.username, member.role, member.branch_name]
-          .some((value) => value.toLowerCase().includes(search));
+          .some((value) => value?.toLowerCase().includes(search));
       });
 
     return authenticationResponse(request, authentication, {
@@ -111,12 +92,120 @@ export async function GET(request: Request) {
         webEnrolled: rows.filter((member) => member.web_enrolled).length,
         admins: rows.filter((member) => member.role === "admin").length,
       },
-      readOnly: true,
       generatedAt: new Date().toISOString(),
     });
   } catch (error) {
     return authenticationResponse(request, authentication, {
       error: error instanceof Error ? error.message : "Could not load staff accounts.",
     }, 500);
+  }
+}
+
+export async function POST(request: Request) {
+  const authentication = await authenticateStaff(request);
+  if (!authentication.ok) {
+    return authenticationResponse(request, authentication, { error: authentication.error }, authentication.status);
+  }
+
+  try {
+    assertSameOrigin(request);
+    assertHqAdmin(authentication.identity);
+    const body = await readJsonBody(request);
+    const action = readText(body.action, "Staff account action", 40);
+    const id = body.id === undefined || body.id === null || body.id === ""
+      ? null
+      : readText(body.id, "Staff profile", 64);
+    if (id && !isUuid(id)) throw new WriteError("Choose a valid staff profile.");
+
+    if (action === "save_profile") {
+      const fullName = readText(body.fullName, "Full name", 200);
+      const email = readText(body.email, "Email", 254).toLowerCase();
+      const username = readText(body.username, "Username", 50);
+      const role = readText(body.role, "Role", 20).toLowerCase();
+      if (!["admin", "manager", "cashier"].includes(role)) throw new WriteError("Choose a valid staff role.");
+      const branchId = readText(body.branchId, "Branch", 64);
+      if (!isUuid(branchId)) throw new WriteError("Choose an active branch.");
+      const { data, error } = await authentication.client.rpc("staff_manage_account", {
+        p_action: action,
+        p_payload: { id, fullName, email, username, role, branchId },
+      });
+      throwRpcError(error);
+      return authenticationResponse(request, authentication, { result: data });
+    }
+
+    if (action === "set_active") {
+      if (!id) throw new WriteError("Choose a staff profile.");
+      const isActive = readBoolean(body.isActive, "Account status");
+      const { data, error } = await authentication.client.rpc("staff_manage_account", {
+        p_action: action,
+        p_payload: { id, isActive },
+      });
+      throwRpcError(error);
+      return authenticationResponse(request, authentication, { result: data });
+    }
+
+    if (action === "archive" || action === "restore") {
+      if (!id) throw new WriteError("Choose a staff profile.");
+      const { data, error } = await authentication.client.rpc("staff_manage_account", {
+        p_action: action,
+        p_payload: { id },
+      });
+      throwRpcError(error);
+      return authenticationResponse(request, authentication, { result: data });
+    }
+
+    if (action === "delete_profile") {
+      if (!id) throw new WriteError("Choose a staff profile.");
+      const { data, error } = await authentication.client.rpc("anonymize_cloud_staff_profile", {
+        p_local_staff_id: id,
+      });
+      throwRpcError(error);
+      return authenticationResponse(request, authentication, { result: data });
+    }
+
+    if (action === "issue_invitation") {
+      if (!id) throw new WriteError("Choose a staff profile.");
+      const { data, error } = await authentication.client.rpc("issue_staff_credential_invitation", {
+        p_staff_id: id,
+      });
+      throwRpcError(error);
+      if (!data || typeof data !== "object" || Array.isArray(data)) {
+        throw new WriteError("Supabase returned an invalid staff invitation.", 503);
+      }
+      const invitation = data as { code?: unknown; expiresAt?: unknown };
+      if (typeof invitation.code !== "string" || !/^[0-9a-f]{32}$/i.test(invitation.code)
+        || typeof invitation.expiresAt !== "string" || !Number.isFinite(Date.parse(invitation.expiresAt))) {
+        throw new WriteError("Supabase returned an invalid staff invitation.", 503);
+      }
+      return authenticationResponse(request, authentication, {
+        invitation: { code: invitation.code, expiresAt: invitation.expiresAt },
+      });
+    }
+
+    if (action === "set_credential") {
+      if (!id) throw new WriteError("Choose a staff profile.");
+      const mode = readText(body.mode, "Credential type", 20);
+      const value = body.value;
+      if (mode !== "password" && mode !== "pin") throw new WriteError("Choose password or PIN.");
+      if (typeof value !== "string"
+        || (mode === "password" && (value.length < 10 || value.length > 200))
+        || (mode === "pin" && !/^\d{4,8}$/.test(value))) {
+        throw new WriteError(mode === "password"
+          ? "Password must be between 10 and 200 characters."
+          : "PIN must contain 4 to 8 digits.");
+      }
+      const { data, error } = await authentication.client.functions.invoke("staff-credential-update", {
+        body: { adminReset: true, staffId: id, mode, value },
+      });
+      if (error) throw error;
+      if (!data || data.success !== true || !Number.isSafeInteger(data.securityVersion)) {
+        throw new WriteError(typeof data?.error === "string" ? data.error : "The credential reset could not be confirmed.", 503);
+      }
+      return authenticationResponse(request, authentication, { result: data });
+    }
+
+    throw new WriteError("Choose a supported staff account action.");
+  } catch (error) {
+    return writeFailure(request, authentication, error);
   }
 }

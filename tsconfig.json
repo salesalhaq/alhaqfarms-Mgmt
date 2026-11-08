@@ -23,6 +23,7 @@
     "components/workspace/ConnectionLogsWorkspace.tsx",
     "components/workspace/CustomerAccountsWorkspace.tsx",
     "components/workspace/ProfitTaxWorkspace.tsx",
-    "components/workspace/VendorsWorkspace.tsx"
+    "components/workspace/VendorsWorkspace.tsx",
+    "supabase/functions"
   ]
 }

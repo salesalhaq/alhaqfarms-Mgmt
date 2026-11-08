@@ -15,7 +15,24 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const CATEGORY_COLUMNS = "id,name,description,sort_order,is_active";
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const MAX_CATEGORY_BODY_BYTES = 3 * 1024 * 1024;
+const CATEGORY_COLUMNS = "id,name,description,image_path,sort_order,is_active";
+
+function readCategoryImage(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string" || value.length > MAX_IMAGE_BYTES * 1.4) {
+    throw new WriteError("Category images must be 2 MB or smaller.");
+  }
+  const match = /^data:image\/(png|jpeg|webp|gif);base64,([A-Za-z0-9+/]+={0,2})$/i.exec(value);
+  if (!match) throw new WriteError("Choose a PNG, JPEG, WebP or GIF category image.");
+  const encoded = match[2];
+  const padding = encoded.endsWith("==") ? 2 : encoded.endsWith("=") ? 1 : 0;
+  if (Math.floor(encoded.length * 3 / 4) - padding > MAX_IMAGE_BYTES) {
+    throw new WriteError("Category images must be 2 MB or smaller.");
+  }
+  return value;
+}
 
 export async function GET(request: Request) {
   const authentication = await authenticateStaff(request);
@@ -48,10 +65,11 @@ export async function POST(request: Request) {
     assertSameOrigin(request);
     assertHqAdmin(authentication.identity);
 
-    const body = await readJsonBody(request);
+    const body = await readJsonBody(request, MAX_CATEGORY_BODY_BYTES);
     const id = readOptionalUuid(body.id, "Category");
     const name = readText(body.name, "Category name", 120);
     const description = readOptionalText(body.description, "Description", 1000);
+    const imagePath = readCategoryImage(body.imagePath);
     const sortOrder = body.sortOrder === undefined
       ? 0
       : readInteger(body.sortOrder, "Sort order", { minimum: -100000, maximum: 100000 });
@@ -64,6 +82,7 @@ export async function POST(request: Request) {
         .update({
           name,
           description,
+          image_path: imagePath,
           sort_order: sortOrder,
           is_active: isActive,
           updated_at: now,
@@ -91,6 +110,7 @@ export async function POST(request: Request) {
         id: categoryId,
         name,
         description,
+        image_path: imagePath,
         sort_order: sortOrder,
         is_active: isActive,
         created_at: now,

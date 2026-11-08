@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, LoaderCircle, Pencil, Plus, RefreshCw, Save, Search, Tags } from "lucide-react";
+import { AlertCircle, LoaderCircle, Pencil, Plus, RefreshCw, Save, Search, Tags, X } from "lucide-react";
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
@@ -47,6 +47,7 @@ interface CategoryRow {
   id: string;
   name: string;
   description: string | null;
+  image_path: string | null;
   sort_order: number;
   is_active: boolean;
 }
@@ -55,6 +56,7 @@ interface CategoryForm {
   id: string;
   name: string;
   description: string;
+  imagePath: string;
   sortOrder: string;
   isActive: boolean;
 }
@@ -63,6 +65,7 @@ const EMPTY_CATEGORY_FORM: CategoryForm = {
   id: "",
   name: "",
   description: "",
+  imagePath: "",
   sortOrder: "0",
   isActive: true,
 };
@@ -156,6 +159,62 @@ const AVAILABILITY_OPTIONS = [
   { value: "inactive", label: "Inactive" },
   { value: "on_sale", label: "On sale" },
 ];
+
+const MAX_SOURCE_IMAGE_BYTES = 15 * 1024 * 1024;
+const MAX_OPTIMIZED_IMAGE_BYTES = 300 * 1024;
+const MAX_IMAGE_DIMENSION = 640;
+
+function canvasBlob(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("The selected image could not be optimized."));
+    }, type, quality);
+  });
+}
+
+function blobDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => typeof reader.result === "string"
+      ? resolve(reader.result)
+      : reject(new Error("The selected image could not be prepared."));
+    reader.onerror = () => reject(new Error("The selected image could not be read."));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function optimizeCatalogImage(file: File): Promise<string> {
+  if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type)) {
+    throw new Error("Choose a PNG, JPEG, WebP or GIF image.");
+  }
+  if (file.size > MAX_SOURCE_IMAGE_BYTES) {
+    throw new Error("Choose an image smaller than 15 MB.");
+  }
+
+  const bitmap = await createImageBitmap(file);
+  try {
+    const scale = Math.min(1, MAX_IMAGE_DIMENSION / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("The selected image could not be optimized.");
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+    let optimized: Blob | null = null;
+    for (const quality of [0.82, 0.72, 0.62, 0.52]) {
+      optimized = await canvasBlob(canvas, "image/webp", quality);
+      if (optimized.size <= MAX_OPTIMIZED_IMAGE_BYTES) break;
+    }
+    if (!optimized || optimized.size > MAX_OPTIMIZED_IMAGE_BYTES) {
+      throw new Error("This image could not be reduced enough. Choose a simpler image.");
+    }
+    return await blobDataUrl(optimized);
+  } finally {
+    bitmap.close();
+  }
+}
 
 export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
   const { staff, branches } = useStaffAuth();
@@ -266,9 +325,36 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
       id: category.id,
       name: category.name,
       description: category.description || "",
+      imagePath: category.image_path || "",
       sortOrder: String(category.sort_order ?? 0),
       isActive: category.is_active ?? true,
     });
+  };
+
+  const importProductImage = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setProductError(null);
+    try {
+      const imagePath = await optimizeCatalogImage(file);
+      setProductForm((form) => ({ ...form, imagePath }));
+    } catch (imageError) {
+      setProductError(imageError instanceof Error ? imageError.message : "The product image could not be prepared.");
+    }
+  };
+
+  const importCategoryImage = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    categoryAction.clearFeedback();
+    try {
+      const imagePath = await optimizeCatalogImage(file);
+      setCategoryForm((form) => ({ ...form, imagePath }));
+    } catch (imageError) {
+      categoryAction.setError(imageError instanceof Error ? imageError.message : "The category image could not be prepared.");
+    }
   };
 
   const saveCategory = async (event: FormEvent<HTMLFormElement>) => {
@@ -279,6 +365,7 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
         id: categoryForm.id || undefined,
         name: categoryForm.name,
         description: categoryForm.description,
+        imagePath: categoryForm.imagePath || null,
         sortOrder: Number(categoryForm.sortOrder || "0"),
         isActive: categoryForm.isActive,
       },
@@ -347,33 +434,6 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
     } finally {
       setProductSaving(false);
     }
-  };
-
-  const importProductImage = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type)) {
-      setProductError("Choose a PNG, JPEG, WebP or GIF product image.");
-      event.target.value = "";
-      return;
-    }
-    if (file.size > 2 * 1024 * 1024) {
-      setProductError("Product images must be 2 MB or smaller.");
-      event.target.value = "";
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result !== "string") {
-        setProductError("The selected image could not be read.");
-        return;
-      }
-      setProductForm((form) => ({ ...form, imagePath: reader.result as string }));
-      setProductError(null);
-    };
-    reader.onerror = () => setProductError("The selected image could not be read.");
-    reader.readAsDataURL(file);
-    event.target.value = "";
   };
 
   return (
@@ -489,7 +549,7 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
                   <td>
                     <div className="product-catalog-cell">
                       {product.image_path?.startsWith("data:image/") && (
-                        <img className="product-thumbnail" src={product.image_path} alt="" />
+                        <img className="product-thumbnail" src={product.image_path} alt="" loading="lazy" />
                       )}
                       <div>
                         <strong>{product.name}</strong>
@@ -653,7 +713,7 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
                   </select>
                 </WorkspaceField>
               )}
-              <WorkspaceField label="Product image" hint="PNG, JPEG, WebP or GIF · max 2 MB">
+              <WorkspaceField label="Product image" hint="PNG, JPEG, WebP or GIF · optimized to 640 px / 300 KB">
                 <input accept="image/png,image/jpeg,image/webp,image/gif" onChange={importProductImage} type="file" />
               </WorkspaceField>
             </div>
@@ -694,9 +754,14 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
             <div className="workspace-category-list">
               {categoryList.map((category) => (
                 <div className="workspace-category-row" key={category.id}>
-                  <div>
-                    <strong>{category.name}</strong>
-                    {category.description && <small>{category.description}</small>}
+                  <div className="workspace-category-copy">
+                    {category.image_path?.startsWith("data:image/") && (
+                      <img className="category-thumbnail" src={category.image_path} alt="" loading="lazy" />
+                    )}
+                    <div className="workspace-category-details">
+                      <strong>{category.name}</strong>
+                      {category.description && <small>{category.description}</small>}
+                    </div>
                   </div>
                   <div className="workspace-inline-actions">
                     <span className={`status ${category.is_active ? "green" : "grey"}`}>
@@ -752,6 +817,9 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
                   value={categoryForm.description}
                 />
               </WorkspaceField>
+              <WorkspaceField label="Category image" hint="PNG, JPEG, WebP or GIF · optimized to 640 px / 300 KB">
+                <input accept="image/png,image/jpeg,image/webp,image/gif" onChange={importCategoryImage} type="file" />
+              </WorkspaceField>
               <div className="workspace-field">
                 <span>Status</span>
                 <WorkspaceCheckbox
@@ -761,6 +829,18 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
                 />
               </div>
             </div>
+            {categoryForm.imagePath.startsWith("data:image/") && (
+              <div className="product-image-preview">
+                <img src={categoryForm.imagePath} alt="Category preview" />
+                <button
+                  className="secondary-button"
+                  onClick={() => setCategoryForm((form) => ({ ...form, imagePath: "" }))}
+                  type="button"
+                >
+                  <X size={13} /> Remove image
+                </button>
+              </div>
+            )}
             <div className="workspace-form-actions">
               <button className="primary-button" disabled={categoryAction.pending} type="submit">
                 {categoryAction.pending ? <LoaderCircle size={14} className="spin" /> : <Save size={14} />}

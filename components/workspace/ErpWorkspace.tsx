@@ -16,9 +16,20 @@ import { generateErpReportDocument } from "@/lib/print/reports";
 import { printHtmlDocument } from "@/lib/print/print-window";
 import { WorkspaceDialog, WorkspaceError, WorkspaceField } from "@/components/workspace/WorkspaceDialog";
 import { ErpProductionActions } from "@/components/workspace/ErpProductionActions";
+import { ErpSpiceActions } from "@/components/workspace/ErpSpiceActions";
 
 type ErpRow = Record<string, any>;
 type BranchOption = { id: string; name: string };
+type SpiceBatchAction = {
+  id: string;
+  batch_number: string;
+  name: string;
+  status: string;
+  output_product_name: string;
+  input_cost_paisa: number;
+  labor_cost_paisa: number;
+  other_cost_paisa: number;
+};
 
 interface ErpOverview {
   animals: { openBatches: number; heads: number; purchaseCostPaisa: number; feedCostPaisa: number };
@@ -266,6 +277,7 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
   const [animalBusy, setAnimalBusy] = useState(false);
   const [animalOptionsLoading, setAnimalOptionsLoading] = useState(false);
   const [animalOptionsError, setAnimalOptionsError] = useState<string | null>(null);
+  const [spiceBatchToComplete, setSpiceBatchToComplete] = useState<SpiceBatchAction | null>(null);
 
   const isDashboard = item.slug === "erp-dashboard";
   const isReports = item.slug === "erp-reports";
@@ -839,6 +851,8 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
                   ? "Manage livestock batches, head-count events, feed issues, species and batch closure."
                   : item.slug === "production"
                     ? "Record product and animal-based production runs, consume inputs, allocate costs and update branch stock atomically."
+                    : item.slug === "spice"
+                      ? "Open spice batches by consuming RAW inputs, then complete them with a grade, output quantity, and derived stock cost."
                     : `${item.description} This workspace is a live read-only view; changes stay in the Windows app.`}
           </p>
         </div>
@@ -856,7 +870,22 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
               }}
             />
           )}
-          {!isDashboard && !isReports && item.actionLabel && item.slug !== "production" && (
+          {!isDashboard && !isReports && item.slug === "spice" && item.actionLabel && (
+            <ErpSpiceActions
+              branches={branches}
+              selectedBranchId={branchId}
+              staffBranchId={staff?.branch_id}
+              isHqAdmin={isHqAdmin}
+              actionLabel={item.actionLabel}
+              batchToComplete={spiceBatchToComplete}
+              onCloseCompletion={() => setSpiceBatchToComplete(null)}
+              onSaved={(batchId) => {
+                setReloadKey((key) => key + 1);
+                void openDetail(batchId);
+              }}
+            />
+          )}
+          {!isDashboard && !isReports && item.actionLabel && item.slug !== "production" && item.slug !== "spice" && (
             <button
               className="primary-button"
               type="button"
@@ -1037,6 +1066,16 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
                   canOpenDetail,
                   openDetail,
                   (row) => openAnimalBatch(row),
+                  (row) => setSpiceBatchToComplete({
+                    id: row.id,
+                    batch_number: row.batch_number,
+                    name: row.name,
+                    status: row.status,
+                    output_product_name: row.output_product_name,
+                    input_cost_paisa: row.input_cost_paisa,
+                    labor_cost_paisa: row.labor_cost_paisa,
+                    other_cost_paisa: row.other_cost_paisa,
+                  }),
                 )}</tbody>
               </table>
             </div>
@@ -1050,7 +1089,9 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
                     ? "Events are append-only. Mortality and sale allocate batch cost; feed issues can atomically deduct branch stock."
                     : item.slug === "production"
                       ? "Production runs are posted atomically with input deductions, output stock, cost allocation, and terminal-batch animal events."
-                    : "Live read-only records. Create and edit actions remain in the Windows app."}
+                      : item.slug === "spice"
+                        ? "RAW inputs are deducted when a batch opens; completing it adds graded output to stock and updates its product cost atomically."
+                        : "Live read-only records. Create and edit actions remain in the Windows app."}
             </p>
           </section>
 
@@ -1723,6 +1764,7 @@ function renderBody(
   canOpenDetail: boolean,
   openDetail: (id: string) => void,
   editAnimal: (row: ErpRow) => void,
+  completeSpice: (row: ErpRow) => void,
 ) {
   const detailCell = (row: ErpRow) => {
     if (!canOpenDetail) return null;
@@ -1744,7 +1786,8 @@ function renderBody(
     if (slug === "spice") return (
       <td className="row-actions">
         {view}
-        <button className="primary-button" type="button" disabled title="Completing spice batches is a Windows desktop workflow.">
+        <button className="primary-button" type="button" disabled={row.status !== "open"}
+          onClick={() => completeSpice(row)} title={row.status === "open" ? "Complete this spice batch." : "This batch has already been completed."}>
           <CheckCircle2 size={12} /> Complete
         </button>
       </td>
@@ -2038,9 +2081,6 @@ function DetailView({
         <MetaItem label="Status">{labelize(record.status)}</MetaItem>
         <MetaItem label="Total cost">{formatMoney(record.total_cost_paisa)}</MetaItem>
         <MetaItem label="Unit cost">{formatMoney(record.unit_cost_paisa)}</MetaItem>
-      </div>
-      <div className="heading-actions" aria-label="Spice batch actions">
-        <button className="primary-button" type="button" disabled title="Completing spice batches is a Windows desktop workflow."><CheckCircle2 size={12} /> Complete batch</button>
       </div>
       {record.notes && <p>{record.notes}</p>}
       <div className="table-wrap">

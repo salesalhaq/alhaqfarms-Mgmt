@@ -2,7 +2,7 @@
 
 import {
   AlertCircle, ArrowRight, BarChart3, CheckCircle2, ClipboardList, CreditCard, Download, Eye, LoaderCircle, Lock,
-  MapPin, Pencil, Plus, Printer, RefreshCw, Search, Store, Trash2, X,
+  MapPin, Pencil, Plus, Power, Printer, RefreshCw, Search, Store, Trash2, X,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -18,6 +18,7 @@ import { WorkspaceDialog, WorkspaceError, WorkspaceField } from "@/components/wo
 import { ErpProductionActions } from "@/components/workspace/ErpProductionActions";
 import { ErpSpiceActions } from "@/components/workspace/ErpSpiceActions";
 import { ErpBulkSalesActions } from "@/components/workspace/ErpBulkSalesActions";
+import { ErpVendorActions, type Vendor, type VendorReceipt, type VendorRequest } from "@/components/workspace/ErpVendorActions";
 
 type ErpRow = Record<string, any>;
 type BranchOption = { id: string; name: string };
@@ -74,7 +75,10 @@ interface ErpReport {
     count: number; totalPaisa: number;
     byCategory: { name: string; count: number; total: number }[];
   };
-  purchases: { receipts: number; totalPaisa: number; payments: number; paidPaisa: number };
+  purchases: {
+    receipts: number; totalPaisa: number; payments: number; paidPaisa: number;
+    returns: number; returnedPaisa: number;
+  };
   approximate: boolean;
 }
 
@@ -281,6 +285,7 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
   const [animalOptionsError, setAnimalOptionsError] = useState<string | null>(null);
   const [spiceBatchToComplete, setSpiceBatchToComplete] = useState<SpiceBatchAction | null>(null);
   const [bulkSaleToPay, setBulkSaleToPay] = useState<BulkSalePaymentTarget | null>(null);
+  const [vendorActionRequest, setVendorActionRequest] = useState<VendorRequest | null>(null);
 
   const isDashboard = item.slug === "erp-dashboard";
   const isReports = item.slug === "erp-reports";
@@ -858,6 +863,8 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
                       ? "Open spice batches by consuming RAW inputs, then complete them with a grade, output quantity, and derived stock cost."
                       : item.slug === "bulk-sales"
                         ? "Create wholesale invoices with branch stock deduction, discounts, optional payments, and outstanding balance tracking."
+                      : item.slug === "vendors"
+                        ? "Manage suppliers, collect invoice payments, and record stock returns with supplier credits or replacement deliveries."
                     : `${item.description} This workspace is a live read-only view; changes stay in the Windows app.`}
           </p>
         </div>
@@ -905,8 +912,19 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
               }}
             />
           )}
+          {!isDashboard && !isReports && item.slug === "vendors" && item.actionLabel && (
+            <ErpVendorActions
+              actionLabel={item.actionLabel}
+              request={vendorActionRequest}
+              onCloseRequest={() => setVendorActionRequest(null)}
+              onSaved={(vendorId) => {
+                setReloadKey((key) => key + 1);
+                void openDetail(vendorId);
+              }}
+            />
+          )}
           {!isDashboard && !isReports && item.actionLabel
-            && !["production", "spice", "bulk-sales"].includes(item.slug) && (
+            && !["production", "spice", "bulk-sales", "vendors"].includes(item.slug) && (
             <button
               className="primary-button"
               type="button"
@@ -1102,6 +1120,8 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
                     invoice_number: row.invoice_number,
                     due_paisa: Number(row.due_paisa || 0),
                   }),
+                  (row) => setVendorActionRequest({ kind: "edit", vendor: row as Vendor }),
+                  (row) => setVendorActionRequest({ kind: "toggle", vendor: row as Vendor }),
                 )}</tbody>
               </table>
             </div>
@@ -1182,6 +1202,26 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
                       id: record.id,
                       invoice_number: record.invoice_number,
                       due_paisa: Number(record.due_paisa || 0),
+                    })
+                    : undefined}
+                  onEditVendor={item.slug === "vendors"
+                    ? (record) => setVendorActionRequest({ kind: "edit", vendor: record as Vendor })
+                    : undefined}
+                  onToggleVendor={item.slug === "vendors"
+                    ? (record) => setVendorActionRequest({ kind: "toggle", vendor: record as Vendor })
+                    : undefined}
+                  onPaySupplierInvoice={item.slug === "vendors"
+                    ? (record, receipt) => setVendorActionRequest({
+                      kind: "payment",
+                      vendorId: record.id,
+                      receipt: receipt as VendorReceipt,
+                    })
+                    : undefined}
+                  onReturnSupplierStock={item.slug === "vendors"
+                    ? (record, receipt) => setVendorActionRequest({
+                      kind: "return",
+                      vendorId: record.id,
+                      receipt: receipt as VendorReceipt,
                     })
                     : undefined}
                 />
@@ -1742,6 +1782,8 @@ function ReportView({ report }: { report: ErpReport }) {
           <StatCard label="Received value" value={formatMoney(report.purchases.totalPaisa)} />
           <StatCard label="Payments" value={formatNumber(report.purchases.payments)} />
           <StatCard label="Paid" value={formatMoney(report.purchases.paidPaisa)} />
+          <StatCard label="Supplier returns" value={formatNumber(report.purchases.returns)} />
+          <StatCard label="Credit value" value={formatMoney(report.purchases.returnedPaisa)} />
         </section>
       </section>
     </div>
@@ -1801,6 +1843,8 @@ function renderBody(
   editAnimal: (row: ErpRow) => void,
   completeSpice: (row: ErpRow) => void,
   recordBulkPayment: (row: ErpRow) => void,
+  editVendor: (row: ErpRow) => void,
+  toggleVendor: (row: ErpRow) => void,
 ) {
   const detailCell = (row: ErpRow) => {
     if (!canOpenDetail) return null;
@@ -1839,12 +1883,17 @@ function renderBody(
     );
     return <td>{view}</td>;
   };
-  const actionCell = () => {
+  const actionCell = (row?: ErpRow) => {
     if (slug === "vendors") return (
       <td className="row-actions">
-        <button className="secondary-button" type="button" disabled title="Opening vendor invoices is a Windows desktop workflow.">Invoices</button>
-        <button className="secondary-button" type="button" disabled title="Editing vendors is a Windows desktop workflow.">Edit</button>
-        <button className="secondary-button" type="button" disabled title="Changing vendor status is a Windows desktop workflow.">Deactivate</button>
+        <button className="secondary-button" type="button"
+          onClick={() => row && editVendor(row)}>
+          <Pencil size={12} /> Edit
+        </button>
+        <button className="secondary-button" type="button"
+          onClick={() => row && toggleVendor(row)}>
+          <Power size={12} /> {row?.is_active ? "Deactivate" : "Activate"}
+        </button>
       </td>
     );
     if (slug === "customer-accounts") return (
@@ -1940,7 +1989,7 @@ function renderBody(
       <td className="nowrap">{row.last_purchase_at ? formatDay(row.last_purchase_at) : "—"}</td>
       <td><span className={`status ${row.is_active ? "green" : "red"}`}>{row.is_active ? "Active" : "Inactive"}</span></td>
       {detailCell(row)}
-      {actionCell()}
+      {actionCell(row)}
     </tr>
   ));
 
@@ -2008,12 +2057,20 @@ function DetailView({
   onRecordAnimalEvent,
   onCloseAnimalBatch,
   onRecordBulkPayment,
+  onEditVendor,
+  onToggleVendor,
+  onPaySupplierInvoice,
+  onReturnSupplierStock,
 }: {
   slug: string;
   detail: ErpDetail;
   onRecordAnimalEvent?: (record: ErpRow) => void;
   onCloseAnimalBatch?: (record: ErpRow) => void;
   onRecordBulkPayment?: (record: ErpRow) => void;
+  onEditVendor?: (record: ErpRow) => void;
+  onToggleVendor?: (record: ErpRow) => void;
+  onPaySupplierInvoice?: (record: ErpRow, receipt: ErpRow) => void;
+  onReturnSupplierStock?: (record: ErpRow, receipt: ErpRow) => void;
 }) {
   const record = detail.record;
   const items = detail.items || [];
@@ -2190,10 +2247,12 @@ function DetailView({
   if (slug === "vendors") return (
     <>
       <div className="heading-actions" aria-label="Vendor actions">
-        <button className="secondary-button" type="button" disabled title="Editing vendors is a Windows desktop workflow.">Edit</button>
-        <button className="secondary-button" type="button" disabled title="Changing vendor status is a Windows desktop workflow.">Deactivate</button>
-        <button className="secondary-button" type="button" disabled title="Recording vendor payments is a Windows desktop workflow.">Record payment</button>
-        <button className="secondary-button" type="button" disabled title="Returning stock to a supplier is a Windows desktop workflow.">Return stock</button>
+        <button className="secondary-button" type="button" onClick={() => onEditVendor?.(record)}>
+          <Pencil size={12} /> Edit
+        </button>
+        <button className="secondary-button" type="button" onClick={() => onToggleVendor?.(record)}>
+          <Power size={12} /> {record.is_active ? "Deactivate" : "Activate"}
+        </button>
       </div>
       <div className="sales-detail-context">
         <MetaItem label="Contact">{record.contact_name || "—"}</MetaItem>
@@ -2205,16 +2264,27 @@ function DetailView({
       {record.notes && <p>{record.notes}</p>}
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Received</th><th>Supplier invoice</th><th className="numeric-cell">Total</th><th className="numeric-cell">Paid</th><th className="numeric-cell">Due</th></tr></thead>
+          <thead><tr><th>Received</th><th>Supplier invoice</th><th className="numeric-cell">Total</th><th className="numeric-cell">Paid</th><th className="numeric-cell">Returned</th><th className="numeric-cell">Due</th><th>Actions</th></tr></thead>
           <tbody>{items.length ? items.map((receipt) => (
             <tr key={receipt.id}>
               <td className="nowrap">{formatDateTime(receipt.received_at)}</td>
               <td>{receipt.supplier_invoice_number || "No invoice"}</td>
               <td className="numeric-cell">{formatMoney(receipt.subtotal_paisa)}</td>
               <td className="numeric-cell">{formatMoney(receipt.paid_paisa)}</td>
+              <td className="numeric-cell">{formatMoney(receipt.returned_paisa)}</td>
               <td className="numeric-cell">{formatMoney(receipt.due_paisa)}</td>
+              <td className="row-actions">
+                <button className="secondary-button" type="button" disabled={Number(receipt.due_paisa || 0) <= 0}
+                  onClick={() => onPaySupplierInvoice?.(record, receipt)}>
+                  <CreditCard size={12} /> Payment
+                </button>
+                <button className="secondary-button" type="button" disabled={!onReturnSupplierStock}
+                  onClick={() => onReturnSupplierStock?.(record, receipt)}>
+                  <RefreshCw size={12} /> Return stock
+                </button>
+              </td>
             </tr>
-          )) : <EmptyRow colSpan={5}>No purchase receipts are available for this vendor.</EmptyRow>}</tbody>
+          )) : <EmptyRow colSpan={7}>No purchase receipts are available for this vendor.</EmptyRow>}</tbody>
         </table>
       </div>
     </>

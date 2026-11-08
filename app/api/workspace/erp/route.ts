@@ -539,31 +539,48 @@ async function loadVendors(
   const receipts = (receiptResult.data || []) as ErpRow[];
 
   const payments = new Map<string, number>();
+  const credits = new Map<string, number>();
   let paymentRows: ErpRow[] = [];
+  let returnRows: ErpRow[] = [];
   if (receipts.length) {
-    const paymentResult = await client
-      .from("supplier_payments")
-      .select("receipt_id,amount_paisa")
-      .in("receipt_id", receipts.map((receipt) => receipt.id))
-      .is("deleted_at", null)
-      .limit(AGGREGATE_LIMIT);
+    const [paymentResult, returnResult] = await Promise.all([
+      client
+        .from("supplier_payments")
+        .select("receipt_id,amount_paisa")
+        .in("receipt_id", receipts.map((receipt) => receipt.id))
+        .is("deleted_at", null)
+        .limit(AGGREGATE_LIMIT),
+      client
+        .from("supplier_returns")
+        .select("receipt_id,total_paisa")
+        .in("receipt_id", receipts.map((receipt) => receipt.id))
+        .eq("disposition", "credit")
+        .is("deleted_at", null)
+        .limit(AGGREGATE_LIMIT),
+    ]);
     if (paymentResult.error) throw paymentResult.error;
+    if (returnResult.error) throw returnResult.error;
     paymentRows = (paymentResult.data || []) as ErpRow[];
+    returnRows = (returnResult.data || []) as ErpRow[];
     for (const payment of paymentRows) {
       payments.set(payment.receipt_id, (payments.get(payment.receipt_id) || 0) + Number(payment.amount_paisa || 0));
+    }
+    for (const credit of returnRows) {
+      credits.set(credit.receipt_id, (credits.get(credit.receipt_id) || 0) + Number(credit.total_paisa || 0));
     }
   }
 
   const bySupplier = new Map<string, {
-    count: number; purchases: number; paid: number; lastPurchaseAt: string | null;
+    count: number; purchases: number; paid: number; returned: number; lastPurchaseAt: string | null;
   }>();
   for (const receipt of receipts) {
     const entry = bySupplier.get(receipt.supplier_id) || {
-      count: 0, purchases: 0, paid: 0, lastPurchaseAt: null,
+      count: 0, purchases: 0, paid: 0, returned: 0, lastPurchaseAt: null,
     };
     entry.count += 1;
     entry.purchases += Number(receipt.subtotal_paisa || 0);
     entry.paid += payments.get(receipt.id) || 0;
+    entry.returned += credits.get(receipt.id) || 0;
     if (!entry.lastPurchaseAt || String(receipt.received_at) > entry.lastPurchaseAt) {
       entry.lastPurchaseAt = String(receipt.received_at);
     }
@@ -571,15 +588,17 @@ async function loadVendors(
   }
 
   return {
-    approximate: receipts.length >= AGGREGATE_LIMIT || paymentRows.length >= AGGREGATE_LIMIT,
+    approximate: receipts.length >= AGGREGATE_LIMIT || paymentRows.length >= AGGREGATE_LIMIT
+      || returnRows.length >= AGGREGATE_LIMIT,
     rows: rows.map((supplier) => {
-      const entry = bySupplier.get(supplier.id) || { count: 0, purchases: 0, paid: 0, lastPurchaseAt: null };
+      const entry = bySupplier.get(supplier.id) || { count: 0, purchases: 0, paid: 0, returned: 0, lastPurchaseAt: null };
       return {
         ...supplier,
         purchase_count: entry.count,
         purchases_paisa: entry.purchases,
         paid_paisa: entry.paid,
-        balance_paisa: entry.purchases - entry.paid,
+        returned_paisa: entry.returned,
+        balance_paisa: entry.purchases - entry.paid - entry.returned,
         last_purchase_at: entry.lastPurchaseAt,
       };
     }),
@@ -609,16 +628,28 @@ async function loadVendorDetail(client: ErpClient, id: string, branchId: string)
   const receipts = (receiptResult.data || []) as ErpRow[];
 
   const payments = new Map<string, number>();
+  const credits = new Map<string, number>();
   if (receipts.length) {
-    const paymentResult = await client
-      .from("supplier_payments")
-      .select("receipt_id,amount_paisa")
-      .in("receipt_id", receipts.map((receipt) => receipt.id))
-      .is("deleted_at", null)
-      .limit(AGGREGATE_LIMIT);
+    const [paymentResult, returnResult] = await Promise.all([
+      client.from("supplier_payments")
+        .select("receipt_id,amount_paisa")
+        .in("receipt_id", receipts.map((receipt) => receipt.id))
+        .is("deleted_at", null)
+        .limit(AGGREGATE_LIMIT),
+      client.from("supplier_returns")
+        .select("receipt_id,total_paisa")
+        .in("receipt_id", receipts.map((receipt) => receipt.id))
+        .eq("disposition", "credit")
+        .is("deleted_at", null)
+        .limit(AGGREGATE_LIMIT),
+    ]);
     if (paymentResult.error) throw paymentResult.error;
+    if (returnResult.error) throw returnResult.error;
     for (const payment of (paymentResult.data || []) as ErpRow[]) {
       payments.set(payment.receipt_id, (payments.get(payment.receipt_id) || 0) + Number(payment.amount_paisa || 0));
+    }
+    for (const credit of (returnResult.data || []) as ErpRow[]) {
+      credits.set(credit.receipt_id, (credits.get(credit.receipt_id) || 0) + Number(credit.total_paisa || 0));
     }
   }
 
@@ -626,10 +657,12 @@ async function loadVendorDetail(client: ErpClient, id: string, branchId: string)
     record: supplier,
     items: receipts.map((receipt) => {
       const paidPaisa = payments.get(receipt.id) || 0;
+      const returnedPaisa = credits.get(receipt.id) || 0;
       return {
         ...receipt,
         paid_paisa: paidPaisa,
-        due_paisa: Number(receipt.subtotal_paisa || 0) - paidPaisa,
+        returned_paisa: returnedPaisa,
+        due_paisa: Number(receipt.subtotal_paisa || 0) - paidPaisa - returnedPaisa,
       };
     }),
   };
@@ -1082,6 +1115,7 @@ async function loadDashboard(
     customerPaymentResult,
     receiptResult,
     supplierPaymentResult,
+    supplierReturnResult,
     expenseResult,
     trendPurchaseResult,
     trendBulkResult,
@@ -1094,6 +1128,8 @@ async function loadDashboard(
       .is("deleted_at", null).limit(AGGREGATE_LIMIT)),
     scoped(client.from("purchase_receipts").select("id,subtotal_paisa").is("deleted_at", null).limit(AGGREGATE_LIMIT)),
     scoped(client.from("supplier_payments").select("receipt_id,amount_paisa").is("deleted_at", null).limit(AGGREGATE_LIMIT)),
+    scoped(client.from("supplier_returns").select("receipt_id,total_paisa")
+      .eq("disposition", "credit").is("deleted_at", null).limit(AGGREGATE_LIMIT)),
     scoped(client.from("expenses").select("amount_paisa")
       .gte("spent_at", pakistanDateBoundary(monthStart)).lt("spent_at", pakistanDateBoundary(monthEnd, true))
       .is("deleted_at", null).limit(AGGREGATE_LIMIT)),
@@ -1111,6 +1147,8 @@ async function loadDashboard(
   const payments = customerPaymentResult.error ? [] : ((customerPaymentResult.data || []) as ErpRow[]);
   const receipts = receiptResult.error ? [] : ((receiptResult.data || []) as ErpRow[]);
   const supplierPayments = supplierPaymentResult.error ? [] : ((supplierPaymentResult.data || []) as ErpRow[]);
+  if (supplierReturnResult.error) throw supplierReturnResult.error;
+  const supplierReturns = (supplierReturnResult.data || []) as ErpRow[];
   const monthExpenses = expenseResult.error ? [] : ((expenseResult.data || []) as ErpRow[]);
   const trendPurchases = trendPurchaseResult.error ? [] : ((trendPurchaseResult.data || []) as ErpRow[]);
   const trendBulk = trendBulkResult.error ? [] : ((trendBulkResult.data || []) as ErpRow[]);
@@ -1146,8 +1184,16 @@ async function loadDashboard(
   for (const payment of supplierPayments) {
     paidByReceipt.set(payment.receipt_id, (paidByReceipt.get(payment.receipt_id) || 0) + Number(payment.amount_paisa || 0));
   }
+  const returnedByReceipt = new Map<string, number>();
+  for (const supplierReturn of supplierReturns) {
+    returnedByReceipt.set(
+      supplierReturn.receipt_id,
+      (returnedByReceipt.get(supplierReturn.receipt_id) || 0) + Number(supplierReturn.total_paisa || 0),
+    );
+  }
   const vendorDue = receipts.reduce(
-    (total, receipt) => total + Number(receipt.subtotal_paisa || 0) - (paidByReceipt.get(receipt.id) || 0),
+    (total, receipt) => total + Number(receipt.subtotal_paisa || 0)
+      - (paidByReceipt.get(receipt.id) || 0) - (returnedByReceipt.get(receipt.id) || 0),
     0,
   );
 
@@ -1243,6 +1289,7 @@ async function loadReport(
     categoryResult,
     receiptResult,
     supplierPaymentResult,
+    supplierReturnResult,
   ] = await Promise.all([
     scoped(client.from("bulk_sales")
       .select("total_paisa,discount_paisa").gte("sale_date", from).lte("sale_date", to)
@@ -1280,6 +1327,10 @@ async function loadReport(
     scoped(client.from("supplier_payments")
       .select("amount_paisa").gte("paid_at", fromTime).lt("paid_at", toTime)
       .is("deleted_at", null).limit(AGGREGATE_LIMIT)),
+    scoped(client.from("supplier_returns")
+      .select("total_paisa").eq("disposition", "credit")
+      .gte("returned_at", fromTime).lt("returned_at", toTime)
+      .is("deleted_at", null).limit(AGGREGATE_LIMIT)),
   ]);
 
   const bulk = bulkResult.error ? [] : ((bulkResult.data || []) as ErpRow[]);
@@ -1294,6 +1345,8 @@ async function loadReport(
   const categories = categoryResult.error ? [] : ((categoryResult.data || []) as BranchLite[]);
   const receipts = receiptResult.error ? [] : ((receiptResult.data || []) as ErpRow[]);
   const supplierPayments = supplierPaymentResult.error ? [] : ((supplierPaymentResult.data || []) as ErpRow[]);
+  if (supplierReturnResult.error) throw supplierReturnResult.error;
+  const supplierReturns = (supplierReturnResult.data || []) as ErpRow[];
 
   const categoryNames = new Map(categories.map((category) => [category.id, category.name]));
   const productionGroups = new Map<string, { name: string; runs: number; quantityMilli: number; totalCost: number }>();
@@ -1319,7 +1372,7 @@ async function loadReport(
   const dataBounded = [
     bulkResult, bulkPaymentResult, customerInvoiceResult, customerPaymentResult,
     productionResult, spiceResult, animalEventResult, animalOpeningResult,
-    expenseResult, categoryResult, receiptResult, supplierPaymentResult,
+    expenseResult, categoryResult, receiptResult, supplierPaymentResult, supplierReturnResult,
   ].some((result) => !result.error && (result.data || []).length >= AGGREGATE_LIMIT);
 
   return {
@@ -1383,6 +1436,8 @@ async function loadReport(
       totalPaisa: sum(receipts, "subtotal_paisa"),
       payments: supplierPayments.length,
       paidPaisa: sum(supplierPayments, "amount_paisa"),
+      returns: supplierReturns.length,
+      returnedPaisa: sum(supplierReturns, "total_paisa"),
     },
     approximate: dataBounded,
   };

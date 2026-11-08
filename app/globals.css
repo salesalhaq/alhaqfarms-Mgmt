@@ -206,6 +206,12 @@ tbody tr:hover { background: #fcfdfb; }
 .movement-positive { color: var(--green-dark); font-weight: 700; }
 .movement-negative { color: var(--red); font-weight: 700; }
 .inventory-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.inventory-stocktake-counts { display: grid; max-height: 360px; gap: 6px; overflow-y: auto; }
+.inventory-stocktake-count { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; }
+.inventory-stocktake-count > span { display: grid; min-width: 0; gap: 3px; }
+.inventory-stocktake-count strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; }
+.inventory-stocktake-count small { color: var(--muted); font-size: 10px; }
+.inventory-stocktake-count input { width: 110px; min-height: 34px; flex: 0 0 110px; border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; text-align: right; }
 .inline-message { display: flex; align-items: center; gap: 8px; }
 .inline-message.error { color: var(--red); font-size: 12px; font-weight: 600; }
 .row-link { color: var(--green-dark); font-weight: 700; }

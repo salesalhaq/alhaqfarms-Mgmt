@@ -1,6 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { authenticateStaff, authenticationResponse, isUuid } from "@/lib/server/staff-auth";
-import type { Database } from "@/lib/supabase/database.types";
+import {
+  assertSameOrigin,
+  readInteger,
+  readJsonBody,
+  readOptionalText,
+  readText,
+  writeFailure,
+  WriteError,
+} from "@/lib/server/write";
+import type { Database, Json } from "@/lib/supabase/database.types";
 
 export const dynamic = "force-dynamic";
 
@@ -149,6 +158,8 @@ export async function GET(request: Request) {
       movements: [],
       stocktakes: [],
       canViewStocktakes: false,
+      canRecordMovements: false,
+      canRecordStocktakes: false,
       branches: [],
       readOnly: true,
       generatedAt: new Date().toISOString(),
@@ -158,19 +169,28 @@ export async function GET(request: Request) {
   try {
     // Stocktake history mirrors the desktop rule: administrators always, managers
     // only when the branch permission allows it, cashiers never.
-    let canViewStocktakes = role === "admin";
+    let canRecordMovements = role === "admin";
+    let canRecordStocktakes = role === "admin";
     if (role === "manager") {
       const permissions = await rawClient
         .from("inventory_permissions")
-        .select("branch_id,is_allowed")
+        .select("branch_id,action,is_allowed")
         .in("branch_id", selectedBranchIds)
         .is("deleted_at", null)
         .eq("role", "manager")
-        .eq("action", "record_stocktake");
-      if (!permissions.error) {
-        canViewStocktakes = (permissions.data || []).some((row: { is_allowed: boolean }) => Boolean(row.is_allowed));
+        .in("action", ["record_stock_movement", "record_stocktake"])
+        .order("updated_at", { ascending: false })
+        .order("id", { ascending: false });
+      if (permissions.error) throw new Error(permissions.error.message);
+      const currentPermissions = new Map<string, boolean>();
+      for (const permission of permissions.data || []) {
+        const key = `${permission.branch_id}:${permission.action}`;
+        if (!currentPermissions.has(key)) currentPermissions.set(key, Boolean(permission.is_allowed));
       }
+      canRecordMovements = selectedBranchIds.some((id) => currentPermissions.get(`${id}:record_stock_movement`) === true);
+      canRecordStocktakes = selectedBranchIds.some((id) => currentPermissions.get(`${id}:record_stocktake`) === true);
     }
+    const canViewStocktakes = canRecordStocktakes;
 
     if (detailId) {
       if (!canViewStocktakes) {
@@ -466,13 +486,88 @@ export async function GET(request: Request) {
       movementLimit: MOVEMENT_LIMIT,
       stocktakes,
       canViewStocktakes,
-      readOnly: true,
-      note: "On-hand stock is calculated from the synchronized append-only movement ledger. Recording movements and stocktakes remains a Windows desktop workflow.",
+      canRecordMovements,
+      canRecordStocktakes,
+      readOnly: !canRecordMovements && !canRecordStocktakes,
+      note: canRecordMovements || canRecordStocktakes
+        ? "On-hand stock is calculated from the append-only movement ledger. Web changes are recorded atomically and included in stock history."
+        : "Your account can review inventory but cannot record stock movements or stocktakes.",
       generatedAt: new Date().toISOString(),
     });
   } catch (error) {
     return authenticationResponse(request, authentication, {
       error: error instanceof Error ? error.message : "Could not load branch inventory.",
     }, 500);
+  }
+}
+
+export async function POST(request: Request) {
+  const authentication = await authenticateStaff(request);
+  if (!authentication.ok) {
+    return authenticationResponse(request, authentication, { error: authentication.error }, authentication.status);
+  }
+
+  try {
+    assertSameOrigin(request);
+    const body = await readJsonBody(request);
+    const action = body.action;
+    if (action !== "movement" && action !== "stocktake") {
+      throw new WriteError("Choose a supported inventory action.");
+    }
+    const branchId = readText(body.branchId, "Target branch", 64);
+    if (!isUuid(branchId)) throw new WriteError("Choose a valid target branch.");
+    const idempotencyKey = readText(body.idempotencyKey, "Request key", 100);
+    let payload: Json;
+
+    if (action === "movement") {
+      const productId = readText(body.productId, "Product", 64);
+      if (!isUuid(productId)) throw new WriteError("Choose a valid product.");
+      const quantityDeltaMilli = readInteger(body.quantityDeltaMilli, "Quantity change");
+      if (quantityDeltaMilli === 0) throw new WriteError("Quantity change must be greater than zero.");
+      const movementType = readText(body.movementType, "Movement reason", 20);
+      if (!["opening", "adjustment", "damage", "loss", "expiry"].includes(movementType)) {
+        throw new WriteError("Choose a supported stock movement reason.");
+      }
+      payload = {
+        branchId,
+        productId,
+        quantityDeltaMilli,
+        movementType,
+        reason: readText(body.reason, "Reason", 200),
+        idempotencyKey,
+      };
+    } else {
+      if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > 1000) {
+        throw new WriteError("A stocktake must include between 1 and 1,000 product counts.");
+      }
+      const items = body.items.map((item) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) {
+          throw new WriteError("Enter a valid product count for every stocktake item.");
+        }
+        const product = item as Record<string, unknown>;
+        const productId = readText(product.productId, "Product", 64);
+        if (!isUuid(productId)) throw new WriteError("Choose a valid product for every stocktake count.");
+        return {
+          productId,
+          countedQuantityMilli: readInteger(product.countedQuantityMilli, "Counted quantity", { minimum: 0 }),
+        };
+      });
+      payload = {
+        branchId,
+        items,
+        notes: readOptionalText(body.notes, "Stocktake notes", 500),
+        idempotencyKey,
+      };
+    }
+
+    const { data, error } = await authentication.client.rpc("staff_record_inventory_action", {
+      p_action: action,
+      p_payload: payload,
+    });
+    if (error?.code === "P0001") throw new WriteError(error.message);
+    if (error) throw error;
+    return authenticationResponse(request, authentication, { result: data });
+  } catch (error) {
+    return writeFailure(request, authentication, error);
   }
 }

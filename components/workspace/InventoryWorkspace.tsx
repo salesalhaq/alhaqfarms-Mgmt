@@ -2,12 +2,19 @@
 
 import {
   AlertCircle, BarChart3, LoaderCircle, Package, PackageSearch, Plus, RefreshCw,
-  Search, X,
+  Save, Search, X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import {
+  WorkspaceDialog,
+  WorkspaceError,
+  WorkspaceField,
+  WorkspaceSuccess,
+} from "@/components/workspace/WorkspaceDialog";
 import { formatDateTime, formatMoney, formatQuantity, labelize } from "@/lib/format";
+import { postWorkspaceAction } from "@/lib/workspace/write-client";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 
 interface InventoryProduct {
@@ -74,9 +81,30 @@ interface InventoryResponse {
   movementLimit: number;
   stocktakes: InventoryStocktake[];
   canViewStocktakes: boolean;
+  canRecordMovements: boolean;
+  canRecordStocktakes: boolean;
+  branches: Array<{ id: string; name: string; code: string }>;
   note?: string;
   error?: string;
 }
+
+type MovementType = "adjustment" | "damage" | "loss" | "expiry";
+
+interface MovementForm {
+  productId: string;
+  movementType: MovementType;
+  direction: "add" | "remove";
+  quantity: string;
+  reason: string;
+}
+
+const EMPTY_MOVEMENT_FORM: MovementForm = {
+  productId: "",
+  movementType: "adjustment",
+  direction: "add",
+  quantity: "",
+  reason: "",
+};
 
 interface StocktakeDetail {
   id: string;
@@ -105,6 +133,15 @@ function signedQuantity(milli: number): string {
   return `${milli > 0 ? "+" : ""}${formatQuantity(milli)}`;
 }
 
+function quantityToMilli(value: string): number | null {
+  const match = /^(\d+)(?:\.(\d{1,3}))?$/.exec(value.trim());
+  if (!match) return null;
+  const whole = Number(match[1]);
+  const fraction = Number((match[2] || "").padEnd(3, "0"));
+  const result = whole * 1000 + fraction;
+  return Number.isSafeInteger(result) ? result : null;
+}
+
 export function InventoryWorkspace({ item }: { item: WorkspaceModule }) {
   const { staff, branches } = useStaffAuth();
   const [branchId, setBranchId] = useState(staff?.role === "admin" ? "all" : staff?.branch_id || "");
@@ -116,6 +153,18 @@ export function InventoryWorkspace({ item }: { item: WorkspaceModule }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [movementOpen, setMovementOpen] = useState(false);
+  const [stocktakeOpen, setStocktakeOpen] = useState(false);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [movementForm, setMovementForm] = useState<MovementForm>(EMPTY_MOVEMENT_FORM);
+  const [stocktakeCounts, setStocktakeCounts] = useState<Record<string, string>>({});
+  const [stocktakeNotes, setStocktakeNotes] = useState("");
+  const [targetBranchId, setTargetBranchId] = useState("");
+  const [targetBranchProducts, setTargetBranchProducts] = useState<InventoryProduct[]>([]);
+  const [targetProductsLoading, setTargetProductsLoading] = useState(false);
+  const targetProductsRequest = useRef(0);
 
   const isAdmin = staff?.role === "admin";
 
@@ -181,6 +230,144 @@ export function InventoryWorkspace({ item }: { item: WorkspaceModule }) {
     }
   };
 
+  const loadTargetBranchProducts = async (selectedBranchId: string) => {
+    const requestId = ++targetProductsRequest.current;
+    setTargetProductsLoading(true);
+    setActionError(null);
+    try {
+      const parameters = new URLSearchParams({ branchId: selectedBranchId });
+      if (search.trim()) parameters.set("search", search.trim());
+      const response = await fetch(`/api/workspace/inventory?${parameters.toString()}`, {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      const result = await response.json() as InventoryResponse;
+      if (!response.ok) throw new Error(result.error || "Could not load products for this branch.");
+      if (requestId !== targetProductsRequest.current) return;
+      setTargetBranchProducts(result.products);
+    } catch (loadError) {
+      if (requestId !== targetProductsRequest.current) return;
+      setTargetBranchProducts([]);
+      setActionError(loadError instanceof Error ? loadError.message : "Could not load products for this branch.");
+    } finally {
+      if (requestId === targetProductsRequest.current) setTargetProductsLoading(false);
+    }
+  };
+
+  const handleTargetBranchChange = (selectedBranchId: string) => {
+    targetProductsRequest.current += 1;
+    setTargetBranchId(selectedBranchId);
+    setTargetBranchProducts([]);
+    if (selectedBranchId) void loadTargetBranchProducts(selectedBranchId);
+    else setTargetProductsLoading(false);
+  };
+
+  const openMovementDialog = () => {
+    setActionError(null);
+    setActionMessage(null);
+    setMovementForm(EMPTY_MOVEMENT_FORM);
+    targetProductsRequest.current += 1;
+    setTargetProductsLoading(false);
+    setTargetBranchId(branchId === "all" ? "" : branchId);
+    setTargetBranchProducts([]);
+    setMovementOpen(true);
+  };
+
+  const openStocktakeDialog = () => {
+    setActionError(null);
+    setActionMessage(null);
+    setStocktakeCounts({});
+    setStocktakeNotes("");
+    targetProductsRequest.current += 1;
+    setTargetProductsLoading(false);
+    setTargetBranchId(branchId === "all" ? "" : branchId);
+    setTargetBranchProducts([]);
+    setStocktakeOpen(true);
+  };
+
+  const submitMovement = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const quantityMilli = quantityToMilli(movementForm.quantity);
+    if (quantityMilli == null || quantityMilli <= 0) {
+      setActionError("Enter a quantity greater than zero with no more than three decimal places.");
+      return;
+    }
+    if (!actionBranchId) {
+      setActionError("Choose a target branch before recording stock.");
+      return;
+    }
+
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      await postWorkspaceAction("/api/workspace/inventory", {
+        action: "movement",
+        branchId: actionBranchId,
+        productId: movementForm.productId,
+        quantityDeltaMilli: movementForm.movementType === "adjustment" && movementForm.direction === "add"
+          ? quantityMilli
+          : -quantityMilli,
+        movementType: movementForm.movementType,
+        reason: movementForm.reason,
+      });
+      setMovementOpen(false);
+      setMovementForm(EMPTY_MOVEMENT_FORM);
+      setActionMessage("Stock movement recorded.");
+      setReloadKey((value) => value + 1);
+    } catch (submitError) {
+      setActionError(submitError instanceof Error ? submitError.message : "The stock movement could not be recorded.");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const submitStocktake = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const items: Array<{ productId: string; countedQuantityMilli: number }> = [];
+    for (const [productIdValue, count] of Object.entries(stocktakeCounts)) {
+      if (!count.trim()) continue;
+      const countedQuantityMilli = quantityToMilli(count);
+      if (countedQuantityMilli == null) {
+        const product = actionProducts.find((row) => row.id === productIdValue);
+        setActionError(`Enter a valid count for ${product?.name || "each product"} with no more than three decimal places.`);
+        return;
+      }
+      items.push({ productId: productIdValue, countedQuantityMilli });
+    }
+    if (!items.length) {
+      setActionError("Enter at least one physical count to reconcile stock.");
+      return;
+    }
+    if (!actionBranchId) {
+      setActionError("Choose a target branch before recording counts.");
+      return;
+    }
+
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      const response = await postWorkspaceAction<{
+        result?: { itemCount?: number; changedCount?: number };
+      }>("/api/workspace/inventory", {
+        action: "stocktake",
+        branchId: actionBranchId,
+        items,
+        notes: stocktakeNotes,
+      });
+      setStocktakeOpen(false);
+      setStocktakeCounts({});
+      setStocktakeNotes("");
+      setActionMessage(
+        `Stocktake recorded: ${response.result?.itemCount ?? items.length} counted, ${response.result?.changedCount ?? 0} adjusted.`,
+      );
+      setReloadKey((value) => value + 1);
+    } catch (submitError) {
+      setActionError(submitError instanceof Error ? submitError.message : "The stocktake could not be recorded.");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
   const totals = payload?.totals;
   const cards = totals ? [
     { label: "Products shown", value: totals.productCount.toLocaleString(), note: totals.truncated ? `Showing the first ${totals.productsShown}` : "All matching products" },
@@ -195,6 +382,8 @@ export function InventoryWorkspace({ item }: { item: WorkspaceModule }) {
 
   const movementProductOptions = useMemo(() => payload?.products || [], [payload?.products]);
   const stocktakeColumnCount = isAdmin ? 8 : 7;
+  const actionBranchId = branchId === "all" ? targetBranchId : branchId;
+  const actionProducts = branchId === "all" ? targetBranchProducts : payload?.products || [];
 
   return (
     <>
@@ -205,29 +394,24 @@ export function InventoryWorkspace({ item }: { item: WorkspaceModule }) {
           <p>{item.description} Stock-on-hand is calculated from the append-only movement ledger and matches the desktop inventory.</p>
         </div>
         <div className="inventory-actions">
-          <button
-            className="button secondary"
-            type="button"
-            disabled
-            title="Recording stock movements remains a Windows desktop workflow."
-          >
-            <Plus size={15} /> Record movement
-          </button>
-          <button
-            className="button secondary"
-            type="button"
-            disabled
-            title="Physical stocktakes remain a Windows desktop workflow."
-          >
-            <PackageSearch size={15} /> Start stocktake
-          </button>
+          {payload?.canRecordStocktakes && (
+            <button className="button secondary" type="button" onClick={openStocktakeDialog}>
+              <PackageSearch size={15} /> Start stocktake
+            </button>
+          )}
+          {payload?.canRecordMovements && (
+            <button className="button primary" type="button" onClick={openMovementDialog}>
+              <Plus size={15} /> Record movement
+            </button>
+          )}
         </div>
       </div>
 
       <div className="notice info" role="note">
         <Package size={16} />
-        <span>{payload?.note || "On-hand stock is calculated from the synchronized movement ledger. Recording movements and stocktakes remains a Windows desktop workflow."}</span>
+        <span>{payload?.note || "On-hand stock is calculated from the append-only movement ledger."}</span>
       </div>
+      <WorkspaceSuccess message={actionMessage} />
 
       <div className="daily-report-toolbar daily-report-no-print">
         {isAdmin && (
@@ -443,9 +627,141 @@ export function InventoryWorkspace({ item }: { item: WorkspaceModule }) {
           <p className="list-limit-note">
             Showing {payload.products.length} product{payload.products.length === 1 ? "" : "s"} · latest {payload.movements.length} movement{payload.movements.length === 1 ? "" : "s"}
             {payload.canViewStocktakes ? ` · latest ${payload.stocktakes.length} stocktake${payload.stocktakes.length === 1 ? "" : "s"}` : ""}.
-            {" "}Read-only view of the synchronized ledger.
+            {" "}Stock changes are recorded in the append-only ledger.
           </p>
         </>
+      )}
+
+      {movementOpen && (
+        <WorkspaceDialog eyebrow="Inventory" onClose={() => setMovementOpen(false)} title="Record stock movement">
+          <form className="workspace-form" onSubmit={submitMovement}>
+            <WorkspaceError message={actionError} />
+            {isAdmin && branchId === "all" && (
+              <WorkspaceField label="Target branch">
+                <select required value={targetBranchId} onChange={(event) => handleTargetBranchChange(event.target.value)}>
+                  <option value="">Choose branch</option>
+                  {(payload?.branches || branches).map((branch) => (
+                    <option key={branch.id} value={branch.id}>{branch.name}</option>
+                  ))}
+                </select>
+              </WorkspaceField>
+            )}
+            <WorkspaceField label="Product">
+              <select
+                required
+                value={movementForm.productId}
+                onChange={(event) => setMovementForm((form) => ({ ...form, productId: event.target.value }))}
+                disabled={targetProductsLoading || !actionProducts.length}
+              >
+                <option value="">{targetProductsLoading ? "Loading products…" : "Choose product"}</option>
+                {actionProducts.map((product) => (
+                  <option key={product.id} value={product.id}>
+                    {product.name} · {formatQuantity(product.stock_milli)} {product.unit_code}
+                  </option>
+                ))}
+              </select>
+            </WorkspaceField>
+            <div className="workspace-form-grid">
+              <WorkspaceField label="Movement reason">
+                <select
+                  value={movementForm.movementType}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (value === "adjustment" || value === "damage" || value === "loss" || value === "expiry") {
+                      setMovementForm((form) => ({ ...form, movementType: value }));
+                    }
+                  }}
+                >
+                  <option value="adjustment">General adjustment</option>
+                  <option value="damage">Damage</option>
+                  <option value="loss">Loss</option>
+                  <option value="expiry">Expired stock</option>
+                </select>
+              </WorkspaceField>
+              {movementForm.movementType === "adjustment" && (
+                <WorkspaceField label="Direction">
+                  <select
+                    value={movementForm.direction}
+                    onChange={(event) => setMovementForm((form) => ({
+                      ...form,
+                      direction: event.target.value === "remove" ? "remove" : "add",
+                    }))}
+                  >
+                    <option value="add">Add stock</option>
+                    <option value="remove">Remove stock</option>
+                  </select>
+                </WorkspaceField>
+              )}
+              <WorkspaceField label="Quantity" hint="Use up to three decimal places.">
+                <input inputMode="decimal" placeholder="0.000" required value={movementForm.quantity} onChange={(event) => setMovementForm((form) => ({ ...form, quantity: event.target.value }))} />
+              </WorkspaceField>
+              {movementForm.movementType !== "adjustment" && (
+                <p className="list-limit-note">Damage, loss and expiry always remove stock and are recorded as audited inventory losses.</p>
+              )}
+            </div>
+            <WorkspaceField label="Reason">
+              <input maxLength={200} placeholder="Opening count, damage, correction…" required value={movementForm.reason} onChange={(event) => setMovementForm((form) => ({ ...form, reason: event.target.value }))} />
+            </WorkspaceField>
+            <div className="workspace-form-actions">
+              <button className="button secondary" type="button" onClick={() => setMovementOpen(false)}>Cancel</button>
+              <button className="button primary" disabled={actionBusy || targetProductsLoading || !actionBranchId || !actionProducts.length} type="submit">
+                {actionBusy ? <LoaderCircle size={14} className="spin" /> : <Save size={14} />}
+                {actionBusy ? "Saving…" : "Record movement"}
+              </button>
+            </div>
+          </form>
+        </WorkspaceDialog>
+      )}
+
+      {stocktakeOpen && (
+        <WorkspaceDialog eyebrow="Inventory" onClose={() => setStocktakeOpen(false)} title="Physical stocktake">
+          <form className="workspace-form" onSubmit={submitStocktake}>
+            <WorkspaceError message={actionError} />
+            {isAdmin && branchId === "all" && (
+              <WorkspaceField label="Target branch">
+                <select required value={targetBranchId} onChange={(event) => handleTargetBranchChange(event.target.value)}>
+                  <option value="">Choose branch</option>
+                  {(payload?.branches || branches).map((branch) => (
+                    <option key={branch.id} value={branch.id}>{branch.name}</option>
+                  ))}
+                </select>
+              </WorkspaceField>
+            )}
+            <p className="list-limit-note">Enter actual counts for products you counted. Leave uncounted products blank; only entered counts are reconciled against the selected branch’s current ledger balance.</p>
+            {targetProductsLoading ? (
+              <div className="loading"><LoaderCircle size={16} className="spin" /> Loading branch balances…</div>
+            ) : (
+              <div className="inventory-stocktake-counts">
+                {actionProducts.map((product) => (
+                  <label className="inventory-stocktake-count" key={product.id}>
+                    <span>
+                      <strong>{product.name}</strong>
+                      <small>System: {formatQuantity(product.stock_milli)} {product.unit_code}</small>
+                    </span>
+                    <input
+                      aria-label={`Physical count for ${product.name}`}
+                      inputMode="decimal"
+                      placeholder="Skip"
+                      value={stocktakeCounts[product.id] || ""}
+                      onChange={(event) => setStocktakeCounts((counts) => ({ ...counts, [product.id]: event.target.value }))}
+                    />
+                  </label>
+                ))}
+                {!actionProducts.length && <p className="empty">Choose a branch or search for products to count.</p>}
+              </div>
+            )}
+            <WorkspaceField label="Stocktake notes (optional)">
+              <input maxLength={500} placeholder="Count reference or location" value={stocktakeNotes} onChange={(event) => setStocktakeNotes(event.target.value)} />
+            </WorkspaceField>
+            <div className="workspace-form-actions">
+              <button className="button secondary" type="button" onClick={() => setStocktakeOpen(false)}>Cancel</button>
+              <button className="button primary" disabled={actionBusy || targetProductsLoading || !actionBranchId || !actionProducts.length || !Object.values(stocktakeCounts).some((count) => count.trim())} type="submit">
+                {actionBusy ? <LoaderCircle size={14} className="spin" /> : <Save size={14} />}
+                {actionBusy ? "Reconciling…" : "Record counts"}
+              </button>
+            </div>
+          </form>
+        </WorkspaceDialog>
       )}
     </>
   );

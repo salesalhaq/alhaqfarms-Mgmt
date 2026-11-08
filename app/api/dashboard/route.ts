@@ -1,4 +1,5 @@
 import { authenticateStaff, authenticationResponse, isUuid } from "@/lib/server/staff-auth";
+import { cashierOrderVisibilityFilter, cashierReturnVisibilityFilter } from "@/lib/server/staff-workflow-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,10 @@ export async function GET(request: Request) {
     return authenticationResponse(request, authentication, { error: "Choose a valid branch." }, 400);
   }
   if (requestedBranch && !authentication.identity.branches.some((branch) => branch.id === requestedBranch)) {
+    return authenticationResponse(request, authentication, { error: "You cannot access that branch." }, 403);
+  }
+  if (authentication.identity.staff.branch_id && requestedBranch
+    && requestedBranch !== authentication.identity.staff.branch_id) {
     return authenticationResponse(request, authentication, { error: "You cannot access that branch." }, 403);
   }
 
@@ -41,6 +46,13 @@ export async function GET(request: Request) {
 
   try {
     if (dayStartDate && dayEndDate) {
+      const cashierId = authentication.identity.staff.role === "cashier"
+        ? authentication.identity.staff.local_staff_id
+        : null;
+      const cashierBranchId = authentication.identity.staff.branch_id;
+      if (authentication.identity.staff.role === "cashier" && (!cashierId || !cashierBranchId)) {
+        return authenticationResponse(request, authentication, { error: "This account is not linked to a staff profile." }, 403);
+      }
       const { data, error } = await authentication.client.rpc("get_staff_overview_metrics", {
         p_branch_id: authentication.identity.staff.branch_id || requestedBranch || null,
         p_day_start: dayStartDate.toISOString(),
@@ -49,6 +61,44 @@ export async function GET(request: Request) {
       if (error) throw new Error(error.message);
       const metrics = data[0];
       if (!metrics) throw new Error("Overview metrics were not returned.");
+      if (cashierId && cashierBranchId) {
+        let cashierSalesCount = 0;
+        let cashierSalesTotal = 0;
+        for (let offset = 0; ; offset += 1_000) {
+          const salesResult = await authentication.client
+            .from("pos_sales")
+            .select("total_paisa", { count: "exact" })
+            .eq("branch_id", cashierBranchId)
+            .eq("cashier_id", cashierId)
+            .neq("status", "void")
+            .is("deleted_at", null)
+            .gte("completed_at", dayStartDate.toISOString())
+            .lte("completed_at", dayEndDate.toISOString())
+            .range(offset, offset + 999);
+          if (salesResult.error) throw new Error(salesResult.error.message);
+          const page = salesResult.data || [];
+          cashierSalesCount = salesResult.count || 0;
+          cashierSalesTotal += page.reduce((total, sale) => total + Number(sale.total_paisa || 0), 0);
+          if (page.length < 1_000) break;
+        }
+        const { data: openShifts, error: shiftError } = await authentication.client
+          .from("pos_shifts")
+          .select("id")
+          .eq("branch_id", cashierBranchId)
+          .eq("cashier_id", cashierId)
+          .eq("status", "open")
+          .is("deleted_at", null)
+          .limit(1);
+        if (shiftError) throw new Error(shiftError.message);
+        return authenticationResponse(request, authentication, {
+          overview: {
+            productCount: metrics.product_count,
+            stockCount: metrics.stock_count,
+            todaySales: { count: cashierSalesCount, total: cashierSalesTotal },
+            openShift: Boolean(openShifts?.length),
+          },
+        });
+      }
       return authenticationResponse(request, authentication, {
         overview: {
           productCount: metrics.product_count,
@@ -87,6 +137,15 @@ export async function GET(request: Request) {
       salesQuery = salesQuery.eq("branch_id", requestedBranch);
       returnsQuery = returnsQuery.eq("branch_id", requestedBranch);
       ordersQuery = ordersQuery.eq("branch_id", requestedBranch);
+    }
+    if (authentication.identity.staff.role === "cashier") {
+      const cashierId = authentication.identity.staff.local_staff_id;
+      if (!cashierId) {
+        return authenticationResponse(request, authentication, { error: "This account is not linked to a staff profile." }, 403);
+      }
+      salesQuery = salesQuery.eq("cashier_id", cashierId);
+      returnsQuery = returnsQuery.or(cashierReturnVisibilityFilter(cashierId));
+      ordersQuery = ordersQuery.or(cashierOrderVisibilityFilter(cashierId));
     }
 
     const [salesResult, returnsResult, ordersResult] = await Promise.all([

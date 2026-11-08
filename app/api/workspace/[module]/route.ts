@@ -1,4 +1,5 @@
 import { authenticateStaff, authenticationResponse, isUuid } from "@/lib/server/staff-auth";
+import { cashierCanViewReturn, cashierReturnVisibilityFilter, isHqAdmin } from "@/lib/server/staff-workflow-scope";
 import type { StaffDailyReportPayload } from "@/lib/supabase/database.types";
 
 export const dynamic = "force-dynamic";
@@ -128,7 +129,8 @@ export async function GET(request: Request, context: RouteContext) {
       }
 
       const role = authentication.identity.staff.role;
-      const branchId = role === "admin"
+      const hqAdmin = isHqAdmin(authentication.identity.staff);
+      const branchId = hqAdmin
         ? requestedBranch && requestedBranch !== "all" ? requestedBranch : null
         : authentication.identity.staff.branch_id;
       if (requestedBranch && requestedBranch !== "all" && branchId !== requestedBranch) {
@@ -137,7 +139,7 @@ export async function GET(request: Request, context: RouteContext) {
       if (branchId && !authentication.identity.branches.some((branch) => branch.id === branchId)) {
         return authenticationResponse(request, authentication, { error: "You cannot access that branch." }, 403);
       }
-      if (!branchId && role !== "admin") {
+      if (!branchId && !hqAdmin) {
         return authenticationResponse(request, authentication, { error: "Choose a branch before viewing the daily report." }, 400);
       }
 
@@ -145,14 +147,27 @@ export async function GET(request: Request, context: RouteContext) {
       if (!isCalendarDate(date)) {
         return authenticationResponse(request, authentication, { error: "Choose a valid business date." }, 400);
       }
+      const cashierId = role === "cashier" ? authentication.identity.staff.local_staff_id : null;
+      if (role === "cashier" && !cashierId) {
+        return authenticationResponse(request, authentication, { error: "This account is not linked to a staff profile." }, 403);
+      }
+      if (cashierId && !branchId) {
+        return authenticationResponse(request, authentication, { error: "Choose a branch before viewing the daily report." }, 400);
+      }
 
-      const { data: report, error: reportError } = await authentication.client.rpc("get_staff_daily_report", {
-        p_business_date: date,
-        p_branch_id: branchId,
-      });
+      const { data: report, error: reportError } = cashierId && branchId
+        ? await authentication.client.rpc("get_staff_cashier_daily_report", {
+            p_business_date: date,
+            p_branch_id: branchId,
+            p_cashier_id: cashierId,
+          })
+        : await authentication.client.rpc("get_staff_daily_report", {
+            p_business_date: date,
+            p_branch_id: branchId,
+          });
       if (reportError?.code === "PGRST202") {
         return authenticationResponse(request, authentication, {
-          error: "The daily report is not configured in Supabase. Apply migration 0028_staff_daily_report.sql.",
+          error: "The daily report is not configured in Supabase. Apply the daily-report Supabase migrations.",
         }, 503);
       }
       if (reportError) throw new Error(reportError.message);
@@ -174,14 +189,7 @@ export async function GET(request: Request, context: RouteContext) {
         if (profilesError) throw new Error(profilesError.message);
         staffNames = new Map((profiles || []).map((profile) => [profile.id, profile.full_name]));
       } else if (role === "cashier") {
-        const { data: linkedStaff, error: linkedStaffError } = await authentication.client
-          .from("cloud_staff")
-          .select("local_staff_id")
-          .eq("user_id", authentication.identity.staff.user_id)
-          .maybeSingle();
-        if (linkedStaffError) throw new Error(linkedStaffError.message);
-        if (!linkedStaff) throw new Error("Could not verify the linked staff profile.");
-        staffNames.set(linkedStaff.local_staff_id, authentication.identity.staff.full_name);
+        staffNames.set(authentication.identity.staff.local_staff_id, authentication.identity.staff.full_name);
       }
 
       const branchNames = new Map(authentication.identity.branches.map((branch) => [branch.id, branch.name]));
@@ -200,11 +208,13 @@ export async function GET(request: Request, context: RouteContext) {
 
       return authenticationResponse(request, authentication, {
         ...typedReport,
-        shifts: typedReport.shifts.map((shift) => ({
+        shifts: typedReport.shifts
+          .filter((shift) => role !== "cashier" || shift.cashier_id === authentication.identity.staff.local_staff_id)
+          .map((shift) => ({
           ...shift,
           branch_name: branchNames.get(shift.branch_id) || "Branch",
           cashier_name: staffNames.get(shift.cashier_id) || "Staff member",
-        })),
+          })),
         dayClose,
         dayCloses: namedCloses,
       });
@@ -231,7 +241,7 @@ export async function GET(request: Request, context: RouteContext) {
       }
 
       let selectedBranchIds: string[];
-      if (role === "admin") {
+      if (isHqAdmin(authentication.identity.staff)) {
         selectedBranchIds = requestedBranch && requestedBranch !== "all"
           ? [requestedBranch]
           : authentication.identity.branches.map((branch) => branch.id);
@@ -399,6 +409,10 @@ export async function GET(request: Request, context: RouteContext) {
           .maybeSingle();
         if (saleError) throw new Error(saleError.message);
         if (!sale) return authenticationResponse(request, authentication, { error: "Sale not found at your branch." }, 404);
+        if (!authentication.identity.branches.some((branch) => branch.id === sale.branch_id)
+          || (role === "cashier" && sale.cashier_id !== authentication.identity.staff.local_staff_id)) {
+          return authenticationResponse(request, authentication, { error: "Sale not found at your branch." }, 404);
+        }
 
         const [itemsResult, paymentsResult, returnsResult] = await Promise.all([
           authentication.client
@@ -435,13 +449,7 @@ export async function GET(request: Request, context: RouteContext) {
           if (cashierError) throw new Error(cashierError.message);
           cashierName = cashier?.full_name || cashierName;
         } else {
-          const { data: linkedStaff, error: linkedStaffError } = await authentication.client
-            .from("cloud_staff")
-            .select("local_staff_id")
-            .eq("user_id", authentication.identity.staff.user_id)
-            .maybeSingle();
-          if (linkedStaffError) throw new Error(linkedStaffError.message);
-          if (linkedStaff?.local_staff_id === sale.cashier_id) cashierName = authentication.identity.staff.full_name;
+          cashierName = authentication.identity.staff.full_name;
         }
 
         return authenticationResponse(request, authentication, {
@@ -460,13 +468,14 @@ export async function GET(request: Request, context: RouteContext) {
       if (requestedBranch && requestedBranch !== "all" && !isUuid(requestedBranch)) {
         return authenticationResponse(request, authentication, { error: "Choose a valid branch." }, 400);
       }
-      const branchId = role === "admin"
+      const hqAdmin = isHqAdmin(authentication.identity.staff);
+      const branchId = hqAdmin
         ? requestedBranch && requestedBranch !== "all" ? requestedBranch : null
         : authentication.identity.staff.branch_id;
       if (branchId && !authentication.identity.branches.some((branch) => branch.id === branchId)) {
         return authenticationResponse(request, authentication, { error: "You cannot access that branch." }, 403);
       }
-      if (!branchId && role !== "admin") {
+      if (!branchId && !hqAdmin) {
         return authenticationResponse(request, authentication, { error: "Choose a branch before viewing sales." }, 400);
       }
 
@@ -501,16 +510,9 @@ export async function GET(request: Request, context: RouteContext) {
         return authenticationResponse(request, authentication, { error: "Choose a valid cashier filter." }, 400);
       }
 
-      let linkedStaffId: string | null = null;
-      if (role === "cashier") {
-        const { data: linkedStaff, error: linkedStaffError } = await authentication.client
-          .from("cloud_staff")
-          .select("local_staff_id")
-          .eq("user_id", authentication.identity.staff.user_id)
-          .maybeSingle();
-        if (linkedStaffError) throw new Error(linkedStaffError.message);
-        if (!linkedStaff) throw new Error("Could not verify the linked staff profile.");
-        linkedStaffId = linkedStaff.local_staff_id;
+      const linkedStaffId = role === "cashier" ? authentication.identity.staff.local_staff_id : null;
+      if (role === "cashier" && !linkedStaffId) {
+        return authenticationResponse(request, authentication, { error: "This account is not linked to a staff profile." }, 403);
       }
 
       let query = authentication.client
@@ -527,8 +529,8 @@ export async function GET(request: Request, context: RouteContext) {
       const customer = (parameters.get("customer") || "").trim().slice(0, 80);
       if (customer) query = query.ilike("customer_name", `%${escapedSearch(customer)}%`);
       if (status !== "all") query = query.eq("status", status);
-      if (cashierId && cashierId !== "self") query = query.eq("cashier_id", cashierId);
-      if (cashierId === "self" && linkedStaffId) query = query.eq("cashier_id", linkedStaffId);
+      if (role === "cashier" && linkedStaffId) query = query.eq("cashier_id", linkedStaffId);
+      else if (cashierId) query = query.eq("cashier_id", cashierId);
       if (from) query = query.gte("completed_at", pakistanDateBoundary(from));
       if (to) query = query.lt("completed_at", pakistanDateBoundary(to, true));
 
@@ -620,6 +622,12 @@ export async function GET(request: Request, context: RouteContext) {
           .maybeSingle();
         if (returnError) throw new Error(returnError.message);
         if (!returnRecord) return authenticationResponse(request, authentication, { error: "Return not found at your branch." }, 404);
+        if (!authentication.identity.branches.some((branch) => branch.id === returnRecord.branch_id)
+          || (role === "cashier"
+            && (!authentication.identity.staff.local_staff_id
+              || !cashierCanViewReturn(returnRecord, authentication.identity.staff.local_staff_id)))) {
+          return authenticationResponse(request, authentication, { error: "Return not found at your branch." }, 404);
+        }
 
         const [saleResult, itemsResult, refundsResult] = await Promise.all([
           authentication.client
@@ -674,13 +682,14 @@ export async function GET(request: Request, context: RouteContext) {
       if (requestedBranch && requestedBranch !== "all" && !isUuid(requestedBranch)) {
         return authenticationResponse(request, authentication, { error: "Choose a valid branch." }, 400);
       }
-      const branchId = role === "admin"
+      const hqAdmin = isHqAdmin(authentication.identity.staff);
+      const branchId = hqAdmin
         ? requestedBranch && requestedBranch !== "all" ? requestedBranch : null
         : authentication.identity.staff.branch_id;
       if (branchId && !authentication.identity.branches.some((branch) => branch.id === branchId)) {
         return authenticationResponse(request, authentication, { error: "You cannot access that branch." }, 403);
       }
-      if (!branchId && role !== "admin") {
+      if (!branchId && !hqAdmin) {
         return authenticationResponse(request, authentication, { error: "Choose a branch before viewing returns." }, 400);
       }
 
@@ -705,6 +714,13 @@ export async function GET(request: Request, context: RouteContext) {
         .order("created_at", { ascending: false })
         .order("id", { ascending: false });
       if (branchId) query = query.eq("branch_id", branchId);
+      if (role === "cashier") {
+        const staffId = authentication.identity.staff.local_staff_id;
+        if (!staffId) {
+          return authenticationResponse(request, authentication, { error: "This account is not linked to a staff profile." }, 403);
+        }
+        query = query.or(cashierReturnVisibilityFilter(staffId));
+      }
       if (status !== "all") query = query.eq("status", status);
       if (from) query = query.gte("created_at", pakistanDateBoundary(from));
       if (to) query = query.lt("created_at", pakistanDateBoundary(to, true));

@@ -1,4 +1,5 @@
 import { authenticateStaff, authenticationResponse, isUuid } from "@/lib/server/staff-auth";
+import { cashierCanViewReturn, cashierReturnVisibilityFilter, isHqAdmin } from "@/lib/server/staff-workflow-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +44,11 @@ export async function GET(request: Request) {
     }
     if (!allowedBranches.includes(returnRecord.branch_id)) {
       return authenticationResponse(request, authentication, { error: "You cannot access that store return." }, 403);
+    }
+    if (role === "cashier"
+      && (!authentication.identity.staff.local_staff_id
+        || !cashierCanViewReturn(returnRecord, authentication.identity.staff.local_staff_id))) {
+      return authenticationResponse(request, authentication, { error: "Return not found for this branch." }, 404);
     }
 
     const [saleResult, itemsResult, refundsResult] = await Promise.all([
@@ -97,7 +103,8 @@ export async function GET(request: Request) {
     return authenticationResponse(request, authentication, { error: "Choose a valid branch." }, 400);
   }
 
-  const branchId = role === "admin"
+  const hqAdmin = isHqAdmin(authentication.identity.staff);
+  const branchId = hqAdmin
     ? requestedBranch && requestedBranch !== "all" ? requestedBranch : null
     : authentication.identity.staff.branch_id;
 
@@ -109,7 +116,7 @@ export async function GET(request: Request) {
     return authenticationResponse(request, authentication, { error: "You cannot access that store." }, 403);
   }
 
-  if (!branchId && role !== "admin") {
+  if (!branchId && !hqAdmin) {
     return authenticationResponse(request, authentication, { error: "Choose a store before viewing returns." }, 400);
   }
 
@@ -147,6 +154,13 @@ export async function GET(request: Request) {
     .order("id", { ascending: false });
 
   if (branchId) query = query.eq("branch_id", branchId);
+  if (role === "cashier") {
+    const staffId = authentication.identity.staff.local_staff_id;
+    if (!staffId) {
+      return authenticationResponse(request, authentication, { error: "This account is not linked to a staff profile." }, 403);
+    }
+    query = query.or(cashierReturnVisibilityFilter(staffId));
+  }
   if (status !== "all") query = query.eq("status", status);
   if (from) query = query.gte("created_at", pakistanDateBoundary(from));
   if (to) query = query.lt("created_at", pakistanDateBoundary(to, true));

@@ -128,6 +128,7 @@ export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
   const [closingDay, setClosingDay] = useState(false);
   const [closeError, setCloseError] = useState<string | null>(null);
   const isAdmin = staff?.role === "admin";
+  const isHqAdmin = isAdmin && staff?.branch_id === null;
   const canCloseDay = isAdmin || staff?.role === "manager";
   const receiptSettings = DEFAULT_RECEIPT_SETTINGS;
   const branchName = branchId === "all"
@@ -213,7 +214,7 @@ export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
   };
 
   useEffect(() => {
-    if (staff?.role === "admin" && !branchId) setBranchId("all");
+    if (staff?.role === "admin" && !staff.branch_id && !branchId) setBranchId("all");
     else if (staff?.branch_id && !branchId) setBranchId(staff.branch_id);
   }, [branchId, staff?.branch_id, staff?.role]);
 
@@ -307,7 +308,7 @@ export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
       </div>
 
       <div className="daily-report-toolbar daily-report-no-print">
-        {isAdmin && (
+        {isHqAdmin && (
           <label className="toolbar-control">
             <span>Branch</span>
             <select className="toolbar-select" value={branchId || "all"} onChange={(event) => setBranchId(event.target.value)}>
@@ -452,7 +453,7 @@ export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
               </div>
             ) : canCloseDay ? (
               <form className="daily-report-close-form" onSubmit={(event) => void closeDay(event)}>
-                {isAdmin && branchId === "all" && (
+                {isHqAdmin && branchId === "all" && (
                   <label className="toolbar-control">
                     <span>Branch to close</span>
                     <select className="toolbar-select" required value={closeBranchId} onChange={(event) => setCloseBranchId(event.target.value)}>

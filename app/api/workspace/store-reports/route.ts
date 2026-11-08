@@ -1,4 +1,5 @@
 import { authenticateStaff, authenticationResponse, isUuid } from "@/lib/server/staff-auth";
+import { cashierReturnVisibilityFilter, isHqAdmin } from "@/lib/server/staff-workflow-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +43,7 @@ export async function GET(request: Request) {
   const identity = authentication.identity;
   const parameters = new URL(request.url).searchParams;
   const requestedBranch = parameters.get("branchId") || "";
-  const isAdmin = identity.staff.role === "admin";
+  const isAdmin = isHqAdmin(identity.staff);
 
   if (requestedBranch && requestedBranch !== "all" && !isUuid(requestedBranch)) {
     return authenticationResponse(request, authentication, { error: "Choose a valid branch." }, 400);
@@ -55,6 +56,10 @@ export async function GET(request: Request) {
   const branchId = isAdmin
     ? requestedBranch && requestedBranch !== "all" ? requestedBranch : "all"
     : identity.staff.branch_id;
+  const cashierId = identity.staff.role === "cashier" ? identity.staff.local_staff_id : null;
+  if (identity.staff.role === "cashier" && !cashierId) {
+    return authenticationResponse(request, authentication, { error: "This account is not linked to a staff profile." }, 403);
+  }
 
   const fromDate = parameters.get("from") || "";
   const toDate = parameters.get("to") || "";
@@ -79,6 +84,7 @@ export async function GET(request: Request) {
   } else if (branchId && branchId !== "all") {
     salesQuery.eq("branch_id", branchId);
   }
+  if (cashierId) salesQuery.eq("cashier_id", cashierId);
 
   const { data: sales, error: salesError } = await salesQuery;
   if (salesError) throw new Error(salesError.message);
@@ -97,6 +103,7 @@ export async function GET(request: Request) {
   } else if (branchId && branchId !== "all") {
     returnQuery.eq("branch_id", branchId);
   }
+  if (cashierId) returnQuery.or(cashierReturnVisibilityFilter(cashierId));
 
   const { data: returns, error: returnsError } = await returnQuery;
   if (returnsError) throw new Error(returnsError.message);

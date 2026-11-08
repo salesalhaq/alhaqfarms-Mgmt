@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { authenticateStaff, authenticationResponse, isUuid } from "@/lib/server/staff-auth";
+import { cashierCanViewOrder } from "@/lib/server/staff-workflow-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -23,13 +24,22 @@ export async function GET(
   try {
     const { data: order, error: orderError } = await authentication.client
       .from("web_orders")
-      .select("id,order_number,branch_id,status,fulfillment_type,customer_name,customer_phone,delivery_address,payment_method,payment_status,payment_reference,payment_verified_at,subtotal_paisa,tax_paisa,total_paisa,notes,created_at,deleted_at,payment_proof_path,payment_review_status,payment_rejection_reason")
+      .select("id,order_number,branch_id,status,fulfillment_type,customer_name,customer_phone,delivery_address,payment_method,payment_status,payment_reference,payment_verified_at,subtotal_paisa,tax_paisa,total_paisa,notes,created_at,deleted_at,payment_proof_path,payment_review_status,payment_rejection_reason,packed_by,dispatched_by,delivered_by,cancelled_by,payment_verified_by,payment_rejected_by")
       .eq("id", id)
       .is("deleted_at", null)
       .maybeSingle();
     if (orderError) throw new Error(orderError.message);
     if (!order) {
       return authenticationResponse(request, authentication, { error: "Order not found or branch access is denied." }, 404);
+    }
+    if (!authentication.identity.branches.some((branch) => branch.id === order.branch_id)) {
+      return authenticationResponse(request, authentication, { error: "Order not found or branch access is denied." }, 404);
+    }
+    if (authentication.identity.staff.role === "cashier") {
+      const staffId = authentication.identity.staff.local_staff_id;
+      if (!staffId || !cashierCanViewOrder(order, staffId)) {
+        return authenticationResponse(request, authentication, { error: "Order not found or branch access is denied." }, 404);
+      }
     }
 
     const allowedActions = ["accept", "pack", "dispatch", "deliver", "verify_payment", "cancel"];
@@ -96,9 +106,18 @@ export async function GET(
       proofUrl = data.signedUrl;
     }
     const { payment_proof_path: _paymentProofPath, ...safeOrder } = order;
+    const {
+      packed_by: _packedBy,
+      dispatched_by: _dispatchedBy,
+      delivered_by: _deliveredBy,
+      cancelled_by: _cancelledBy,
+      payment_verified_by: _paymentVerifiedBy,
+      payment_rejected_by: _paymentRejectedBy,
+      ...visibleOrder
+    } = safeOrder;
 
     return authenticationResponse(request, authentication, {
-      order: { ...safeOrder, branch_name: branchResult.data?.name || "Your branch" },
+      order: { ...visibleOrder, branch_name: branchResult.data?.name || "Your branch" },
       items: itemResult.data || [],
       events: (eventResult.data || []).map((event) => ({
         ...event,

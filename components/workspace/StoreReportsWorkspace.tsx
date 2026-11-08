@@ -74,15 +74,15 @@ function formatDateHeading(value: string): string {
 
 export function StoreReportsWorkspace({ item }: { item: PageItem }) {
   const { staff, branches } = useStaffAuth();
+  const isHqAdmin = staff?.role === "admin" && staff.branch_id === null;
   const [fromDate, setFromDate] = useState(() => defaultDateRange()[0]);
   const [toDate, setToDate] = useState(() => defaultDateRange()[1]);
-  const [branchId, setBranchId] = useState(staff?.role === "admin" ? "all" : staff?.branch_id || "");
+  const [branchId, setBranchId] = useState(isHqAdmin ? "all" : staff?.branch_id || "");
   const [report, setReport] = useState<StoreReportsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
-  const isAdmin = staff?.role === "admin";
   const selectedBranchName = useMemo(() => {
     if (!staff) return "Your branch";
     if (branchId === "all") return "All accessible branches";
@@ -90,7 +90,7 @@ export function StoreReportsWorkspace({ item }: { item: PageItem }) {
   }, [branchId, branches, staff]);
 
   useEffect(() => {
-    if (staff?.role === "admin" && !branchId) setBranchId("all");
+    if (staff?.role === "admin" && !staff.branch_id && !branchId) setBranchId("all");
     else if (staff?.branch_id && !branchId) setBranchId(staff.branch_id);
   }, [branchId, staff?.branch_id, staff?.role]);
 
@@ -163,7 +163,7 @@ export function StoreReportsWorkspace({ item }: { item: PageItem }) {
       </div>
 
       <div className="daily-report-toolbar daily-report-no-print">
-        {isAdmin && (
+        {isHqAdmin && (
           <label className="toolbar-control">
             <span>Branch</span>
             <select className="toolbar-select" value={branchId || "all"} onChange={(event) => setBranchId(event.target.value)}>

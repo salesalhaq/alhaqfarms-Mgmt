@@ -1,4 +1,5 @@
 import { authenticateStaff, authenticationResponse, isUuid } from "@/lib/server/staff-auth";
+import { isHqAdmin } from "@/lib/server/staff-workflow-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +53,7 @@ export async function GET(request: Request) {
   }
 
   const role = authentication.identity.staff.role;
+  const hqAdmin = isHqAdmin(authentication.identity.staff);
   if (!["admin", "manager"].includes(role)) {
     return authenticationResponse(
       request,
@@ -75,7 +77,7 @@ export async function GET(request: Request) {
 
   const accessibleBranchIds = authentication.identity.branches.map((branch) => branch.id);
   let selectedBranchIds: string[];
-  if (role === "admin") {
+  if (hqAdmin) {
     if (requestedBranch && requestedBranch !== "all") {
       if (!accessibleBranchIds.includes(requestedBranch)) {
         return authenticationResponse(request, authentication, { error: "You cannot access that branch." }, 403);

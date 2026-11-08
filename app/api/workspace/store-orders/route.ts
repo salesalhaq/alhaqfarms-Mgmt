@@ -1,4 +1,5 @@
 import { authenticateStaff, authenticationResponse, isUuid } from "@/lib/server/staff-auth";
+import { cashierOrderVisibilityFilter } from "@/lib/server/staff-workflow-scope";
 import type { Json } from "@/lib/supabase/database.types";
 import {
   assertSameOrigin,
@@ -73,6 +74,10 @@ function dateBoundary(value: string, endOfDay = false): string {
   return new Date(`${date.toISOString().slice(0, 10)}T00:00:00.000Z`).toISOString();
 }
 
+function quotedFilterValue(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
 export async function GET(request: Request) {
   const authentication = await authenticateStaff(request);
   if (!authentication.ok) {
@@ -92,6 +97,10 @@ export async function GET(request: Request) {
   if (requestedBranch && requestedBranch !== "all" && !isUuid(requestedBranch)) {
     return authenticationResponse(request, authentication, { error: "Choose a valid branch filter." }, 400);
   }
+  if (requestedBranch && requestedBranch !== "all"
+    && !authentication.identity.branches.some((branch) => branch.id === requestedBranch)) {
+    return authenticationResponse(request, authentication, { error: "You cannot access that branch." }, 403);
+  }
   if ((from && !isCalendarDate(from)) || (to && !isCalendarDate(to))) {
     return authenticationResponse(request, authentication, { error: "Choose valid calendar dates." }, 400);
   }
@@ -109,11 +118,19 @@ export async function GET(request: Request) {
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .limit(100);
+    let cashierFilter: string | null = null;
 
     if (authentication.identity.staff.branch_id) {
       query = query.eq("branch_id", authentication.identity.staff.branch_id);
     } else if (requestedBranch && requestedBranch !== "all") {
       query = query.eq("branch_id", requestedBranch);
+    }
+    if (authentication.identity.staff.role === "cashier") {
+      const staffId = authentication.identity.staff.local_staff_id;
+      if (!staffId) {
+        return authenticationResponse(request, authentication, { error: "This account is not linked to a staff profile." }, 403);
+      }
+      cashierFilter = cashierOrderVisibilityFilter(staffId);
     }
 
     if (requestedStatus !== "all") {
@@ -127,13 +144,16 @@ export async function GET(request: Request) {
       query = query.lte("created_at", dateBoundary(to, true));
     }
 
+    let searchFilter: string | null = null;
     if (search) {
       const escaped = search.replace(/[\\%_]/g, "\\$&");
-      const searchPattern = `%${escaped}%`;
-      query = query.or(
-        `order_number.ilike.${searchPattern},customer_name.ilike.${searchPattern},customer_phone.ilike.${searchPattern}`,
-      );
+      const searchPattern = quotedFilterValue(`%${escaped}%`);
+      searchFilter = `order_number.ilike.${searchPattern},customer_name.ilike.${searchPattern},customer_phone.ilike.${searchPattern}`;
     }
+    if (cashierFilter && searchFilter) {
+      query = query.or(`and(or(${cashierFilter}),or(${searchFilter}))`);
+    } else if (cashierFilter) query = query.or(cashierFilter);
+    else if (searchFilter) query = query.or(searchFilter);
 
     const { data, error } = await query;
     if (error) throw new Error(error.message);

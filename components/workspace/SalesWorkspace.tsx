@@ -132,10 +132,11 @@ function saleStatusTone(status: string): string {
 
 export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
   const { staff, branches } = useStaffAuth();
+  const isHqAdmin = staff?.role === "admin" && staff.branch_id === null;
   const [from, to] = useMemo(initialDateRange, []);
   const [fromDate, setFromDate] = useState(from);
   const [toDate, setToDate] = useState(to);
-  const [branchId, setBranchId] = useState(staff?.role === "admin" ? "all" : staff?.branch_id || "");
+  const [branchId, setBranchId] = useState(isHqAdmin ? "all" : staff?.branch_id || "");
   const [cashierId, setCashierId] = useState("");
   const [status, setStatus] = useState<(typeof SALES_STATUSES)[number]>("all");
   const [search, setSearch] = useState("");
@@ -153,7 +154,6 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
   const [saleDetails, setSaleDetails] = useState<SaleDetails | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const isAdmin = staff?.role === "admin";
   const receiptSettings = DEFAULT_RECEIPT_SETTINGS;
   const reportBranchName = branchId === "all"
     ? "All branches"
@@ -181,7 +181,7 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
   }, [customerSearch, search]);
 
   useEffect(() => {
-    if (staff?.role === "admin" && !branchId) setBranchId("all");
+    if (staff?.role === "admin" && !staff.branch_id && !branchId) setBranchId("all");
     else if (staff?.branch_id && !branchId) setBranchId(staff.branch_id);
   }, [branchId, staff?.branch_id, staff?.role]);
 
@@ -277,7 +277,7 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
     const [defaultFrom, defaultTo] = initialDateRange();
     setFromDate(defaultFrom);
     setToDate(defaultTo);
-    setBranchId(isAdmin ? "all" : staff?.branch_id || "");
+    setBranchId(isHqAdmin ? "all" : staff?.branch_id || "");
     setCashierId("");
     setStatus("all");
     setSearch("");
@@ -351,7 +351,7 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
             </select>
           </label>
         )}
-        {isAdmin && (
+        {isHqAdmin && (
           <label className="sales-history-control">
             <span>Branch</span>
             <select value={branchId} onChange={(event) => updateFilter(setBranchId, event.target.value)}>
@@ -408,7 +408,7 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
             <thead>
               <tr>
                 <th>Receipt</th><th>Date</th><th>Customer</th><th>Cashier</th>
-                {isAdmin && <th>Branch</th>}
+                {isHqAdmin && <th>Branch</th>}
                 <th>Channel</th><th>Items</th><th>Payment</th><th>Total</th><th>Status</th><th>Actions</th>
               </tr>
             </thead>
@@ -419,7 +419,7 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
                   <td>{formatDateTime(sale.completed_at)}</td>
                   <td>{sale.customer_name || "Walk-in Customer"}{sale.customer_phone && <small className="sales-cell-subtext">{sale.customer_phone}</small>}</td>
                   <td>{sale.cashier_name}</td>
-                  {isAdmin && <td>{sale.branch_name}</td>}
+                  {isHqAdmin && <td>{sale.branch_name}</td>}
                   <td>{sale.source_type === "web_order" ? "Web" : "POS"}</td>
                   <td className="numeric-cell">{formatQuantity(sale.unit_count_milli)}</td>
                   <td>{sale.payment_methods.map(labelize).join(", ") || "—"}</td>

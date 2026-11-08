@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { authenticateStaff, authenticationResponse, isUuid } from "@/lib/server/staff-auth";
+import { cashierOrderVisibilityFilter } from "@/lib/server/staff-workflow-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -24,8 +25,16 @@ export async function GET(request: Request) {
     return authenticationResponse(request, authentication, { error: "Choose a valid payment filter." }, 400);
   }
   const requestedBranch = parameters.get("branchId") || "";
-  if (requestedBranch && !authentication.identity.staff.branch_id && !isUuid(requestedBranch)) {
+  if (requestedBranch && requestedBranch !== "all" && !isUuid(requestedBranch)) {
     return authenticationResponse(request, authentication, { error: "Choose a valid branch." }, 400);
+  }
+  if (requestedBranch && requestedBranch !== "all"
+    && !authentication.identity.branches.some((branch) => branch.id === requestedBranch)) {
+    return authenticationResponse(request, authentication, { error: "You cannot access that branch." }, 403);
+  }
+  if (authentication.identity.staff.branch_id && requestedBranch && requestedBranch !== "all"
+    && requestedBranch !== authentication.identity.staff.branch_id) {
+    return authenticationResponse(request, authentication, { error: "You cannot access that branch." }, 403);
   }
 
   try {
@@ -38,8 +47,16 @@ export async function GET(request: Request) {
 
     if (authentication.identity.staff.branch_id) {
       query = query.eq("branch_id", authentication.identity.staff.branch_id);
-    } else if (requestedBranch) {
+    } else if (requestedBranch && requestedBranch !== "all") {
       query = query.eq("branch_id", requestedBranch);
+    }
+
+    if (authentication.identity.staff.role === "cashier") {
+      const staffId = authentication.identity.staff.local_staff_id;
+      if (!staffId) {
+        return authenticationResponse(request, authentication, { error: "This account is not linked to a staff profile." }, 403);
+      }
+      query = query.or(cashierOrderVisibilityFilter(staffId));
     }
 
     if (requestedPaymentFilter !== "all") {

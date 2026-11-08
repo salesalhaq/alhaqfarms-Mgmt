@@ -588,6 +588,10 @@ export interface Database {
         Args: { p_business_date: string; p_branch_id: string | null };
         Returns: StaffDailyReportPayload;
       };
+      get_staff_cashier_daily_report: {
+        Args: { p_business_date: string; p_branch_id: string; p_cashier_id: string };
+        Returns: StaffDailyReportPayload;
+      };
       staff_close_day: {
         Args: { p_payload: Json };
         Returns: Json;

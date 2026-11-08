@@ -1,4 +1,5 @@
 import { authenticateStaff, authenticationResponse, isUuid } from "@/lib/server/staff-auth";
+import { cashierOrderVisibilityFilter, cashierReturnVisibilityFilter } from "@/lib/server/staff-workflow-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -53,9 +54,15 @@ export async function GET(request: Request) {
   const selectedBranch = hasBranchConstraint
     ? requestedBranch
     : authentication.identity.staff.branch_id || null;
+  const cashierId = authentication.identity.staff.role === "cashier"
+    ? authentication.identity.staff.local_staff_id
+    : null;
 
   if (!selectedBranch && authentication.identity.staff.role !== "admin") {
     return authenticationResponse(request, authentication, { error: "Choose a branch before using the store dashboard." }, 400);
+  }
+  if (authentication.identity.staff.role === "cashier" && !cashierId) {
+    return authenticationResponse(request, authentication, { error: "This account is not linked to a staff profile." }, 403);
   }
 
   const dateRange = {
@@ -76,6 +83,7 @@ export async function GET(request: Request) {
         .order("completed_at", { ascending: false })
         .range(offset, offset + PAGE_SIZE - 1);
       if (selectedBranch) query = query.eq("branch_id", selectedBranch);
+      if (cashierId) query = query.eq("cashier_id", cashierId);
       const { data, error } = await query;
       if (error) throw new Error(error.message);
       const page = (data || []) as typeof sales;
@@ -94,6 +102,7 @@ export async function GET(request: Request) {
         .order("created_at", { ascending: false })
         .range(offset, offset + PAGE_SIZE - 1);
       if (selectedBranch) query = query.eq("branch_id", selectedBranch);
+      if (cashierId) query = query.or(cashierReturnVisibilityFilter(cashierId));
       const { data, error } = await query;
       if (error) throw new Error(error.message);
       const page = (data || []) as typeof returns;
@@ -122,6 +131,7 @@ export async function GET(request: Request) {
           .order("created_at", { ascending: false })
           .range(offset, offset + PAGE_SIZE - 1);
         if (selectedBranch) query = query.eq("branch_id", selectedBranch);
+        if (cashierId) query = query.or(cashierOrderVisibilityFilter(cashierId));
         const { data, error } = await query;
         if (error) throw new Error(error.message);
         const page = (data || []) as typeof orders;

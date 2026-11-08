@@ -1346,19 +1346,35 @@ async function loadReport(
       .is("deleted_at", null).limit(AGGREGATE_LIMIT)),
   ]);
 
-  const bulk = bulkResult.error ? [] : ((bulkResult.data || []) as ErpRow[]);
-  const bulkPayments = bulkPaymentResult.error ? [] : ((bulkPaymentResult.data || []) as ErpRow[]);
-  const customerInvoices = customerInvoiceResult.error ? [] : ((customerInvoiceResult.data || []) as ErpRow[]);
-  const customerPayments = customerPaymentResult.error ? [] : ((customerPaymentResult.data || []) as ErpRow[]);
-  const production = productionResult.error ? [] : ((productionResult.data || []) as ErpRow[]);
-  const spice = spiceResult.error ? [] : ((spiceResult.data || []) as ErpRow[]);
-  const animalEvents = animalEventResult.error ? [] : ((animalEventResult.data || []) as ErpRow[]);
-  const animalOpenings = animalOpeningResult.error ? [] : ((animalOpeningResult.data || []) as ErpRow[]);
-  const expenses = expenseResult.error ? [] : ((expenseResult.data || []) as ErpRow[]);
-  const categories = categoryResult.error ? [] : ((categoryResult.data || []) as BranchLite[]);
-  const receipts = receiptResult.error ? [] : ((receiptResult.data || []) as ErpRow[]);
-  const supplierPayments = supplierPaymentResult.error ? [] : ((supplierPaymentResult.data || []) as ErpRow[]);
-  if (supplierReturnResult.error) throw supplierReturnResult.error;
+  const failedQuery = [
+    bulkResult,
+    bulkPaymentResult,
+    customerInvoiceResult,
+    customerPaymentResult,
+    productionResult,
+    spiceResult,
+    animalEventResult,
+    animalOpeningResult,
+    expenseResult,
+    categoryResult,
+    receiptResult,
+    supplierPaymentResult,
+    supplierReturnResult,
+  ].find((result) => result.error);
+  if (failedQuery) throw failedQuery.error;
+
+  const bulk = (bulkResult.data || []) as ErpRow[];
+  const bulkPayments = (bulkPaymentResult.data || []) as ErpRow[];
+  const customerInvoices = (customerInvoiceResult.data || []) as ErpRow[];
+  const customerPayments = (customerPaymentResult.data || []) as ErpRow[];
+  const production = (productionResult.data || []) as ErpRow[];
+  const spice = (spiceResult.data || []) as ErpRow[];
+  const animalEvents = (animalEventResult.data || []) as ErpRow[];
+  const animalOpenings = (animalOpeningResult.data || []) as ErpRow[];
+  const expenses = (expenseResult.data || []) as ErpRow[];
+  const categories = (categoryResult.data || []) as BranchLite[];
+  const receipts = (receiptResult.data || []) as ErpRow[];
+  const supplierPayments = (supplierPaymentResult.data || []) as ErpRow[];
   const supplierReturns = (supplierReturnResult.data || []) as ErpRow[];
 
   const categoryNames = new Map(categories.map((category) => [category.id, category.name]));

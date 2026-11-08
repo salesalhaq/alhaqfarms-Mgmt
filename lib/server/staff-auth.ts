@@ -2,6 +2,10 @@ import "server-only";
 
 import { createClient, type Session, type SupabaseClient, type User } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import {
+  BRANCH_MODULES,
+  defaultModuleAccess,
+} from "@/lib/branch-permissions";
 import { getServerEnvironment } from "@/lib/supabase/server-environment";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -22,6 +26,7 @@ export interface StaffIdentity {
   staff: Staff;
   branches: Branch[];
   canViewOrders: boolean;
+  moduleAccess: Record<string, boolean>;
 }
 
 export type StaffAuthentication =
@@ -91,20 +96,36 @@ export async function resolveStaffIdentity(
   if (staff.branch_id && !activeBranches.some((branch) => branch.id === staff.branch_id)) return null;
   if (staff.role !== "admin" && !staff.branch_id) return null;
 
-  let canViewOrders = true;
-  if (staff.role !== "admin" && staff.branch_id) {
-    const { data: permission, error: permissionError } = await client
+  const moduleAccess: Record<string, boolean> = {};
+  if (staff.role === "admin") {
+    for (const module of BRANCH_MODULES) moduleAccess[module.id] = true;
+  } else if (staff.branch_id) {
+    const { data: permissions, error: permissionError } = await client
       .from("branch_module_permissions")
-      .select("is_allowed")
+      .select("permission_key,is_allowed,updated_at,id")
       .eq("branch_id", staff.branch_id)
       .eq("role", staff.role)
-      .eq("permission_key", "module:orders:view")
-      .maybeSingle();
-    if (permissionError) throw new Error(`Could not read order access: ${permissionError.message}`);
-    canViewOrders = permission?.is_allowed ?? ["cashier", "manager"].includes(staff.role);
+      .is("deleted_at", null)
+      .order("updated_at", { ascending: false })
+      .order("id", { ascending: false });
+    if (permissionError) throw new Error(`Could not read module access: ${permissionError.message}`);
+
+    const overrides = new Map<string, boolean>();
+    for (const permission of permissions || []) {
+      if (!overrides.has(permission.permission_key)) {
+        overrides.set(permission.permission_key, permission.is_allowed);
+      }
+    }
+    for (const module of BRANCH_MODULES) {
+      const key = `module:${module.id}:view`;
+      moduleAccess[module.id] = overrides.get(key)
+        ?? defaultModuleAccess(module.id, staff.role, "view");
+    }
   }
 
-  return { staff, branches: activeBranches, canViewOrders };
+  const canViewOrders = staff.role === "admin" || (moduleAccess.orders ?? false);
+
+  return { staff, branches: activeBranches, canViewOrders, moduleAccess };
 }
 
 export async function authenticateStaff(request: Request): Promise<StaffAuthentication> {

@@ -71,6 +71,26 @@ export type BranchActionId = (typeof BRANCH_ACTIONS)[number]["id"];
 export type WebOrderActionId = (typeof WEB_ORDER_ACTIONS)[number]["id"];
 export type InventoryActionId = (typeof INVENTORY_ACTIONS)[number]["id"];
 
+const WORKSPACE_PERMISSION_ALIASES: Record<string, BranchModuleId> = {
+  "admin-dashboard": "admin_reports",
+  "admin-reports": "admin_reports",
+  "audit-log": "admin_reports",
+  "online-orders": "orders",
+  "profit-tax": "admin_reports",
+  "report-center": "admin_reports",
+  "return-reports": "admin_reports",
+  "store-orders": "orders",
+  "store-reports": "sales_reports",
+  "store-returns": "returns",
+};
+
+export function workspacePermissionId(slug: string): BranchModuleId | null {
+  const alias = WORKSPACE_PERMISSION_ALIASES[slug];
+  if (alias) return alias;
+  const normalized = slug.replaceAll("-", "_");
+  return BRANCH_MODULES.find((module) => module.id === normalized)?.id || null;
+}
+
 export function defaultModuleAccess(
   moduleId: BranchModuleId,
   role: PermissionRole,

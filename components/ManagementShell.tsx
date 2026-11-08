@@ -14,6 +14,7 @@ import { AppearanceProvider } from "@/components/AppearanceProvider";
 import { BusinessSettingsProvider } from "@/components/BusinessSettingsProvider";
 import { BrandLockup } from "@/components/BrandLockup";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
+import { workspacePermissionId } from "@/lib/branch-permissions";
 import { workspaceModules, workspaceSections, type WorkspaceModule } from "@/lib/workspace-modules";
 
 const icons: Record<string, LucideIcon> = {
@@ -75,7 +76,7 @@ const pageTitleOverrides: Record<string, string> = {
 export function ManagementShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { staff, branches, canViewOrders, loading, error, signOut } = useStaffAuth();
+  const { staff, branches, moduleAccess, loading, error, signOut } = useStaffAuth();
   const assignedBranch = branches.find((branch) => branch.id === staff?.branch_id);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fullscreenError, setFullscreenError] = useState<string | null>(null);
@@ -145,6 +146,26 @@ export function ManagementShell({ children }: { children: ReactNode }) {
   }
 
   const canSeeSection = (section: string) => !adminSections.has(section) || staff.role === "admin";
+  const canViewModule = (slug: string) => {
+    if (staff.role === "admin") return true;
+    const permissionId = workspacePermissionId(slug);
+    return Boolean(permissionId && moduleAccess[permissionId]);
+  };
+  const routeModuleSlug = pathname.startsWith("/orders")
+    ? "online-orders"
+    : pathname === "/workspace/admin-reports"
+      ? "admin-reports"
+      : pathname === "/workspace/store-reports"
+        ? "store-reports"
+        : pathname.startsWith("/workspace/")
+          ? pathname.slice("/workspace/".length).split("/")[0]
+          : pathname === "/"
+            ? "overview"
+            : null;
+  const currentModule = routeModuleSlug ? workspaceModules.find((item) =>
+    item.slug === routeModuleSlug
+  ) : undefined;
+  const routeAllowed = routeModuleSlug ? canViewModule(routeModuleSlug) : true;
 
   return (
     <AppearanceProvider staffId={staff.user_id}>
@@ -157,7 +178,7 @@ export function ManagementShell({ children }: { children: ReactNode }) {
             <div className="nav-group" key={section.title}>
               <p className="nav-caption">{section.title}</p>
               {section.modules
-                .filter((item) => item.slug !== "online-orders" || canViewOrders)
+                .filter((item) => canViewModule(item.slug))
                 .filter((item) => !managerOnly.has(item.slug) || staff.role !== "cashier")
                 .map((item) => {
                   const href = item.slug === "online-orders" ? "/orders" : `/workspace/${item.slug}`;
@@ -210,10 +231,10 @@ export function ManagementShell({ children }: { children: ReactNode }) {
           </div>
         </header>
         <main className="content">
-          {!pathname.startsWith("/orders") || canViewOrders ? children : (
+          {routeAllowed ? children : (
             <section className="card panel">
-              <h1>Online orders are restricted</h1>
-              <p className="muted">Your staff role does not have the Orders module view permission for this branch. Ask your manager or HQ administrator if you need access.</p>
+              <h1>{currentModule?.title || "This page"} is restricted</h1>
+              <p className="muted">Your staff role does not have permission to view this page for this branch. Ask your manager or HQ administrator if you need access.</p>
             </section>
           )}
         </main>

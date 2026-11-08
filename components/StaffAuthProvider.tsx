@@ -19,12 +19,20 @@ type Branch = Pick<
   Database["public"]["Tables"]["branches"]["Row"],
   "id" | "code" | "name" | "is_active" | "deleted_at"
 >;
-interface IdentityResponse { staff?: Staff; branches?: Branch[]; canViewOrders?: boolean; success?: boolean; error?: string; }
+interface IdentityResponse {
+  staff?: Staff;
+  branches?: Branch[];
+  canViewOrders?: boolean;
+  moduleAccess?: Record<string, boolean>;
+  success?: boolean;
+  error?: string;
+}
 
 interface StaffAuthValue {
   staff: Staff | null;
   branches: Branch[];
   canViewOrders: boolean;
+  moduleAccess: Record<string, boolean>;
   loading: boolean;
   error: string | null;
   signIn: (email: string, password: string) => Promise<void>;
@@ -47,16 +55,23 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
   const [staff, setStaff] = useState<Staff | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [canViewOrders, setCanViewOrders] = useState(false);
+  const [moduleAccess, setModuleAccess] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const applyIdentity = useCallback((identity: IdentityResponse) => {
-    if (!identity.staff || !identity.branches || typeof identity.canViewOrders !== "boolean") {
+    if (
+      !identity.staff
+      || !identity.branches
+      || typeof identity.canViewOrders !== "boolean"
+      || !identity.moduleAccess
+    ) {
       throw new Error("The server did not return an active staff profile.");
     }
     setStaff(identity.staff);
     setBranches(identity.branches);
     setCanViewOrders(identity.canViewOrders);
+    setModuleAccess(identity.moduleAccess);
     setError(null);
   }, []);
 
@@ -70,6 +85,7 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
           setStaff(null);
           setBranches([]);
           setCanViewOrders(false);
+          setModuleAccess({});
           return;
         }
         if (!response.ok) throw new Error(identity.error || "Staff access could not be verified.");
@@ -135,12 +151,13 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
     setStaff(null);
     setBranches([]);
     setCanViewOrders(false);
+    setModuleAccess({});
     setError(null);
   }, []);
 
   const value = useMemo(() => ({
-    staff, branches, canViewOrders, loading, error, signIn, signInWithUsername, enrollWithInvitation, signOut,
-  }), [branches, canViewOrders, enrollWithInvitation, error, loading, signIn, signInWithUsername, signOut, staff]);
+    staff, branches, canViewOrders, moduleAccess, loading, error, signIn, signInWithUsername, enrollWithInvitation, signOut,
+  }), [branches, canViewOrders, enrollWithInvitation, error, loading, moduleAccess, signIn, signInWithUsername, signOut, staff]);
 
   return <StaffAuthContext.Provider value={value}>{children}</StaffAuthContext.Provider>;
 }

@@ -1,9 +1,24 @@
 import { authenticateStaff, authenticationResponse, isUuid } from "@/lib/server/staff-auth";
+import {
+  assertSameOrigin,
+  readInteger,
+  readJsonBody,
+  readOptionalText,
+  readText,
+  writeFailure,
+  WriteError,
+} from "@/lib/server/write";
+import type { Json } from "@/lib/supabase/database.types";
 
 export const dynamic = "force-dynamic";
 
 type PurchasingClient = { from(table: string): any };
 type PurchaseKind = "order" | "receipt";
+type PurchasingAction = "create_order" | "receive_order" | "cancel_order" | "supplier_payment" | "supplier_return";
+
+const PURCHASING_ACTIONS: PurchasingAction[] = [
+  "create_order", "receive_order", "cancel_order", "supplier_payment", "supplier_return",
+];
 
 function escapedSearch(value: string): string {
   return value.replace(/[\\%_]/g, "\\$&");
@@ -80,6 +95,38 @@ export async function GET(request: Request) {
 
   const client = authentication.client as unknown as PurchasingClient;
   const branchNames = new Map(authentication.identity.branches.map((branch) => [branch.id, branch.name]));
+  const isManager = authentication.identity.staff.role === "manager";
+  const permissionRows = isManager
+    ? await client
+      .from("branch_module_permissions")
+      .select("branch_id,permission_key,is_allowed,updated_at,id")
+      .in("branch_id", branchId === "all" ? authentication.identity.branches.map((branch) => branch.id) : [branchId])
+      .eq("role", "manager")
+      .is("deleted_at", null)
+      .order("updated_at", { ascending: false })
+      .order("id", { ascending: false })
+    : { data: [], error: null };
+  if (permissionRows.error) {
+    return authenticationResponse(
+      request,
+      authentication,
+      { error: purchasingError(permissionRows.error) },
+      schemaUnavailable(permissionRows.error) ? 503 : 500,
+    );
+  }
+  const permissionMap = new Map<string, boolean>();
+  for (const row of permissionRows.data || []) {
+    const key = `${row.branch_id}:${row.permission_key}`;
+    if (!permissionMap.has(key)) permissionMap.set(key, Boolean(row.is_allowed));
+  }
+  const effectivePermission = (key: string) => {
+    if (!isManager) return true;
+    if (branchId === "all") return true;
+    return permissionMap.get(`${branchId}:${key}`) ?? true;
+  };
+  if (!effectivePermission("module:purchasing:view")) {
+    return authenticationResponse(request, authentication, { error: "Purchasing is not available to your account at this branch." }, 403);
+  }
 
   try {
     if (detailId) {
@@ -105,7 +152,7 @@ export async function GET(request: Request) {
       }
 
       const itemProjection = kind === "order"
-        ? "id,product_name,unit_code,ordered_quantity_milli,received_quantity_milli,unit_cost_paisa,line_total_paisa"
+        ? "id,product_id,product_name,unit_code,ordered_quantity_milli,received_quantity_milli,unit_cost_paisa,line_total_paisa"
         : "id,product_name,unit_code,quantity_milli,unit_cost_paisa,line_total_paisa,replacement_quantity_milli";
       const { data: items, error: itemsError } = await client
         .from(itemTable)
@@ -115,12 +162,13 @@ export async function GET(request: Request) {
         .order("product_name", { ascending: true });
       if (itemsError) throw itemsError;
 
-      const { data: supplier } = await client
+      const { data: supplier, error: supplierError } = await client
         .from("suppliers")
         .select("id,name")
         .eq("id", record.supplier_id)
         .is("deleted_at", null)
         .maybeSingle();
+      if (supplierError) throw supplierError;
       const result = {
         kind,
         record: {
@@ -128,7 +176,15 @@ export async function GET(request: Request) {
           branch_name: branchNames.get(record.branch_id) || "Branch",
           supplier_name: supplier?.name || "Supplier details unavailable",
         },
-        items: items || [],
+        items: kind === "order"
+          ? (items || []).map((line: { ordered_quantity_milli: number; received_quantity_milli: number }) => ({
+              ...line,
+              remaining_quantity_milli: Math.max(
+                0,
+                Number(line.ordered_quantity_milli || 0) - Number(line.received_quantity_milli || 0),
+              ),
+            }))
+          : items || [],
       };
 
       if (kind === "order") {
@@ -148,37 +204,92 @@ export async function GET(request: Request) {
         .eq("receipt_id", detailId)
         .is("deleted_at", null)
         .order("paid_at", { ascending: true });
-      if (paymentsError && !schemaUnavailable(paymentsError)) throw paymentsError;
-      const paymentRows = (payments || []) as Array<{ id: string; paid_by: string | null }>;
+      if (paymentsError) throw paymentsError;
+      const { data: returns, error: returnsError } = await client
+        .from("supplier_returns")
+        .select("id,reason,disposition,notes,total_paisa,returned_at")
+        .eq("receipt_id", detailId)
+        .is("deleted_at", null)
+        .order("returned_at", { ascending: false });
+      if (returnsError) throw returnsError;
+      const paymentRows = (payments || []) as Array<{
+        id: string; paid_by: string | null; amount_paisa: number;
+      }>;
+      const receiptItemIds = (items || []).map((receiptItem: { id: string }) => receiptItem.id);
+      const returnedByItem = new Map<string, number>();
+      if (receiptItemIds.length) {
+        const { data: returnItems, error: returnItemsError } = await client
+          .from("supplier_return_items")
+          .select("receipt_item_id,quantity_milli")
+          .in("receipt_item_id", receiptItemIds)
+          .is("deleted_at", null);
+        if (returnItemsError) throw returnItemsError;
+        for (const returnItem of (returnItems || []) as Array<{ receipt_item_id: string; quantity_milli: number }>) {
+          returnedByItem.set(
+            returnItem.receipt_item_id,
+            (returnedByItem.get(returnItem.receipt_item_id) || 0) + Number(returnItem.quantity_milli || 0),
+          );
+        }
+      }
+
+      const detailedItems = kind === "receipt"
+        ? (items || []).map((receiptItem: { id: string; quantity_milli: number }) => ({
+            ...receiptItem,
+            remaining_quantity_milli: Math.max(
+              0,
+              Number(receiptItem.quantity_milli || 0) - (returnedByItem.get(receiptItem.id) || 0),
+            ),
+          }))
+        : items || [];
       const paidByIds = [...new Set(paymentRows.map((payment) => payment.paid_by).filter(Boolean))] as string[];
       const paidByNames = new Map<string, string>();
       if (paidByIds.length) {
-        const { data: staffRows } = await client
+        const { data: staffRows, error: staffError } = await client
           .from("staff_profiles")
           .select("id,full_name")
           .in("id", paidByIds)
           .is("deleted_at", null);
+        if (staffError) throw staffError;
         for (const member of (staffRows || []) as Array<{ id: string; full_name: string }>) {
           paidByNames.set(member.id, member.full_name);
         }
       }
+
       return authenticationResponse(request, authentication, {
         ...result,
+        record: {
+          ...result.record,
+          paid_paisa: paymentRows.reduce((total, payment) => total + Number(payment.amount_paisa || 0), 0),
+          returned_paisa: (returns || [])
+            .filter((returnRecord: { disposition: string }) => returnRecord.disposition === "credit")
+            .reduce((total: number, returnRecord: { total_paisa: number }) => total + Number(returnRecord.total_paisa || 0), 0),
+          due_paisa: Math.max(
+            0,
+            Number((result.record as { subtotal_paisa?: number }).subtotal_paisa || 0)
+              - paymentRows.reduce((total, payment) => total + Number(payment.amount_paisa || 0), 0)
+              - (returns || [])
+                .filter((returnRecord: { disposition: string }) => returnRecord.disposition === "credit")
+                .reduce((total: number, returnRecord: { total_paisa: number }) => total + Number(returnRecord.total_paisa || 0), 0),
+          ),
+        },
+        items: detailedItems,
         payments: paymentRows.map((payment) => ({
           ...payment,
           paid_by_name: payment.paid_by ? paidByNames.get(payment.paid_by) || "Staff member" : null,
         })),
+        returns: returns || [],
       });
     }
 
     let supplierIds: string[] = [];
     if (search) {
-      const { data: matchingSuppliers } = await client
+      const { data: matchingSuppliers, error: matchingSuppliersError } = await client
         .from("suppliers")
         .select("id")
         .is("deleted_at", null)
         .ilike("name", `%${escapedSearch(search)}%`)
         .limit(100);
+      if (matchingSuppliersError) throw matchingSuppliersError;
       supplierIds = (matchingSuppliers || []).map((supplier: { id: string }) => supplier.id);
     }
 
@@ -216,7 +327,15 @@ export async function GET(request: Request) {
     ]);
     if (ordersResult.error) throw ordersResult.error;
     if (receiptsResult.error) throw receiptsResult.error;
-    if (suppliersResult.error && schemaUnavailable(suppliersResult.error)) throw suppliersResult.error;
+    if (suppliersResult.error) throw suppliersResult.error;
+    const { data: products, error: productsError } = await client
+      .from("products")
+      .select("id,name,unit_code,cost_price_paisa,is_active")
+      .eq("is_active", true)
+      .is("deleted_at", null)
+      .order("name", { ascending: true })
+      .limit(1000);
+    if (productsError) throw productsError;
 
     const rows = [...(ordersResult.data || []), ...(receiptsResult.data || [])];
     const supplierIdsToLoad = [...new Set(rows.map((row: { supplier_id: string }) => row.supplier_id))];
@@ -230,8 +349,9 @@ export async function GET(request: Request) {
     const receiptIds = (receiptsResult.data || []).map((receipt: { id: string }) => receipt.id);
     const orderStats = new Map<string, { products: number; receivedMilli: number }>();
     const receiptStats = new Map<string, { products: number; paidPaisa: number }>();
+    const receiptCredits = new Map<string, number>();
 
-    const [orderItemsResult, receiptItemsResult, paymentsResult] = await Promise.all([
+    const [orderItemsResult, receiptItemsResult, paymentsResult, returnsResult] = await Promise.all([
       orderIds.length
         ? client
           .from("purchase_order_items")
@@ -253,10 +373,18 @@ export async function GET(request: Request) {
           .in("receipt_id", receiptIds)
           .is("deleted_at", null)
         : Promise.resolve({ data: [], error: null }),
+      receiptIds.length
+        ? client
+          .from("supplier_returns")
+          .select("receipt_id,total_paisa,disposition")
+          .in("receipt_id", receiptIds)
+          .is("deleted_at", null)
+        : Promise.resolve({ data: [], error: null }),
     ]);
-    if (orderItemsResult.error && schemaUnavailable(orderItemsResult.error)) throw orderItemsResult.error;
-    if (receiptItemsResult.error && schemaUnavailable(receiptItemsResult.error)) throw receiptItemsResult.error;
-    if (paymentsResult.error && schemaUnavailable(paymentsResult.error)) throw paymentsResult.error;
+    if (orderItemsResult.error) throw orderItemsResult.error;
+    if (receiptItemsResult.error) throw receiptItemsResult.error;
+    if (paymentsResult.error) throw paymentsResult.error;
+    if (returnsResult.error) throw returnsResult.error;
 
     for (const item of (orderItemsResult.data || []) as Array<{ order_id: string; received_quantity_milli: number }>) {
       const bucket = orderStats.get(item.order_id) || { products: 0, receivedMilli: 0 };
@@ -274,17 +402,25 @@ export async function GET(request: Request) {
       bucket.paidPaisa += Number(payment.amount_paisa || 0);
       receiptStats.set(payment.receipt_id, bucket);
     }
+    for (const supplierReturn of (returnsResult.data || []) as Array<{ receipt_id: string; total_paisa: number; disposition: string }>) {
+      if (supplierReturn.disposition !== "credit") continue;
+      receiptCredits.set(
+        supplierReturn.receipt_id,
+        (receiptCredits.get(supplierReturn.receipt_id) || 0) + Number(supplierReturn.total_paisa || 0),
+      );
+    }
 
     const receivedByIds = [...new Set((receiptsResult.data || [])
       .map((receipt: { received_by?: string | null }) => receipt.received_by)
       .filter(Boolean))] as string[];
     const receivedByNames = new Map<string, string>();
     if (receivedByIds.length) {
-      const { data: staffRows } = await client
+      const { data: staffRows, error: staffError } = await client
         .from("staff_profiles")
         .select("id,full_name")
         .in("id", receivedByIds)
         .is("deleted_at", null);
+      if (staffError) throw staffError;
       for (const member of (staffRows || []) as Array<{ id: string; full_name: string }>) {
         receivedByNames.set(member.id, member.full_name);
       }
@@ -299,6 +435,15 @@ export async function GET(request: Request) {
     return authenticationResponse(request, authentication, {
       branches: authentication.identity.branches.map(({ id, name }) => ({ id, name })),
       branchId,
+      products: products || [],
+      permissions: {
+        canCreateOrders: effectivePermission("action:create_purchase_order"),
+        canReceiveOrders: effectivePermission("module:receive_stock:view")
+          && effectivePermission("action:receive_purchase_order"),
+        canCancelOrders: effectivePermission("module:purchasing:manage"),
+        canManageVendors: effectivePermission("module:vendors:view")
+          && effectivePermission("action:manage_vendors"),
+      },
       orders: (ordersResult.data || []).map((order: { id: string }) => {
         const stats = orderStats.get(order.id);
         return {
@@ -313,7 +458,11 @@ export async function GET(request: Request) {
           ...decorate(receipt),
           product_count: stats?.products || 0,
           paid_paisa: stats?.paidPaisa || 0,
-          due_paisa: Math.max(0, Number(receipt.subtotal_paisa || 0) - (stats?.paidPaisa || 0)),
+          returned_paisa: receiptCredits.get(receipt.id) || 0,
+          due_paisa: Math.max(
+            0,
+            Number(receipt.subtotal_paisa || 0) - (stats?.paidPaisa || 0) - (receiptCredits.get(receipt.id) || 0),
+          ),
           received_by_name: receipt.received_by ? receivedByNames.get(receipt.received_by) || "Staff member" : null,
         };
       }),
@@ -331,5 +480,136 @@ export async function GET(request: Request) {
       { error: purchasingError(failure) },
       schemaUnavailable(failure) ? 503 : 500,
     );
+  }
+}
+
+export async function POST(request: Request) {
+  const authentication = await authenticateStaff(request);
+  if (!authentication.ok) {
+    return authenticationResponse(request, authentication, { error: authentication.error }, authentication.status);
+  }
+
+  try {
+    assertSameOrigin(request);
+    const body = await readJsonBody(request);
+    const action = readText(body.action, "Purchasing action", 32);
+    if (!PURCHASING_ACTIONS.includes(action as PurchasingAction)) {
+      throw new WriteError("Choose a supported purchasing action.");
+    }
+    const branchId = readText(body.branchId, "Branch", 64);
+    if (!isUuid(branchId)) throw new WriteError("Choose a valid branch.");
+    const idempotencyKey = readText(body.idempotencyKey, "Request key", 100);
+    let payload: Json;
+
+    if (action === "create_order") {
+      const supplierId = readText(body.supplierId, "Supplier", 64);
+      if (!isUuid(supplierId)) throw new WriteError("Choose a valid supplier.");
+      const expectedAt = readOptionalText(body.expectedAt, "Expected delivery", 10);
+      if (expectedAt) {
+        const parsedDate = new Date(`${expectedAt}T00:00:00.000Z`);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(expectedAt)
+          || Number.isNaN(parsedDate.getTime())
+          || parsedDate.toISOString().slice(0, 10) !== expectedAt) {
+          throw new WriteError("Expected delivery date must be a valid calendar date.");
+        }
+      }
+      if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > 200) {
+        throw new WriteError("A purchase order must contain between 1 and 200 products.");
+      }
+      const items = body.items.map((entry) => {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+          throw new WriteError("Enter a valid product on each order line.");
+        }
+        const line = entry as Record<string, unknown>;
+        const productId = readText(line.productId, "Product", 64);
+        if (!isUuid(productId)) throw new WriteError("Choose a valid product.");
+        return {
+          productId,
+          quantityMilli: readInteger(line.quantityMilli, "Quantity", { minimum: 1 }),
+          unitCostPaisa: readInteger(line.unitCostPaisa, "Unit cost", { minimum: 0 }),
+        };
+      });
+      payload = {
+        branchId, supplierId, expectedAt, items,
+        notes: readOptionalText(body.notes, "Order notes", 500),
+        idempotencyKey,
+      };
+    } else if (action === "receive_order") {
+      const orderId = readText(body.orderId, "Purchase order", 64);
+      if (!isUuid(orderId)) throw new WriteError("Choose a valid purchase order.");
+      if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > 200) {
+        throw new WriteError("A purchase receipt must contain between 1 and 200 products.");
+      }
+      const items = body.items.map((entry) => {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+          throw new WriteError("Enter a valid product and received quantity.");
+        }
+        const line = entry as Record<string, unknown>;
+        const productId = readText(line.productId, "Product", 64);
+        if (!isUuid(productId)) throw new WriteError("Choose a valid product.");
+        return { productId, quantityMilli: readInteger(line.quantityMilli, "Received quantity", { minimum: 1 }) };
+      });
+      payload = {
+        branchId, orderId, items, idempotencyKey,
+        supplierInvoiceNumber: readOptionalText(body.supplierInvoiceNumber, "Supplier invoice", 100),
+        notes: readOptionalText(body.notes, "Receiving notes", 500),
+      };
+    } else if (action === "cancel_order") {
+      const orderId = readText(body.orderId, "Purchase order", 64);
+      if (!isUuid(orderId)) throw new WriteError("Choose a valid purchase order.");
+      payload = { branchId, orderId, reason: readText(body.reason, "Cancellation reason", 500), idempotencyKey };
+    } else if (action === "supplier_payment") {
+      const receiptId = readText(body.receiptId, "Purchase receipt", 64);
+      if (!isUuid(receiptId)) throw new WriteError("Choose a valid purchase receipt.");
+      const method = readText(body.method, "Payment method", 30);
+      if (!["cash", "bank_transfer", "card", "jazzcash", "easypaisa", "other"].includes(method)) {
+        throw new WriteError("Choose a supported supplier payment method.");
+      }
+      payload = {
+        branchId, receiptId, method,
+        amountPaisa: readInteger(body.amountPaisa, "Payment amount", { minimum: 1 }),
+        reference: readOptionalText(body.reference, "Reference", 100),
+        notes: readOptionalText(body.notes, "Payment notes", 500),
+        idempotencyKey,
+      };
+    } else {
+      const receiptId = readText(body.receiptId, "Purchase receipt", 64);
+      if (!isUuid(receiptId)) throw new WriteError("Choose a valid purchase receipt.");
+      const disposition = readText(body.disposition, "Return disposition", 20);
+      if (disposition !== "credit" && disposition !== "replacement") {
+        throw new WriteError("Choose supplier credit or replacement.");
+      }
+      const reason = readText(body.reason, "Return reason", 30);
+      if (!["damaged", "quality", "expired", "incorrect_item", "other"].includes(reason)) {
+        throw new WriteError("Choose a supported supplier return reason.");
+      }
+      if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > 200) {
+        throw new WriteError("A supplier return must contain between 1 and 200 products.");
+      }
+      const items = body.items.map((entry) => {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+          throw new WriteError("Enter a valid product and return quantity.");
+        }
+        const line = entry as Record<string, unknown>;
+        const receiptItemId = readText(line.receiptItemId, "Received product", 64);
+        if (!isUuid(receiptItemId)) throw new WriteError("Choose a valid received product.");
+        return { receiptItemId, quantityMilli: readInteger(line.quantityMilli, "Return quantity", { minimum: 1 }) };
+      });
+      payload = {
+        branchId, receiptId, disposition, reason, items,
+        notes: readOptionalText(body.notes, "Return notes", 500),
+        idempotencyKey,
+      };
+    }
+
+    const { data, error } = await authentication.client.rpc("staff_manage_purchasing", {
+      p_action: action,
+      p_payload: payload,
+    });
+    if (error?.code === "P0001") throw new WriteError(error.message);
+    if (error) throw error;
+    return authenticationResponse(request, authentication, { result: data });
+  } catch (error) {
+    return writeFailure(request, authentication, error);
   }
 }

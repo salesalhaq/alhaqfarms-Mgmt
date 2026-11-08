@@ -548,6 +548,10 @@ export interface Database {
         Args: { p_action: string; p_payload: Json };
         Returns: Json;
       };
+      staff_manage_purchasing: {
+        Args: { p_action: string; p_payload: Json };
+        Returns: Json;
+      };
       staff_record_inventory_action: {
         Args: { p_action: string; p_payload: Json };
         Returns: Json;

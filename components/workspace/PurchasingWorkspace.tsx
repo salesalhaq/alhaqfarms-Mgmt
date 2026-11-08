@@ -259,7 +259,7 @@ export function PurchasingWorkspace({ item }: { item: WorkspaceModule }) {
     return () => { active = false; };
   }, [branchId, debouncedSearch, reloadKey, staff]);
 
-  const openDetails = async (kind: "orders" | "receipts", id: string) => {
+  const openDetails = async (kind: "orders" | "receipts", id: string): Promise<PurchaseDetailResponse | null> => {
     setDetail(null);
     setDetailError(null);
     setDetailLoading(true);
@@ -273,8 +273,10 @@ export function PurchasingWorkspace({ item }: { item: WorkspaceModule }) {
       const result = await response.json() as PurchaseDetailResponse;
       if (!response.ok) throw new Error(result.error || "Could not load purchase details.");
       setDetail(result);
+      return result;
     } catch (loadError) {
       setDetailError(loadError instanceof Error ? loadError.message : "Could not load purchase details.");
+      return null;
     } finally {
       setDetailLoading(false);
     }
@@ -305,7 +307,9 @@ export function PurchasingWorkspace({ item }: { item: WorkspaceModule }) {
       setActionError("Each product can only appear once on a purchase order.");
       return;
     }
-    const selectedBranchId = isHqAdmin ? orderForm.branchId : staff?.branch_id || "";
+    const selectedBranchId = isHqAdmin
+      ? (branchId === "all" ? orderForm.branchId : branchId)
+      : staff?.branch_id || "";
     if (!selectedBranchId) {
       setActionError("Choose a branch for this purchase order.");
       return;
@@ -400,8 +404,11 @@ export function PurchasingWorkspace({ item }: { item: WorkspaceModule }) {
     }
   };
 
-  const openSupplierPayment = (receipt: PurchaseReceipt) => {
+  const openSupplierPayment = async (receipt: PurchaseReceipt) => {
+    setPaymentTarget(null);
     setActionError(null);
+    const details = await openDetails("receipts", receipt.id);
+    if (!details || details.kind !== "receipt") return;
     setPaymentForm({
       method: "bank_transfer",
       amount: ((receipt.due_paisa || 0) / 100).toFixed(2),
@@ -451,46 +458,32 @@ export function PurchasingWorkspace({ item }: { item: WorkspaceModule }) {
     }
   };
 
-  const openSupplierReturn = (receipt: PurchaseReceipt) => {
-    void (async () => {
-      try {
-        await openDetails("receipts", receipt.id);
-      } catch {
-        return;
-      }
-      const response = await fetch(`/api/workspace/purchasing?kind=receipt&detailId=${encodeURIComponent(receipt.id)}&branchId=${encodeURIComponent(branchId)}`, {
-        cache: "no-store",
-        credentials: "same-origin",
-      });
-      const result = await response.json() as PurchaseDetailResponse;
-      if (!response.ok) {
-        setActionError(result.error || "Could not load receipt quantities for supplier return.");
-        return;
-      }
-      const remainingItems = result.items
-        .filter((line) => (line.remaining_quantity_milli || 0) > 0)
-        .map((line) => ({
-          receiptItemId: line.id,
-          productName: line.product_name,
-          unitCode: line.unit_code,
-          remaining: line.remaining_quantity_milli || 0,
-          quantity: "",
-        }));
-      if (!remainingItems.length) {
-        setActionError("All quantities from this receipt have already been returned.");
-        return;
-      }
-      setActionError(null);
-      setReturnForm({
-        receiptId: receipt.id,
-        branchId: receipt.branch_id,
-        disposition: "credit",
-        reason: "damaged",
-        notes: "",
-        items: remainingItems,
-      });
-    })().catch((openError) => {
-      setActionError(openError instanceof Error ? openError.message : "Could not open this receipt for return.");
+  const openSupplierReturn = async (receipt: PurchaseReceipt) => {
+    setReturnForm(null);
+    setActionError(null);
+    const details = await openDetails("receipts", receipt.id);
+    if (!details || details.kind !== "receipt") return;
+    const remainingItems = details.items
+      .filter((line) => (line.remaining_quantity_milli || 0) > 0)
+      .map((line) => ({
+        receiptItemId: line.id,
+        productName: line.product_name,
+        unitCode: line.unit_code,
+        remaining: line.remaining_quantity_milli || 0,
+        quantity: "",
+      }));
+    if (!remainingItems.length) {
+      setActionError("All quantities from this receipt have already been returned.");
+      return;
+    }
+    setActionError(null);
+    setReturnForm({
+      receiptId: receipt.id,
+      branchId: receipt.branch_id,
+      disposition: "credit",
+      reason: "damaged",
+      notes: "",
+      items: remainingItems,
     });
   };
 
@@ -750,8 +743,8 @@ export function PurchasingWorkspace({ item }: { item: WorkspaceModule }) {
                               <button type="button" className="secondary-button" onClick={() => void openDetails("receipts", receipt.id)}><Eye size={15} /> Details</button>
                               {permissions.canManageVendors && (
                                 <>
-                                  <button type="button" className="secondary-button" onClick={() => openSupplierReturn(receipt)} disabled={actionBusy}>Return stock</button>
-                                  {Boolean(receipt.due_paisa) && <button type="button" className="secondary-button" onClick={() => openSupplierPayment(receipt)} disabled={actionBusy}>Pay</button>}
+                                  <button type="button" className="secondary-button" onClick={() => void openSupplierReturn(receipt)} disabled={actionBusy || detailLoading}>Return stock</button>
+                                  {Boolean(receipt.due_paisa) && <button type="button" className="secondary-button" onClick={() => void openSupplierPayment(receipt)} disabled={actionBusy || detailLoading}>Pay</button>}
                                 </>
                               )}
                             </td>
@@ -812,7 +805,7 @@ export function PurchasingWorkspace({ item }: { item: WorkspaceModule }) {
                               supplier_invoice_number: (detail.record as PurchaseReceipt).supplier_invoice_number,
                               subtotal_paisa: (detail.record as PurchaseReceipt).subtotal_paisa,
                               received_at: (detail.record as PurchaseReceipt).received_at,
-                            })} disabled={actionBusy}>Return stock</button>
+                            })} disabled={actionBusy || detailLoading}>Return stock</button>
                             {Boolean((detail.record as PurchaseReceipt).due_paisa) && (
                               <button className="secondary-button" type="button" onClick={() => openSupplierPayment({
                                 ...(detail.record as PurchaseReceipt),
@@ -823,92 +816,9 @@ export function PurchasingWorkspace({ item }: { item: WorkspaceModule }) {
                                 subtotal_paisa: (detail.record as PurchaseReceipt).subtotal_paisa,
                                 received_at: (detail.record as PurchaseReceipt).received_at,
                                 due_paisa: (detail.record as PurchaseReceipt).due_paisa || 0,
-                              })} disabled={actionBusy}>Record supplier payment</button>
+                              })} disabled={actionBusy || detailLoading}>Record supplier payment</button>
                             )}
                           </>
-                        )}
-                        {orderDialogOpen && (
-                          <WorkspaceDialog eyebrow="Purchasing" onClose={() => setOrderDialogOpen(false)} title="Create purchase order">
-                            <form className="workspace-form" onSubmit={submitOrder}>
-                              <WorkspaceError message={actionError} />
-                              <div className="workspace-form-grid">
-                                <WorkspaceField label="Supplier">
-                                  <select required value={orderForm.supplierId} onChange={(event) => setOrderForm((form) => ({ ...form, supplierId: event.target.value }))}>
-                                    <option value="">Choose supplier</option>
-                                    {suppliers.filter((supplier) => supplier.is_active).map((supplier) => (
-                                      <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
-                                    ))}
-                                  </select>
-                                </WorkspaceField>
-                                {isHqAdmin && branchId === "all" && (
-                                  <WorkspaceField label="Branch">
-                                    <select required value={orderForm.branchId} onChange={(event) => setOrderForm((form) => ({ ...form, branchId: event.target.value }))}>
-                                      <option value="">Choose branch</option>
-                                      {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-                                    </select>
-                                  </WorkspaceField>
-                                )}
-                                <WorkspaceField label="Expected delivery (optional)">
-                                  <input type="date" value={orderForm.expectedAt} onChange={(event) => setOrderForm((form) => ({ ...form, expectedAt: event.target.value }))} />
-                                </WorkspaceField>
-                                <WorkspaceField label="Notes (optional)">
-                                  <input maxLength={500} value={orderForm.notes} onChange={(event) => setOrderForm((form) => ({ ...form, notes: event.target.value }))} />
-                                </WorkspaceField>
-                              </div>
-                              <div className="table-wrap">
-                                <table>
-                                  <thead><tr><th>Product</th><th>Quantity</th><th>Unit cost (PKR)</th><th aria-label="Remove line" /></tr></thead>
-                                  <tbody>
-                                    {orderForm.items.map((line, index) => (
-                                      <tr key={index}>
-                                        <td>
-                                          <select
-                                            aria-label={`Product on line ${index + 1}`}
-                                            required
-                                            value={line.productId}
-                                            onChange={(event) => {
-                                              const product = products.find((candidate) => candidate.id === event.target.value);
-                                              updateOrderLine(index, {
-                                                productId: event.target.value,
-                                                unitCost: product ? (product.cost_price_paisa / 100).toFixed(2) : line.unitCost,
-                                              });
-                                            }}
-                                          >
-                                            <option value="">Choose product</option>
-                                            {products.map((product) => <option key={product.id} value={product.id}>{product.name} ({product.unit_code})</option>)}
-                                          </select>
-                                        </td>
-                                        <td><input aria-label={`Quantity on line ${index + 1}`} inputMode="decimal" placeholder="0.000" required value={line.quantity} onChange={(event) => updateOrderLine(index, { quantity: event.target.value })} /></td>
-                                        <td><input aria-label={`Unit cost on line ${index + 1}`} inputMode="decimal" placeholder="0.00" required value={line.unitCost} onChange={(event) => updateOrderLine(index, { unitCost: event.target.value })} /></td>
-                                        <td>
-                                          {orderForm.items.length > 1 && (
-                                            <button
-                                              className="secondary-button"
-                                              type="button"
-                                              aria-label={`Remove line ${index + 1}`}
-                                              onClick={() => setOrderForm((form) => ({ ...form, items: form.items.filter((_, lineIndex) => lineIndex !== index) }))}
-                                            >
-                                              <X size={15} />
-                                            </button>
-                                          )}
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                              <button className="secondary-button" type="button" onClick={() => setOrderForm((form) => ({ ...form, items: [...form.items, { productId: "", quantity: "", unitCost: "" }] }))}>
-                                <Plus size={14} /> Add product
-                              </button>
-                              <div className="workspace-form-actions">
-                                <button className="secondary-button" type="button" onClick={() => setOrderDialogOpen(false)}>Cancel</button>
-                                <button className="primary-button" disabled={actionBusy || !products.length || !suppliers.some((supplier) => supplier.is_active)} type="submit">
-                                  {actionBusy ? <LoaderCircle size={14} className="spin" /> : <Save size={14} />}
-                                  {actionBusy ? "Creating…" : "Create purchase order"}
-                                </button>
-                              </div>
-                            </form>
-                          </WorkspaceDialog>
                         )}
                         {paymentTarget && (
                           <WorkspaceDialog eyebrow="Purchasing" onClose={() => { setPaymentTarget(null); setActionError(null); }} title="Record supplier payment">
@@ -1112,6 +1022,89 @@ export function PurchasingWorkspace({ item }: { item: WorkspaceModule }) {
             </section>
           )}
         </>
+      )}
+      {canView && permissions.canCreateOrders && orderDialogOpen && (
+        <WorkspaceDialog eyebrow="Purchasing" onClose={() => setOrderDialogOpen(false)} title="Create purchase order">
+          <form className="workspace-form" onSubmit={submitOrder}>
+            <WorkspaceError message={actionError} />
+            <div className="workspace-form-grid">
+              <WorkspaceField label="Supplier">
+                <select required value={orderForm.supplierId} onChange={(event) => setOrderForm((form) => ({ ...form, supplierId: event.target.value }))}>
+                  <option value="">Choose supplier</option>
+                  {suppliers.filter((supplier) => supplier.is_active).map((supplier) => (
+                    <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
+                  ))}
+                </select>
+              </WorkspaceField>
+              {isHqAdmin && branchId === "all" && (
+                <WorkspaceField label="Branch">
+                  <select required value={orderForm.branchId} onChange={(event) => setOrderForm((form) => ({ ...form, branchId: event.target.value }))}>
+                    <option value="">Choose branch</option>
+                    {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                  </select>
+                </WorkspaceField>
+              )}
+              <WorkspaceField label="Expected delivery (optional)">
+                <input type="date" value={orderForm.expectedAt} onChange={(event) => setOrderForm((form) => ({ ...form, expectedAt: event.target.value }))} />
+              </WorkspaceField>
+              <WorkspaceField label="Notes (optional)">
+                <input maxLength={500} value={orderForm.notes} onChange={(event) => setOrderForm((form) => ({ ...form, notes: event.target.value }))} />
+              </WorkspaceField>
+            </div>
+            <div className="table-wrap">
+              <table>
+                <thead><tr><th>Product</th><th>Quantity</th><th>Unit cost (PKR)</th><th aria-label="Remove line" /></tr></thead>
+                <tbody>
+                  {orderForm.items.map((line, index) => (
+                    <tr key={index}>
+                      <td>
+                        <select
+                          aria-label={`Product on line ${index + 1}`}
+                          required
+                          value={line.productId}
+                          onChange={(event) => {
+                            const product = products.find((candidate) => candidate.id === event.target.value);
+                            updateOrderLine(index, {
+                              productId: event.target.value,
+                              unitCost: product ? (product.cost_price_paisa / 100).toFixed(2) : line.unitCost,
+                            });
+                          }}
+                        >
+                          <option value="">Choose product</option>
+                          {products.map((product) => <option key={product.id} value={product.id}>{product.name} ({product.unit_code})</option>)}
+                        </select>
+                      </td>
+                      <td><input aria-label={`Quantity on line ${index + 1}`} inputMode="decimal" placeholder="0.000" required value={line.quantity} onChange={(event) => updateOrderLine(index, { quantity: event.target.value })} /></td>
+                      <td><input aria-label={`Unit cost on line ${index + 1}`} inputMode="decimal" placeholder="0.00" required value={line.unitCost} onChange={(event) => updateOrderLine(index, { unitCost: event.target.value })} /></td>
+                      <td>
+                        {orderForm.items.length > 1 && (
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            aria-label={`Remove line ${index + 1}`}
+                            onClick={() => setOrderForm((form) => ({ ...form, items: form.items.filter((_, lineIndex) => lineIndex !== index) }))}
+                          >
+                            <X size={15} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button className="secondary-button" type="button" onClick={() => setOrderForm((form) => ({ ...form, items: [...form.items, { productId: "", quantity: "", unitCost: "" }] }))}>
+              <Plus size={14} /> Add product
+            </button>
+            <div className="workspace-form-actions">
+              <button className="secondary-button" type="button" onClick={() => setOrderDialogOpen(false)}>Cancel</button>
+              <button className="primary-button" disabled={actionBusy || !products.length || !suppliers.some((supplier) => supplier.is_active)} type="submit">
+                {actionBusy ? <LoaderCircle size={14} className="spin" /> : <Save size={14} />}
+                {actionBusy ? "Creating…" : "Create purchase order"}
+              </button>
+            </div>
+          </form>
+        </WorkspaceDialog>
       )}
     </>
   );

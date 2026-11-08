@@ -501,6 +501,13 @@ export interface Database {
         Args: { p_local_staff_id: string };
         Returns: Json;
       };
+      get_return_actor_names: {
+        Args: { p_return_id: string };
+        Returns: {
+          actor_id: string;
+          full_name: string;
+        }[];
+      };
       authorize_staff_admin_credential_reset: {
         Args: { p_staff_id: string };
         Returns: Json;

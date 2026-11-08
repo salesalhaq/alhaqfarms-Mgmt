@@ -606,7 +606,6 @@ export async function GET(request: Request, context: RouteContext) {
     if (module === "returns") {
       const detailId = parameters.get("detailId") || "";
       const role = authentication.identity.staff.role;
-      const canViewStaffNames = role === "admin" || role === "manager";
 
       if (detailId) {
         if (!isUuid(detailId)) {
@@ -647,30 +646,10 @@ export async function GET(request: Request, context: RouteContext) {
         }
         if (!saleResult.data) throw new Error("The linked sale receipt could not be loaded.");
 
-        const actorIds = [
-          returnRecord.created_by,
-          returnRecord.approved_by,
-          returnRecord.rejected_by,
-          returnRecord.completed_by,
-        ].filter((actorId): actorId is string => Boolean(actorId));
-        let staffNames = new Map<string, string>();
-        if (canViewStaffNames && actorIds.length) {
-          const { data: profiles, error: profilesError } = await authentication.client
-            .from("staff_profiles")
-            .select("id,full_name")
-            .in("id", [...new Set(actorIds)])
-            .is("deleted_at", null);
-          if (profilesError) throw new Error(profilesError.message);
-          staffNames = new Map((profiles || []).map((profile) => [profile.id, profile.full_name]));
-        } else if (role === "cashier") {
-          const { data: linkedStaff, error: linkedStaffError } = await authentication.client
-            .from("cloud_staff")
-            .select("local_staff_id")
-            .eq("user_id", authentication.identity.staff.user_id)
-            .maybeSingle();
-          if (linkedStaffError) throw new Error(linkedStaffError.message);
-          if (linkedStaff) staffNames.set(linkedStaff.local_staff_id, authentication.identity.staff.full_name);
-        }
+        const { data: actorRows, error: actorError } = await authentication.client
+          .rpc("get_return_actor_names", { p_return_id: detailId });
+        if (actorError) throw new Error(actorError.message);
+        const staffNames = new Map((actorRows || []).map((actor) => [actor.actor_id, actor.full_name]));
 
         return authenticationResponse(request, authentication, {
           ...returnRecord,

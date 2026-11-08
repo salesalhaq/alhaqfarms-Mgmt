@@ -1,5 +1,6 @@
 import { authenticateStaff, authenticationResponse, isUuid } from "@/lib/server/staff-auth";
 import { cashierCanViewReturn, cashierReturnVisibilityFilter, isHqAdmin } from "@/lib/server/staff-workflow-scope";
+import { DEFAULT_BRANCH_POS_SETTINGS, parseBranchPosSettings } from "@/lib/branch-pos-settings";
 import type { StaffDailyReportPayload } from "@/lib/supabase/database.types";
 
 export const dynamic = "force-dynamic";
@@ -58,7 +59,7 @@ export async function GET(request: Request, context: RouteContext) {
         return authenticationResponse(request, authentication, { error: "Choose a valid catalog page." }, 400);
       }
 
-      const [staffResult, productsResult, categoriesResult] = await Promise.all([
+      const [staffResult, productsResult, categoriesResult, posSettingsResult] = await Promise.all([
         authentication.client
           .from("cloud_staff")
           .select("local_staff_id")
@@ -78,9 +79,14 @@ export async function GET(request: Request, context: RouteContext) {
           .order("sort_order", { ascending: true })
           .order("name", { ascending: true })
           .limit(200),
+        authentication.client
+          .from("branch_pos_settings")
+          .select("*")
+          .eq("branch_id", branchId)
+          .maybeSingle(),
       ]);
-      if (staffResult.error || productsResult.error || categoriesResult.error) {
-        throw new Error(staffResult.error?.message || productsResult.error?.message || categoriesResult.error?.message);
+      if (staffResult.error || productsResult.error || categoriesResult.error || posSettingsResult.error) {
+        throw new Error(staffResult.error?.message || productsResult.error?.message || categoriesResult.error?.message || posSettingsResult.error?.message);
       }
       if (!staffResult.data) throw new Error("Could not verify the linked staff profile for this register.");
 
@@ -119,6 +125,9 @@ export async function GET(request: Request, context: RouteContext) {
         hasMore: products.length > 0 && products[0].total_count > offset + products.length,
         categories: categoriesResult.data || [],
         shift: shift ? { openedAt: shift.opened_at } : null,
+        posSettings: posSettingsResult.data
+          ? parseBranchPosSettings(posSettingsResult.data)
+          : { ...DEFAULT_BRANCH_POS_SETTINGS },
       });
     }
 

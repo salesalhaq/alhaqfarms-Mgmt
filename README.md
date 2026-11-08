@@ -13,7 +13,7 @@ The online management client shares staff identities and branch-scoped data with
 - Active branch resolution enforced by the existing Supabase RLS policies.
 - Read-only online-order list, order details, event history, payment review states, and authorized signed links to private payment proofs.
 - The Overview mirrors the desktop staff page with active product count, branch stock, today's sales, current shift, and shortcuts. Its exact summary metrics use a security-invoker RPC protected by the existing Supabase RLS policies.
-- Point of sale shows a branch-scoped live catalog with images and stock, plus a temporary browser-only basket. Register, customer, hold, and payment writes remain disabled until the corresponding secure web workflows are implemented.
+- Point of sale uses a branch-scoped live catalog and transactional register, customer, held-sale, discount-approval, and checkout workflows. Tax mode, bill-discount caps, loyalty conversion, and negative-stock behavior are enforced by branch settings and the checkout RPC.
 - Sales history includes date, status, customer, cashier, and branch filters, paginated receipts, itemized read-only details, and browser printing; queries remain within the signed-in user's existing RLS access.
 - Returns & refunds provides date/status/branch filters, return item and refund details, and browser printing. Creating, approving, cancelling, and completing a refund remain disabled until their secure transactional workflow is implemented.
 - Daily report mirrors the desktop business-date totals, payment/refund breakdowns, cash drawer, top products, shifts, and day-close records. Its branch/date filters and CSV export are read-only; day closing remains in the Windows app.
@@ -29,13 +29,13 @@ The Windows app keeps a local scrypt verifier so staff can sign in offline. Supa
 
 After staff sign-in, the home page opens the Overview dashboard. The left navigation mirrors the desktop sections and routes modules under `/workspace/<module>`. Admin and Farm ERP navigation is shown only to admin accounts; cashier navigation omits manager-only purchasing, transfer, and stock-report entries. Online Orders continues to use its existing live, branch-scoped read-only pages.
 
-Products remains a live read-only list using the signed-in Supabase client and existing RLS. Sales history uses an authenticated RLS-scoped API with 25-record pagination and read-only receipt details; returns uses the same branch-scoped pattern and caps its search window at 500 recent rows. Daily report uses a security-invoker, branch-scoped RPC for uncapped totals and exposes no write actions. Point of sale has a live branch catalog and temporary local basket, but no register or checkout writes. Farm ERP uses an admin-only, RLS-scoped read API with bounded lists, aggregate totals, filters, and record details; ERP writes remain in the Windows app. The other mirrored modules currently provide the page layout and visible controls only. Filters, search, and action buttons on those preview pages do not fetch or change operational data. Build and verify each module's server-side authorization, RLS-scoped API, and workflow before enabling its controls. In particular, never enable POS checkout, inventory, purchasing, transfer, return, payroll, or expense writes until the matching transaction and permissions are implemented and tested against the desktop rules.
+Products remains a live read-only list using the signed-in Supabase client and existing RLS. Sales history uses an authenticated RLS-scoped API with 25-record pagination and read-only receipt details; returns uses the same branch-scoped pattern and caps its search window at 500 recent rows. Daily report uses a security-invoker, branch-scoped RPC for uncapped totals and exposes no write actions. Point of sale supports branch-scoped register operations and checkout with server-side validation. Farm ERP uses an admin-only, RLS-scoped read API with bounded lists, aggregate totals, filters, and record details; ERP writes remain in the Windows app. The other mirrored modules currently provide the page layout and visible controls only. Filters, search, and action buttons on those preview pages do not fetch or change operational data. Build and verify each module's server-side authorization, RLS-scoped API, and workflow before enabling its controls.
 
 ## Local development
 
 1. Use Node.js 22 or newer.
 2. Install dependencies with `npm install`.
-3. Copy `.env.example` to `.env.local` and set `NEXT_PUBLIC_SUPABASE_ANON_KEY` to the project's Supabase anon/publishable key. Set `STAFF_PIN_LOGIN_SECRET` to a long random secret; the same value must be configured for the Supabase Edge Functions.
+3. Copy `.env.example` to `.env.local` and set `NEXT_PUBLIC_SUPABASE_ANON_KEY` to the project's Supabase anon/publishable key. Set `STAFF_PIN_LOGIN_SECRET` to a long random secret; the same value must be configured for the Supabase Edge Functions. For local FBR credential storage, also set `FBR_CONFIG_ENCRYPTION_KEY` to a private 64-character hexadecimal key.
 4. Run `npm run dev`, then open `http://localhost:3000`.
 5. On first access, open **Redeem your HQ invite code**, enter the code, and create the password and optional PIN. Use the same values when redeeming the code on the assigned Windows device.
 
@@ -50,7 +50,10 @@ E:\ALhaqFM APP\database\supabase\migrations\0025_shared_staff_web_credentials.sq
 E:\ALhaqFM APP\database\supabase\migrations\0026_staff_overview_metrics.sql
 E:\ALhaqFM APP\database\supabase\migrations\0027_staff_pos_catalog.sql
 E:\ALhaqFM APP\database\supabase\migrations\0028_staff_daily_report.sql
+E:\Alhaqfm Web\supabase\migrations\029_branch_tax_and_fbr_settings.sql
 ```
+
+The web migration creates branch-scoped POS and FBR settings and updates checkout/held-sale validation. Apply it before deploying this version of the web app. Configure a separate 32-byte random key (64 hex characters) as `FBR_CONFIG_ENCRYPTION_KEY` in the Cloudflare Worker secret store before administrators save FBR credentials. For local development, use a different key in `.dev.vars`; do not commit real keys. A key rotation requires re-encrypting existing credentials before replacing the old key.
 
 From `E:\ALhaqFM APP\database\supabase`, set the shared gateway secret and deploy these functions:
 
@@ -67,9 +70,12 @@ Put the same gateway secret in `.env.local` for Next.js development. For Wrangle
 
 ```powershell
 npx wrangler secret put STAFF_PIN_LOGIN_SECRET
+npx wrangler secret put FBR_CONFIG_ENCRYPTION_KEY --name alhaqfarms-mgmt
 ```
 
 Never put this secret or a service-role key in browser code or commit it. The Supabase functions use the project-provided server-side service-role environment; the management Worker does not receive a service-role key.
+
+The FBR settings page stores branch configuration and encrypts credentials at rest with AES-GCM. It does not submit invoices, verify FBR responses, or mark sales as FBR-verified.
 
 ## Shared credential flow
 

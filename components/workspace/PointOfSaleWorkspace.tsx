@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import { formatMoney, formatQuantity } from "@/lib/format";
+import { DEFAULT_BRANCH_POS_SETTINGS, type BranchPosSettings } from "@/lib/branch-pos-settings";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { ReceiptDocument } from "@/components/workspace/ReceiptDocument";
 import {
@@ -72,6 +73,7 @@ interface PosResponse {
   categories?: PosCategory[];
   hasMore?: boolean;
   shift?: { openedAt: string } | null;
+  posSettings?: BranchPosSettings;
   error?: string;
 }
 interface HeldSale {
@@ -201,6 +203,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
   const [categoryId, setCategoryId] = useState("");
   const [offset, setOffset] = useState(0);
   const [products, setProducts] = useState<PosProduct[]>([]);
+  const [posSettings, setPosSettings] = useState<BranchPosSettings>({ ...DEFAULT_BRANCH_POS_SETTINGS });
   const [categories, setCategories] = useState<PosCategory[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [shiftOpen, setShiftOpen] = useState(false);
@@ -240,7 +243,6 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
   const [checkoutSaving, setCheckoutSaving] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [billDiscountInput, setBillDiscountInput] = useState("");
-  const [taxMode, setTaxMode] = useState<"inclusive" | "exclusive">("inclusive");
   const [discountDialog, setDiscountDialog] = useState(false);
   const [discountDraft, setDiscountDraft] = useState("");
   const [paymentDrafts, setPaymentDrafts] = useState<PosPaymentDraft[]>([]);
@@ -263,6 +265,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
   const searchRef = useRef<HTMLInputElement>(null);
   const cartRef = useRef(cart);
   cartRef.current = cart;
+  const taxMode = posSettings.taxMode;
 
   const totalPaisa = useMemo(() => cart.reduce(
     (total, line) => total + Math.round(productPrice(line.product) * line.quantityMilli / 1000),
@@ -278,12 +281,13 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
   }), [billDiscountPaisa, cart]);
   const loyaltyPointsRedeemed = /^\d{1,10}$/.test(loyaltyPointsInput.trim())
     ? Number(loyaltyPointsInput.trim()) : 0;
-  const loyaltyDiscountPaisa = loyaltyPointsRedeemed * 100;
+  const loyaltyDiscountPaisa = loyaltyPointsRedeemed * posSettings.loyaltyPointValuePaisa;
   const invalidLoyaltyRedemption = !/^\d{1,10}$/.test(loyaltyPointsInput.trim())
     || !Number.isSafeInteger(loyaltyDiscountPaisa)
     || (loyaltyPointsRedeemed > 0 && !selectedCustomer)
     || loyaltyPointsRedeemed > (selectedCustomer?.loyalty_points || 0)
     || loyaltyDiscountPaisa > totalPaisa - (billDiscountPaisa || 0);
+  const maxBillDiscountPaisa = Math.floor(totalPaisa * posSettings.maxBillDiscountBps / 10_000);
   const discountNeedsManagerApproval = Boolean(staff)
     && (billDiscountPaisa || 0) > Math.min(Math.floor(totalPaisa * 0.03), 10_000);
   let taxDiscountRemaining = (billDiscountPaisa ?? 0)
@@ -309,6 +313,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
     : totalPaisa - billDiscountPaisa - (invalidLoyaltyRedemption ? 0 : loyaltyDiscountPaisa)
       + (taxMode === "exclusive" ? saleTaxPaisa : 0);
   const invalidBillDiscount = billDiscountPaisa == null
+    || billDiscountPaisa > maxBillDiscountPaisa
     || billDiscountPaisa + (invalidLoyaltyRedemption ? 0 : loyaltyDiscountPaisa) > totalPaisa;
   const paymentTotalPaisa = paymentDrafts.reduce((sum, payment) => sum + (parseMoneyInput(payment.amount) || 0), 0);
 
@@ -340,6 +345,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
     let active = true;
     if (!branchId) {
       setProducts([]);
+      setPosSettings({ ...DEFAULT_BRANCH_POS_SETTINGS });
       setCategories([]);
       setHasMore(false);
       setShiftOpen(false);
@@ -364,6 +370,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
         if (!response.ok) throw new Error(result.error || "Could not load the point-of-sale catalog.");
         const page = result.products || [];
         setProducts((current) => offset ? [...current, ...page] : page);
+        if (!offset) setPosSettings(result.posSettings || { ...DEFAULT_BRANCH_POS_SETTINGS });
         setCategories(result.categories || []);
         setHasMore(Boolean(result.hasMore));
         setShiftOpen(Boolean(result.shift));
@@ -779,7 +786,6 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
       }
       setCart(restored.items.map(({ product, quantityMilli }) => ({ product, quantityMilli })));
       setQuantityDrafts({});
-      setTaxMode(restored.taxMode);
       setBillDiscountInput(restored.billDiscountPaisa ? (restored.billDiscountPaisa / 100).toFixed(2) : "");
       setPaymentDrafts(restored.payments.map((payment) => ({
         method: payment.method,
@@ -1307,11 +1313,8 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
           </div>
           <div className="pos-basket-actions">
             <label className="field">
-              <span>Tax mode</span>
-              <select value={taxMode} onChange={(event) => setTaxMode(event.target.value as "inclusive" | "exclusive")}>
-                <option value="inclusive">Tax included in prices</option>
-                <option value="exclusive">Add tax to prices</option>
-              </select>
+              <span>Branch tax mode</span>
+              <input readOnly value={taxMode === "inclusive" ? "Tax included in prices" : "Add tax to prices"} />
             </label>
             <button className="button secondary" disabled={!cart.length || checkoutSaving} onClick={() => {
               setDiscountDraft(billDiscountInput);
@@ -1548,8 +1551,8 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
             <form className="form-stack" onSubmit={(event) => {
               event.preventDefault();
               const paisa = discountDraft.trim() ? parseMoneyInput(discountDraft) : 0;
-              if (paisa == null || paisa > totalPaisa) {
-                setCheckoutError("Enter a valid discount that does not exceed the subtotal.");
+              if (paisa == null || paisa > totalPaisa || paisa > maxBillDiscountPaisa) {
+                setCheckoutError(`Enter a valid discount that does not exceed the branch limit of ${formatMoney(maxBillDiscountPaisa)}.`);
                 return;
               }
               setBillDiscountInput(discountDraft);
@@ -1557,7 +1560,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
               setCheckoutError(null);
             }}>
               <label className="field">
-                <span>Discount amount (PKR)<small>Discounts above the lower of 3% or PKR 100 require approval from another manager or administrator.</small></span>
+                <span>Discount amount (PKR)<small>Branch limit: {formatMoney(maxBillDiscountPaisa)}. Discounts above the lower of 3% or PKR 100 also require approval from another manager or administrator.</small></span>
                 <input autoFocus inputMode="decimal" value={discountDraft} onChange={(event) => setDiscountDraft(event.target.value)} />
               </label>
               {checkoutError && <div className="error-banner" role="alert">{checkoutError}</div>}

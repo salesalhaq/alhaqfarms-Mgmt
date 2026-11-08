@@ -464,6 +464,36 @@ export interface Database {
         updated_at: string;
         updated_by: string;
       }>;
+      branch_pos_settings: Table<{
+        branch_id: string;
+        tax_mode: string;
+        tax_rate_bps: number;
+        tax_rounding_scope: string;
+        tax_rounding_method: string;
+        tax_rounding_increment_paisa: number;
+        tax_display: string;
+        max_item_discount_bps: number;
+        max_bill_discount_bps: number;
+        loyalty_points_per_100: number;
+        loyalty_point_value_paisa: number;
+        low_stock_threshold: number;
+        allow_negative_stock: boolean;
+        updated_at: string;
+        updated_by: string;
+      }>;
+      branch_fbr_settings: Table<{
+        branch_id: string;
+        environment: string;
+        base_url: string;
+        registration_number: string;
+        pos_id: string;
+        payment_mode: number;
+        client_id: string;
+        enabled: boolean;
+        credentials_encrypted: Json | null;
+        updated_at: string;
+        updated_by: string;
+      }>;
     };
     Views: Record<string, never>;
     Functions: {

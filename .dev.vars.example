@@ -1,3 +1,4 @@
 NEXT_PUBLIC_SUPABASE_URL=https://osrzfwdeyznfvduizmgs.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 STAFF_PIN_LOGIN_SECRET=replace-with-a-long-random-secret
+FBR_CONFIG_ENCRYPTION_KEY=generate-a-64-character-hex-secret

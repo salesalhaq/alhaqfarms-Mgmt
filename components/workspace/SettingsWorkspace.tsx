@@ -8,7 +8,6 @@ import {
   Database,
   DatabaseBackup,
   Download,
-  Eye,
   FolderOpen,
   KeyRound,
   Menu,
@@ -23,7 +22,6 @@ import {
   ShieldCheck,
   Smartphone,
   Store,
-  Tag,
   Tags,
   Truck,
   Upload,
@@ -61,6 +59,7 @@ import { appThemes, themeGroups } from "@/lib/themes";
 import { StorefrontCheckoutWorkspace } from "@/components/workspace/StorefrontCheckoutWorkspace";
 import { PermissionsWorkspace } from "@/components/workspace/PermissionsWorkspace";
 import { CloudAccessWorkspace } from "@/components/workspace/CloudAccessWorkspace";
+import { TaxSettingsWorkspace } from "@/components/workspace/TaxSettingsWorkspace";
 
 type SettingsTab =
   | "profile"
@@ -1090,49 +1089,9 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
           <CloudAccessWorkspace branches={settings.branches} />
         )}
 
-        {activeTab === "tax" && <>
-          <LocalOnlyPanel
-            title="Tax & loyalty"
-            description="Applied to new sales unless a product overrides the rate. Global tax mode, tax rounding, discount limits, and loyalty rules are desktop business settings and are not represented as shared settings in the web database."
-            fields={[
-              { label: "Tax mode", type: "select", options: ["Tax inclusive prices", "Add tax at checkout"] },
-              { label: "Tax rate (%)", type: "number" },
-              { label: "Tax rounding scope", type: "select", options: ["Each sale line", "Whole sale"] },
-              { label: "Tax rounding method", type: "select", options: ["Nearest paisa", "Round down", "Round up"] },
-              { label: "Tax rounding increment (paisa)", type: "select", options: ["1", "5", "10", "25", "50", "100"] },
-              { label: "Receipt tax detail", type: "select", options: ["Summary", "Per tax rate"] },
-              { label: "Maximum item discount (%)", type: "number" },
-              { label: "Maximum bill discount (%)", type: "number" },
-              { label: "Loyalty points per PKR 100", type: "number" },
-              { label: "Value per loyalty point (PKR)", type: "number" },
-              { label: "Low stock threshold", type: "number" },
-              { label: "Allow sales when this would take stock below zero", type: "checkbox", wide: true },
-            ]}
-            actions={<DesktopAction primary title="Saving tax and loyalty settings is a Windows desktop workflow."><Save size={13} /> Save settings</DesktopAction>}
-            note="Discount and loyalty rules are enforced at checkout. Set points per PKR 100 to zero to disable earning; each point is worth the configured PKR value when redeemed. Nothing is inferred here, and all controls are disabled."
-          />
-          <section className="card settings-workspace-panel">
-            <div className="hr-panel-heading">
-              <h2><ShieldCheck size={14} /> FBR setup</h2>
-              <DesktopAction title="Managing PCT categories is a Windows desktop workflow."><Tag size={13} /> Manage PCT categories</DesktopAction>
-            </div>
-            <p>Configure FBR credentials per branch. Invoice submission is not available until the official API protocol and verification response are implemented.</p>
-            <div className="settings-workspace-disabled-grid">
-              <DesktopControl field={{ label: "Branch", type: "select", options: settings.branches.map((branch) => `${branch.name} (${branch.code})`) }} />
-              <DesktopControl field={{ label: "Environment", type: "select", options: ["Sandbox / test", "Production"] }} />
-              <DesktopControl field={{ label: "FBR API base URL (HTTPS only)", wide: true }} />
-              <DesktopControl field={{ label: "NTN / STRN / registration ID" }} />
-              <DesktopControl field={{ label: "FBR POS ID" }} />
-              <DesktopControl field={{ label: "Payment mode code", type: "number" }} />
-              <DesktopControl field={{ label: "Branch / API client ID" }} />
-            </div>
-            <div className="heading-actions" style={{ marginTop: "12px" }}>
-              <DesktopAction title="Previewing the latest sale payload is a Windows desktop workflow."><Eye size={13} /> Preview latest sale payload</DesktopAction>
-              <DesktopAction primary title="Saving FBR settings is a Windows desktop workflow."><Save size={13} /> Save FBR settings</DesktopAction>
-            </div>
-            <p className="settings-workspace-note">Saving these settings does not submit invoices or mark sales as FBR-verified. Credentials are encrypted using the Windows device&apos;s secure storage and are excluded from cloud sync.</p>
-          </section>
-        </>}
+        {activeTab === "tax" && settings.profile.role === "admin" && (
+          <TaxSettingsWorkspace branches={settings.branches} />
+        )}
 
         {activeTab === "printers" && <PrinterSettingsPanel branchId={settings.profile.branchId} />}
 
@@ -1424,6 +1383,14 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
         .settings-scale-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 10px; }
         .settings-scale-grid .field { margin: 0; }
         .settings-cloud-access-form { display: grid; gap: 12px; }
+        .settings-tax-stack, .settings-tax-form { display: grid; gap: 14px; }
+        .settings-tax-form fieldset { display: grid; gap: 12px; min-width: 0; border: 0; margin: 0; padding: 0; }
+        .settings-tax-form .field { margin: 0; }
+        .settings-tax-branch { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+        .settings-tax-branch .field { min-width: min(100%, 320px); margin: 0; }
+        .settings-tax-toggle, .settings-tax-toggle-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; color: var(--ink); font-size: 11px; }
+        .settings-tax-toggle input { accent-color: var(--green); }
+        .settings-tax-toggle-row { gap: 12px 20px; }
         @media (max-width: 640px) {
           .settings-workspace-panel { padding: 14px; }
           .settings-workspace-actions { align-items: stretch; }

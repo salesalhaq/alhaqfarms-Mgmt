@@ -155,7 +155,12 @@ export function ReceiveStockWorkspace({ item }: { item: WorkspaceModule }) {
         transferId: detail.transfer.id,
         items,
       });
-      setActionMessage("Transfer received. Confirmed stock has been added to this branch.");
+      const shortLines = detail.items.filter((line, index) =>
+        items[index].receivedQuantityMilli < line.quantity_milli
+      ).length;
+      setActionMessage(shortLines
+        ? `Transfer received with ${shortLines} short line${shortLines === 1 ? "" : "s"}. Confirmed stock has been added to this branch.`
+        : "Transfer received in full. Confirmed stock has been added to this branch.");
       setReloadKey((value) => value + 1);
       await openDetail(detail.transfer);
     } catch (actionError) {
@@ -166,6 +171,14 @@ export function ReceiveStockWorkspace({ item }: { item: WorkspaceModule }) {
   };
 
   const summary = payload?.summary;
+  const receiptCounts = detail?.items.reduce((totals, line) => {
+    const entered = quantityToMilli(receiveQuantities[line.id] || "") ?? 0;
+    totals.expected += line.quantity_milli;
+    totals.counting += Math.min(entered, line.quantity_milli);
+    if (entered < line.quantity_milli) totals.shortLines += 1;
+    totals.lines += 1;
+    return totals;
+  }, { expected: 0, counting: 0, shortLines: 0, lines: 0 });
   const cards = summary ? [
     { label: "Arriving", value: summary.arriving.toLocaleString(), note: "Dispatched transfers not yet received" },
     { label: "Units in transit", value: formatQuantity(summary.unitsInTransit), note: "Across incoming transfers" },
@@ -319,8 +332,16 @@ export function ReceiveStockWorkspace({ item }: { item: WorkspaceModule }) {
             <section className="card table-wrap workspace-table" aria-label="Transfer lines">
               <div className="table-document-heading">
                 <strong>{detail.transfer.transfer_number} · {detail.transfer.from_branch_name} → {detail.transfer.to_branch_name}</strong>
-                <button className="button secondary" type="button" onClick={() => setDetail(null)}><X size={13} /> Close</button>
+                <button className="button secondary" type="button" onClick={() => setDetail(null)} disabled={actionBusy}><X size={13} /> Close</button>
               </div>
+              {receiptCounts && detail.transfer.status === "dispatched" && payload.summary.canReceive && (
+                <section className="dashboard-stats" aria-label="Receipt count summary">
+                  <article className="dashboard-stat card"><span>Lines</span><strong>{receiptCounts.lines}</strong></article>
+                  <article className="dashboard-stat card"><span>Expected units</span><strong>{formatQuantity(receiptCounts.expected)}</strong></article>
+                  <article className="dashboard-stat card"><span>Counting</span><strong>{formatQuantity(receiptCounts.counting)}</strong></article>
+                  <article className="dashboard-stat card"><span>Short lines</span><strong>{receiptCounts.shortLines}</strong></article>
+                </section>
+              )}
               <table id="receive-stock-lines">
                 <thead><tr><th>Product</th><th>Unit</th><th>Dispatched</th><th>Received</th><th>Cost</th></tr></thead>
                 <tbody>

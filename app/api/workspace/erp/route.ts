@@ -8,6 +8,7 @@ type ErpClient = {
 };
 
 type BranchLite = { id: string; name: string };
+type ExpenseCategoryLite = { id: string; name: string; is_active: boolean };
 type ErpRow = Record<string, any>;
 
 const ERP_MODULES = new Set([
@@ -989,10 +990,10 @@ async function loadExpenses(
   categoryId: string,
   from: string,
   to: string,
-): Promise<{ rows: ErpRow[]; categories: BranchLite[] }> {
+): Promise<{ rows: ErpRow[]; categories: ExpenseCategoryLite[] }> {
   let query = client
     .from("expenses")
-    .select("id,branch_id,category_id,description,amount_paisa,payment_method,reference,notes,spent_at,created_at")
+    .select("id,branch_id,category_id,description,amount_paisa,payment_method,reference,notes,spent_at,created_at,recorded_by")
     .is("deleted_at", null)
     .gte("spent_at", pakistanDateBoundary(from))
     .lt("spent_at", pakistanDateBoundary(to, true))
@@ -1004,17 +1005,29 @@ async function loadExpenses(
 
   const [expenseResult, categoryResult] = await Promise.all([
     query,
-    client.from("expense_categories").select("id,name").is("deleted_at", null).order("name", { ascending: true }).limit(500),
+    client.from("expense_categories").select("id,name,is_active")
+      .is("deleted_at", null).order("name", { ascending: true }).limit(500),
   ]);
   if (expenseResult.error) throw expenseResult.error;
+  if (categoryResult.error) throw categoryResult.error;
 
-  const categoryRows = categoryResult.error ? [] : ((categoryResult.data || []) as BranchLite[]);
+  const expenses = (expenseResult.data || []) as ErpRow[];
+  const categoryRows = (categoryResult.data || []) as ExpenseCategoryLite[];
+  const actorIds = [...new Set(expenses
+    .map((expense) => expense.recorded_by)
+    .filter((actorId): actorId is string => typeof actorId === "string"))];
+  const actorsResult = actorIds.length
+    ? await client.from("staff_profiles").select("id,full_name").in("id", actorIds).is("deleted_at", null)
+    : { data: [], error: null };
+  if (actorsResult.error) throw actorsResult.error;
   const categoryNames = new Map(categoryRows.map((category) => [category.id, category.name]));
+  const actorNames = new Map(((actorsResult.data || []) as ErpRow[]).map((actor) => [actor.id, actor.full_name]));
   return {
-    rows: ((expenseResult.data || []) as ErpRow[]).map((expense) => ({
+    rows: expenses.map((expense) => ({
       ...expense,
       branch_name: names.get(expense.branch_id) || "Branch",
       category_name: categoryNames.get(expense.category_id) || "Uncategorized",
+      recorded_by_name: expense.recorded_by ? actorNames.get(expense.recorded_by) || null : null,
     })),
     categories: categoryRows,
   };
@@ -1554,7 +1567,7 @@ export async function GET(request: Request) {
     }
 
     let list: ErpList = { rows: [], approximate: false };
-    let categories: BranchLite[] = [];
+    let categories: ExpenseCategoryLite[] = [];
     if (module === "animals") list = await loadAnimals(client, branchId, names, search, status);
     else if (module === "production") {
       list = { rows: await loadProduction(client, branchId, names, search, monthStart, monthEnd), approximate: false };

@@ -25,6 +25,7 @@ import {
   type CustomerAccount,
   type CustomerAccountRequest,
 } from "@/components/workspace/ErpCustomerAccountActions";
+import { ErpExpenseActions, type ExpenseCategory } from "@/components/workspace/ErpExpenseActions";
 
 type ErpRow = Record<string, any>;
 type BranchOption = { id: string; name: string };
@@ -103,7 +104,7 @@ interface ErpResponse {
   limit?: number;
   approximate?: boolean;
   rows?: ErpRow[];
-  categories?: BranchOption[];
+  categories?: ExpenseCategory[];
   overview?: ErpOverview;
   trend?: ErpTrendDay[];
   report?: ErpReport;
@@ -276,7 +277,7 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
   const [from, setFrom] = useState(defaultFrom);
   const [to, setTo] = useState(today);
   const [data, setData] = useState<ErpResponse | null>(null);
-  const [categories, setCategories] = useState<BranchOption[]>([]);
+  const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -412,7 +413,7 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
         if (!active) return;
         if (!response.ok) throw new Error(result.error || "Could not load Farm ERP records.");
         setData(result);
-        if (result.categories?.length) setCategories(result.categories);
+        if (result.categories) setCategories(result.categories);
       } catch (loadError) {
         if (!active) return;
         setError(loadError instanceof Error ? loadError.message : "Could not load Farm ERP records.");
@@ -877,6 +878,8 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
                         ? "Register and edit stores shared with branch settings, and review their stock, staff, sales and day-close activity."
                       : item.slug === "customer-accounts"
                         ? "Manage customer accounts, record invoices and balance-limited payments, and review immutable account statements."
+                      : item.slug === "erp-expenses"
+                        ? "Record farm operating expenses by branch, category and payment method; every expense is audited and append-only."
                     : `${item.description} This workspace is a live read-only view; changes stay in the Windows app.`}
           </p>
         </div>
@@ -958,8 +961,19 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
               }}
             />
           )}
+          {!isDashboard && !isReports && staff?.role === "admin" && item.slug === "erp-expenses" && item.actionLabel && (
+            <ErpExpenseActions
+              actionLabel={item.actionLabel}
+              branches={branches}
+              categories={categories}
+              selectedBranchId={branchId}
+              staffBranchId={staff.branch_id}
+              isHqAdmin={isHqAdmin}
+              onSaved={() => setReloadKey((key) => key + 1)}
+            />
+          )}
           {!isDashboard && !isReports && item.actionLabel
-            && !["production", "spice", "bulk-sales", "vendors", "farm-stores", "customer-accounts"].includes(item.slug) && (
+            && !["production", "spice", "bulk-sales", "vendors", "farm-stores", "customer-accounts", "erp-expenses"].includes(item.slug) && (
             <button
               className="primary-button"
               type="button"
@@ -976,11 +990,6 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
           {!isDashboard && !isReports && item.slug === "animals" && (
             <button className="secondary-button" type="button" onClick={() => void openSpeciesManager()} disabled={animalOptionsLoading}>
               <Plus size={14} /> Manage species
-            </button>
-          )}
-          {!isDashboard && !isReports && item.slug === "erp-expenses" && (
-            <button className="secondary-button" type="button" disabled title="Adding expense categories is a Windows desktop workflow.">
-              <Plus size={14} /> Category
             </button>
           )}
           {isReports && (
@@ -1883,7 +1892,7 @@ function renderHead(slug: string, showBranch: boolean, canOpenDetail: boolean) {
     <tr><th>Customer</th>{showBranch && <th>Branch</th>}<th>Phone</th><th className="numeric-cell">Invoices</th><th className="numeric-cell">Invoiced</th><th className="numeric-cell">Paid</th><th className="numeric-cell">Balance</th><th>Last activity</th><th>Status</th>{details}{actions}</tr>
   );
   if (slug === "erp-expenses") return (
-    <tr><th>Date</th>{showBranch && <th>Branch</th>}<th>Category</th><th>Description</th><th>Method</th><th>Reference</th><th className="numeric-cell">Amount</th></tr>
+    <tr><th>Date</th>{showBranch && <th>Branch</th>}<th>Category</th><th>Description</th><th>Method</th><th>Reference</th><th>Recorded by</th><th className="numeric-cell">Amount</th></tr>
   );
   return (
     <tr><th>Record</th><th>Details</th></tr>
@@ -1991,7 +2000,7 @@ function renderBody(
       vendors: 7,
       "farm-stores": 10,
       "customer-accounts": 8,
-      "erp-expenses": 6,
+      "erp-expenses": 7,
     };
     const hasBranchColumn = ["animals", "production", "spice", "bulk-sales", "customer-accounts", "erp-expenses"].includes(slug);
     const columns = (baseColumns[slug] || 2) + (showBranch && hasBranchColumn ? 1 : 0) + (canOpenDetail ? 1 : 0)
@@ -2120,6 +2129,7 @@ function renderBody(
       <td>{row.description}</td>
       <td>{labelize(row.payment_method)}</td>
       <td>{row.reference || "—"}</td>
+      <td>{row.recorded_by_name || "—"}</td>
       <td className="numeric-cell">{formatMoney(row.amount_paisa)}</td>
     </tr>
   ));

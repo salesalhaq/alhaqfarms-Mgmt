@@ -1053,6 +1053,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
       pageCss: receiptPageCss(receiptSettings),
       pageSize: receiptPageSize(receiptSettings),
       title: `Receipt ${completedSale.receiptNumber}`,
+      branchId: branchId || null,
     });
     if (!result.printed) window.print();
   };

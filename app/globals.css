@@ -1334,6 +1334,39 @@ tbody tr:hover { background: #fcfdfb; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #c4c9c5; box-shadow: 0 0 0 3px rgb(196 201 197 / 25%); }
 .status-dot.online { background: var(--green); box-shadow: 0 0 0 3px rgb(27 119 72 / 18%); }
 .settings-toggle-grid { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; }
+.settings-workspace-panel { min-width: 0; padding: 18px; }
+.settings-workspace-panel h2 { margin: 0 0 8px; color: var(--ink); font-size: 15px; }
+.settings-workspace-panel > p { margin: 0 0 14px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+.settings-tax-stack { display: grid; gap: 14px; }
+.settings-backup-branches { display: grid; gap: 10px; margin: 14px 0; }
+.settings-backup-branches > strong { color: var(--muted); font-size: 10px; }
+.settings-backup-branches .settings-tax-toggle { width: fit-content; }
+.settings-export-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); align-items: end; gap: 10px; }
+.settings-export-form .field, .settings-backup-schedule .field { min-width: 0; margin: 0; }
+.settings-export-form > button { min-height: 38px; }
+.settings-backup-schedule { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); align-items: end; gap: 10px; }
+.settings-backup-schedule > button { min-height: 38px; }
+.settings-backup-heading, .settings-device-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.settings-backup-heading h2, .settings-device-heading h2 { margin-bottom: 5px; }
+.settings-backup-heading p, .settings-device-heading p { margin: 0 0 12px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.settings-backup-list { display: grid; gap: 8px; }
+.settings-backup-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: var(--surface-soft); }
+.settings-backup-row > div:first-child { display: grid; min-width: 0; gap: 4px; }
+.settings-backup-row strong { overflow-wrap: anywhere; font-size: 11px; }
+.settings-backup-row small { color: var(--muted); font-size: 9px; line-height: 1.45; }
+.settings-backup-row .heading-actions { justify-content: flex-end; }
+.settings-device-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 8px; margin: 14px 0; }
+.settings-device-grid > div { display: grid; min-width: 0; gap: 5px; border: 1px solid var(--line); border-radius: 9px; padding: 9px; background: var(--surface-soft); }
+.settings-device-grid dt { color: var(--muted); font-size: 9px; font-weight: 700; }
+.settings-device-grid dd { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; min-width: 0; margin: 0; font-size: 10px; overflow-wrap: anywhere; }
+.settings-device-grid code { min-width: 0; overflow-wrap: anywhere; font-size: 9px; }
+.settings-export-branch { width: min(100%, 360px); margin: 0 0 12px; }
+
+@media (max-width: 700px) {
+  .settings-backup-row { align-items: flex-start; flex-direction: column; }
+  .settings-backup-row .heading-actions { justify-content: flex-start; }
+  .settings-backup-heading, .settings-device-heading { align-items: stretch; flex-direction: column; }
+}
 
 /* POS measured / scanning ------------------------------------------------ */
 .pos-product-measured { margin-top: auto; border-radius: 999px; padding: 3px 7px; background: var(--green-soft); color: var(--green-dark); font-size: 8px; font-weight: 700; text-align: center; }

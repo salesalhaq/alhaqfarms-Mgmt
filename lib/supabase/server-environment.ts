@@ -6,6 +6,8 @@ interface ServerEnvironment {
   NEXT_PUBLIC_SUPABASE_ANON_KEY?: string;
   STAFF_PIN_LOGIN_SECRET?: string;
   FBR_CONFIG_ENCRYPTION_KEY?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
+  CLOUD_BACKUP_CRON_SECRET?: string;
 }
 
 function readValue(source: unknown, key: string): string | undefined {
@@ -24,5 +26,7 @@ export async function getServerEnvironment(): Promise<ServerEnvironment> {
     NEXT_PUBLIC_SUPABASE_ANON_KEY: readValue(source, "NEXT_PUBLIC_SUPABASE_ANON_KEY"),
     STAFF_PIN_LOGIN_SECRET: readValue(source, "STAFF_PIN_LOGIN_SECRET"),
     FBR_CONFIG_ENCRYPTION_KEY: readValue(source, "FBR_CONFIG_ENCRYPTION_KEY"),
+    SUPABASE_SERVICE_ROLE_KEY: readValue(source, "SUPABASE_SERVICE_ROLE_KEY"),
+    CLOUD_BACKUP_CRON_SECRET: readValue(source, "CLOUD_BACKUP_CRON_SECRET"),
   };
 }

@@ -51,9 +51,36 @@ E:\ALhaqFM APP\database\supabase\migrations\0026_staff_overview_metrics.sql
 E:\ALhaqFM APP\database\supabase\migrations\0027_staff_pos_catalog.sql
 E:\ALhaqFM APP\database\supabase\migrations\0028_staff_daily_report.sql
 E:\Alhaqfm Web\supabase\migrations\029_branch_tax_and_fbr_settings.sql
+E:\Alhaqfm Web\supabase\migrations\030_web_cloud_backups.sql
 ```
 
 The web migration creates branch-scoped POS and FBR settings and updates checkout/held-sale validation. Apply it before deploying this version of the web app. Configure a separate 32-byte random key (64 hex characters) as `FBR_CONFIG_ENCRYPTION_KEY` in the Cloudflare Worker secret store before administrators save FBR credentials. For local development, use a different key in `.dev.vars`; do not commit real keys. A key rotation requires re-encrypting existing credentials before replacing the old key.
+
+Migration `030_web_cloud_backups.sql` creates a private Storage bucket and owner-scoped backup metadata/preferences. Local backups are JSON business-data downloads and only run while the browser is open; they are not a full database snapshot or a one-click restore. Cloud copies are also operational-data exports, are private to the staff account that created them, and are retained for 90 days.
+
+To enable scheduled cloud copies, deploy the Edge Function and install its 15-minute scheduler after migration 030:
+
+1. Generate a long random `CLOUD_BACKUP_CRON_SECRET`. Set it as a Worker secret and as a Supabase Edge Function secret. Set `SUPABASE_SERVICE_ROLE_KEY` only as a Cloudflare Worker secret; never use either key in browser code or commit it.
+
+   ```powershell
+   npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY --name alhaqfarms-mgmt
+   npx wrangler secret put CLOUD_BACKUP_CRON_SECRET --name alhaqfarms-mgmt
+   supabase secrets set APP_BASE_URL="https://<your-management-worker-domain>" CLOUD_BACKUP_CRON_SECRET="<same-random-secret>" --project-ref osrzfwdeyznfvduizmgs
+   ```
+
+2. Deploy `cloud-data-backup` from this repository. The function configuration disables Supabase JWT verification only for this function; the function checks the private cron secret on every request.
+
+   ```powershell
+   supabase functions deploy cloud-data-backup --project-ref osrzfwdeyznfvduizmgs
+   ```
+
+3. In Supabase Vault, create secrets named `cloud_data_backup_function_url` with value `https://osrzfwdeyznfvduizmgs.supabase.co/functions/v1/cloud-data-backup` and `cloud_data_backup_cron_secret` with the same random secret. Then apply `031_schedule_cloud_data_backups.sql`. It schedules a check every 15 minutes; saved daily/weekly schedules run at or just after their configured Asia/Karachi time.
+
+   ```text
+   E:\Alhaqfm Web\supabase\migrations\031_schedule_cloud_data_backups.sql
+   ```
+
+Until these deployment steps are complete, manual local and cloud backups work, but saved automatic schedules will not run.
 
 From `E:\ALhaqFM APP\database\supabase`, set the shared gateway secret and deploy these functions:
 
@@ -98,9 +125,10 @@ Changing the shared password or PIN from Windows requires an internet connection
   ```
 
 - Set `STAFF_PIN_LOGIN_SECRET` as a Worker secret when enabling invite/login flows.
+- Scheduled cloud backups also require `SUPABASE_SERVICE_ROLE_KEY` and `CLOUD_BACKUP_CRON_SECRET` as Worker secrets. They are used only by the server-side scheduled export route.
 - Test a production-like build with `npm run preview`.
 - Configure the `mgmt.alhaqfarms.com.pk` custom domain only after staging validation and DNS approval.
-- Do not add a service-role key to this project.
+- Never expose the service-role key to browser code or source control.
 
 ## Shared identity and authorization
 

@@ -5,10 +5,13 @@ import {
   Building2,
   CheckCircle2,
   Cloud,
+  Copy,
   Database,
   DatabaseBackup,
   Download,
+  ExternalLink,
   FolderOpen,
+  HardDriveDownload,
   KeyRound,
   Menu,
   Monitor,
@@ -28,6 +31,7 @@ import {
   UserRound,
   Wifi,
 } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import {
   DEFAULT_SCALE_SETTINGS,
@@ -60,6 +64,9 @@ import { StorefrontCheckoutWorkspace } from "@/components/workspace/StorefrontCh
 import { PermissionsWorkspace } from "@/components/workspace/PermissionsWorkspace";
 import { CloudAccessWorkspace } from "@/components/workspace/CloudAccessWorkspace";
 import { TaxSettingsWorkspace } from "@/components/workspace/TaxSettingsWorkspace";
+import { SettingsBackupWorkspace } from "@/components/workspace/SettingsBackupWorkspace";
+import { SettingsDeviceWorkspace } from "@/components/workspace/SettingsDeviceWorkspace";
+import { SerialScale } from "@/components/workspace/SerialScale";
 
 type SettingsTab =
   | "profile"
@@ -370,11 +377,16 @@ function ScaleSettingsPanel({ branchId }: { branchId: string | null }) {
         </button>
       </div>
       <p className="settings-workspace-note">USB-to-serial scales connect through Web Serial in Chrome or Edge. Ethernet TCP scales and Modbus TCP require Al Haq Local Bridge running on this computer.</p>
+      <div className="settings-scale-live-test">
+        <h3>Test a live reading</h3>
+        <p>Save the scale settings first, then connect and confirm a live reading before using it at checkout.</p>
+        <SerialScale branchId={branchId} unitCode="kg" />
+      </div>
     </section>
   );
 }
 
-function PrinterSettingsPanel({ branchId }: { branchId: string | null }) {
+function PrinterSettingsPanel({ branchId, variant = "all" }: { branchId: string | null; variant?: "all" | "labels" }) {
   const [form, setForm] = useState<PrinterSettings>({ ...DEFAULT_PRINTER_SETTINGS });
   const [printers, setPrinters] = useState<BridgePrinter[]>([]);
   const [busy, setBusy] = useState(false);
@@ -443,25 +455,34 @@ function PrinterSettingsPanel({ branchId }: { branchId: string | null }) {
       const validated = validatePrinterSettings(form);
       savePrinterSettings(validated, { branchId });
       setForm(validated);
+      const labelTest = variant === "labels";
+      const selectedPrinter = labelTest ? validated.labelPrinter : validated.receiptPrinter;
+      const labelDimensions = validated.labelSizeId.split("x").map(Number);
+      const [labelWidth = 50, labelHeight = 30] = labelDimensions;
       const html = buildStandalonePrintHtml({
-        title: "Al Haq printer test",
-        pageCss: "@page { size: 80mm auto; margin: 4mm; }",
-        bodyHtml: `<div style="font-family:Arial,Helvetica,sans-serif;font-size:10px;padding:4mm;text-align:center;">`
-          + `<h3 style="margin:0 0 4px;">Al Haq Farms &amp; Meats</h3>`
-          + `<p style="margin:0;">Printer test page</p>`
-          + `<p style="margin:8px 0 0;">${new Date().toLocaleString()}</p></div>`,
+        title: labelTest ? "Barcode label test" : "Al Haq printer test",
+        pageCss: labelTest
+          ? `@page { size: ${labelWidth}mm ${labelHeight}mm; margin: 0; }`
+          : "@page { size: 80mm auto; margin: 4mm; }",
+        bodyHtml: labelTest
+          ? `<div style="font-family:Arial,Helvetica,sans-serif;padding:2mm;text-align:center;">`
+            + `<strong>Al Haq Farms &amp; Meats</strong><p style="margin:3mm 0 0;">Label printer test</p></div>`
+          : `<div style="font-family:Arial,Helvetica,sans-serif;font-size:10px;padding:4mm;text-align:center;">`
+            + `<h3 style="margin:0 0 4px;">Al Haq Farms &amp; Meats</h3>`
+            + `<p style="margin:0;">Printer test page</p>`
+            + `<p style="margin:8px 0 0;">${new Date().toLocaleString()}</p></div>`,
       });
       const result = await printHtmlViaBridge(html, {
-        printer: validated.receiptPrinter,
+        printer: selectedPrinter,
         copies: 1,
-        title: "Printer test",
-        pageSize: "80mm auto",
+        title: labelTest ? "Barcode label test" : "Printer test",
+        pageSize: labelTest ? `${labelWidth}mm ${labelHeight}mm` : "80mm auto",
         bridgeUrl: validated.bridgeUrl,
       });
       if (!result.printed) {
         throw new Error(result.reason || "The test page could not be printed.");
       }
-      setNotice("Test page sent to the selected printer.");
+      setNotice(labelTest ? "Test label sent to the selected printer." : "Test page sent to the selected printer.");
     } catch (printError) {
       setError(printError instanceof Error ? printError.message : "The test page could not be printed.");
     } finally {
@@ -477,8 +498,10 @@ function PrinterSettingsPanel({ branchId }: { branchId: string | null }) {
 
   return (
     <section className="card settings-workspace-panel">
-      <h2><Printer size={14} /> Printers</h2>
-      <p>Choose the receipt, report, and barcode-tag printers for this branch and device. Silent printing runs through Al Haq Local Bridge.</p>
+      <h2>{variant === "labels" ? <><Tags size={14} /> Barcode tag printing</> : <><Printer size={14} /> Printers</>}</h2>
+      <p>{variant === "labels"
+        ? "Choose the physical label size and printer used by Barcode labels. Settings are saved for this branch and browser."
+        : "Choose the receipt, report, and barcode-tag printers for this branch and device. Silent printing runs through Al Haq Local Bridge."}</p>
       <div className="settings-bridge-status">
         <span className={`status-dot ${bridgeStatus === "connected" ? "online" : ""}`} aria-hidden="true" />
         <span>
@@ -491,20 +514,20 @@ function PrinterSettingsPanel({ branchId }: { branchId: string | null }) {
         <code>{form.bridgeUrl}</code>
       </div>
       <div className="settings-scale-grid">
-        <label className="field">
+        {variant === "all" && <label className="field">
           <span>Receipt printer</span>
           <select value={form.receiptPrinter} onChange={(event) => update("receiptPrinter", event.target.value)}>
             <option value="">Use system default</option>
             {printerOptions(form.receiptPrinter).map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
-        </label>
-        <label className="field">
+        </label>}
+        {variant === "all" && <label className="field">
           <span>A4 / report printer</span>
           <select value={form.reportPrinter} onChange={(event) => update("reportPrinter", event.target.value)}>
             <option value="">Use system default</option>
             {printerOptions(form.reportPrinter).map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
-        </label>
+        </label>}
         <label className="field">
           <span>Barcode tag printer</span>
           <select value={form.labelPrinter} onChange={(event) => update("labelPrinter", event.target.value)}>
@@ -518,33 +541,35 @@ function PrinterSettingsPanel({ branchId }: { branchId: string | null }) {
             {["100x50", "80x50", "75x50", "60x40", "50x30"].map((size) => <option key={size} value={size}>{size.replace("x", " × ")} mm</option>)}
           </select>
         </label>
-        <label className="field">
+        {variant === "all" && <label className="field">
           <span>Receipt copies</span>
           <input type="number" min="1" max="10" value={form.receiptCopies} onChange={(event) => update("receiptCopies", Number(event.target.value))} />
-        </label>
+        </label>}
         <label className="field">
           <span>Local bridge address</span>
           <input value={form.bridgeUrl} onChange={(event) => update("bridgeUrl", event.target.value)} placeholder="ws://127.0.0.1:47654" />
         </label>
       </div>
-      <div className="settings-toggle-grid">
+      {variant === "all" && <div className="settings-toggle-grid">
         <label className="toggle-field"><input type="checkbox" checked={form.autoPrintReceipt} onChange={(event) => update("autoPrintReceipt", event.target.checked)} /> Print receipt automatically after checkout</label>
         <label className="toggle-field"><input type="checkbox" checked={form.silentPrint} onChange={(event) => update("silentPrint", event.target.checked)} /> Print silently to the selected printer</label>
-      </div>
+      </div>}
       {error && <div className="error-banner" role="alert">{error}</div>}
       {notice && <div className="notice info" role="status">{notice}</div>}
       <div className="heading-actions">
         <button type="button" className="secondary-button" disabled={loadingPrinters} onClick={() => void refreshPrinters()}>
           <RefreshCw size={13} className={loadingPrinters ? "spin" : ""} /> {loadingPrinters ? "Loading printers…" : "Refresh printers"}
         </button>
-        <button type="button" className="secondary-button" disabled={busy || !bridgeStatus || bridgeStatus !== "connected"} onClick={() => void printTestPage()}>
-          <Printer size={13} /> Print test page
+        <button type="button" className="secondary-button" disabled={busy || bridgeStatus !== "connected"} onClick={() => void printTestPage()}>
+          <Printer size={13} /> {variant === "labels" ? "Print test label" : "Print test page"}
         </button>
         <button type="button" className="primary-button" disabled={busy} onClick={save}>
           {busy ? "Saving…" : <><Save size={13} /> Save printer settings</>}
         </button>
       </div>
-      <p className="settings-workspace-note">Printer queues belong to this computer, so these choices stay on this device. Start Al Haq Local Bridge to list printers and print without the browser dialog. When the bridge is offline the app falls back to the browser print dialog.</p>
+      <p className="settings-workspace-note">{variant === "labels"
+        ? "The label size is also used by the Barcode labels page. Start Al Haq Local Bridge to list queues and send a test label; browser printing remains available there as a fallback."
+        : "Printer queues belong to this computer, so these choices stay on this device. Start Al Haq Local Bridge to list printers and print without the browser dialog. When the bridge is offline the app falls back to the browser print dialog."}</p>
     </section>
   );
 }
@@ -1098,109 +1123,27 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
         {activeTab === "scale" && <ScaleSettingsPanel branchId={settings.profile.branchId} />}
 
         {activeTab === "tags" && <>
-          <LocalOnlyPanel
-            title="Barcode tags"
-            description="Choose the physical size of each printed product tag. This setting is shared by staff at the selected branch on the Windows host."
-            fields={[
-              { label: "Label size", type: "select", options: ["100 × 50 mm", "80 × 50 mm", "75 × 50 mm", "60 × 40 mm", "50 × 30 mm"] },
-              { label: "Barcode tag printer", type: "select", options: ["Use system default"] },
-            ]}
-            actions={<DesktopAction title="Saving barcode tag settings is a Windows desktop workflow."><Save size={13} /> Save settings</DesktopAction>}
-            note="The physical label size and printer selection belong to the desktop print setup. Use the Barcode labels page to preview and print labels with the current web label sizes."
+          <PrinterSettingsPanel branchId={settings.profile.branchId} variant="labels" />
+          <section className="card settings-workspace-panel">
+            <h2><Tags size={14} /> Design and print barcode tags</h2>
+            <p>Choose products, quantities, and web label layouts in the Barcode labels workspace. Saved printer preferences are shared with silent printing for this branch and browser.</p>
+            <div className="heading-actions">
+              <Link className="secondary-button" href="/workspace/barcode-labels">Open Barcode labels</Link>
+            </div>
+          </section>
+        </>}
+
+        {activeTab === "data" && (
+          <SettingsBackupWorkspace branches={settings.branches} profileBranchId={settings.profile.branchId} />
+        )}
+
+        {activeTab === "device" && (
+          <SettingsDeviceWorkspace
+            branches={settings.branches}
+            profileBranchId={settings.profile.branchId}
+            role={settings.profile.role}
           />
-          <section className="card settings-workspace-panel">
-            <h2><Tags size={14} /> Barcode tag size</h2>
-            <p>Barcode labels can be printed from the Barcode labels page. Choose the shared physical label size there.</p>
-            <div className="heading-actions">
-              <DesktopAction title="Opening the desktop barcode label workflow is a Windows workflow.">Barcode label workflow</DesktopAction>
-            </div>
-          </section>
-        </>}
-
-        {activeTab === "data" && <>
-          <div className="heading-actions" aria-label="Desktop data and backup actions">
-            <DesktopAction title="Exporting a full JSON backup is a Windows desktop workflow."><Database size={13} /> Full JSON</DesktopAction>
-            <DesktopAction title="Opening the backup folder is a Windows desktop workflow."><FolderOpen size={13} /> Open folder</DesktopAction>
-            <DesktopAction primary title="Creating a local backup is a Windows desktop workflow."><DatabaseBackup size={13} /> Back up now</DesktopAction>
-          </div>
-          <section className="card settings-workspace-panel">
-            <h2><DatabaseBackup size={14} /> Report export folder</h2>
-            <p>PDF exports default to Downloads on the Windows host. Choose a separate folder there if preferred.</p>
-            <div className="heading-actions">
-              <DesktopAction title="Choosing a report folder is a Windows desktop workflow."><FolderOpen size={13} /> Choose report folder</DesktopAction>
-            </div>
-          </section>
-          <section className="card settings-workspace-panel">
-            <h2><DatabaseBackup size={14} /> Local backups</h2>
-            <p>A backup is a complete, internally consistent copy of the local database, written without closing the app. Take one before upgrades, month close or any risky change.</p>
-            <div className="heading-actions">
-              <DesktopAction title="Exporting a full JSON backup is a Windows desktop workflow."><Database size={13} /> Full JSON</DesktopAction>
-              <DesktopAction title="Opening the backup folder is a Windows desktop workflow."><FolderOpen size={13} /> Open folder</DesktopAction>
-              <DesktopAction primary title="Creating a local backup is a Windows desktop workflow."><DatabaseBackup size={13} /> Back up now</DesktopAction>
-            </div>
-            <div className="settings-workspace-disabled-grid" style={{ marginTop: "12px" }}>
-              <DesktopControl field={{ label: "Backup schedule", type: "select", options: ["Disabled", "Enabled"] }} />
-              <DesktopControl field={{ label: "Backup time", type: "time" }} />
-              <DesktopControl field={{ label: "Frequency", type: "select", options: ["Daily", "Every 2 days", "Every 3 days", "Weekly", "Custom interval"] }} />
-              <DesktopControl field={{ label: "Additional backup copy folder", wide: true }} />
-            </div>
-            <div className="heading-actions">
-              <DesktopAction title="Choosing a backup copy folder is a Windows desktop workflow."><FolderOpen size={13} /> Choose folder</DesktopAction>
-              <DesktopAction primary title="Saving the automatic backup schedule is a Windows desktop workflow."><Save size={13} /> Save schedule</DesktopAction>
-            </div>
-            <ReadOnlyTable
-              headers={["Backup", "Created", "Size", "Actions"]}
-              rows={[]}
-              emptyMessage="Local backup files exist only on the Windows host and are not listed here."
-            />
-            <div className="heading-actions" style={{ marginTop: "10px" }}>
-              <DesktopAction title="Restoring a backup is a Windows desktop workflow.">Restore</DesktopAction>
-              <DesktopAction primary title="Restoring a backup and restarting is a Windows desktop workflow.">Restore and restart</DesktopAction>
-            </div>
-            <p className="settings-workspace-note">Restoring validates the backup, replaces the live database on the next launch and keeps a pre-restore copy beside the backups. Sign in again afterwards; anything recorded after the backup is gone. All backup actions are disabled in this workspace.</p>
-          </section>
-        </>}
-
-        {activeTab === "device" && <>
-          <section className="dashboard-stats" aria-label="Device summary">
-            <article className="dashboard-stat card"><span>Branches</span><strong>{settings.branches.length}</strong><small>{settings.branches.filter((branch) => branch.is_active).length} active</small><Building2 size={16} aria-hidden="true" /></article>
-            <article className="dashboard-stat card"><span>Database</span><strong>Cloud</strong><small>Supabase · read-only</small><Database size={16} aria-hidden="true" /></article>
-            <article className="dashboard-stat card"><span>Setup</span><strong>{settings.profile.role === "admin" ? "Admin" : formatLabel(settings.profile.role)}</strong><small>Signed-in staff profile</small><ShieldCheck size={16} aria-hidden="true" /></article>
-            <article className="dashboard-stat card"><span>Version</span><strong>Web</strong><small>Alhaqfm workspace</small><Monitor size={16} aria-hidden="true" /></article>
-          </section>
-          <section className="card settings-workspace-panel">
-            <h2><Monitor size={14} /> This device</h2>
-            <ReadOnlyTable
-              headers={["Setting", "Current value"]}
-              rows={[
-                ["Signed-in profile", `${settings.profile.fullName} · ${formatLabel(settings.profile.role)}`],
-                ["Branch", settings.branches.find((branch) => branch.id === settings.profile.branchId)?.name || "HQ · all accessible branches"],
-                ["Cloud sync", "Connected through Supabase"],
-                ["Local database", "SQLite on the Windows host · available offline"],
-              ]}
-              emptyMessage="No device values are available."
-            />
-          </section>
-          <section className="card settings-workspace-panel">
-            <div className="hr-panel-heading">
-              <h2><Wifi size={14} /> Local network access</h2>
-              <DesktopAction primary title="LAN access controls are available on the Windows host PC."><Wifi size={13} /> Start LAN access</DesktopAction>
-            </div>
-            <p>The host PC serves the app to approved devices on the same private Wi-Fi network. Each staff member signs in with their own profile and branch permissions.</p>
-            <div className="settings-workspace-disabled-grid">
-              <DesktopControl field={{ label: "Start LAN access automatically when this app opens", type: "checkbox", wide: true }} />
-              <DesktopControl field={{ label: "Approved devices", wide: true }} />
-            </div>
-            <div className="heading-actions">
-              <DesktopAction title="Saving the LAN certificate is a Windows desktop workflow."><Download size={13} /> Save CA for devices</DesktopAction>
-              <DesktopAction title="Refreshing device requests is a Windows desktop workflow."><RefreshCw size={14} /></DesktopAction>
-              <DesktopAction primary title="Approving devices is a Windows desktop workflow."><CheckCircle2 size={13} /> Approve</DesktopAction>
-              <DesktopAction title="Declining devices is a Windows desktop workflow."><Ban size={13} /> Decline</DesktopAction>
-              <DesktopAction title="Revoking devices is a Windows desktop workflow."><Smartphone size={13} /> Revoke</DesktopAction>
-            </div>
-            <p className="settings-workspace-note">LAN server controls, device approval requests, and certificate export are available on the Windows host PC only.</p>
-          </section>
-        </>}
+        )}
       </>}
       {credentialDialogOpen && (
         <WorkspaceDialog

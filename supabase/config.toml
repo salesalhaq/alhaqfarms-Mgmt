@@ -1,0 +1,2 @@
+[functions.cloud-data-backup]
+verify_jwt = false

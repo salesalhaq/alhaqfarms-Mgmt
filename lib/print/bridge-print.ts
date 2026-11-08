@@ -138,10 +138,10 @@ export async function printHtmlViaBridge(
  */
 export async function printReceiptElementViaBridge(
   element: Element | null,
-  options: { pageCss?: string; pageSize?: string; title?: string } = {},
+  options: { pageCss?: string; pageSize?: string; title?: string; branchId?: string | null } = {},
 ): Promise<BridgePrintResult> {
   if (!element) return { printed: false, reason: "The receipt is not rendered yet." };
-  const settings = loadPrinterSettings();
+  const settings = loadPrinterSettings({ branchId: options.branchId });
   if (!settings.silentPrint || !settings.receiptPrinter) {
     return { printed: false, reason: "Silent receipt printing is not configured." };
   }
@@ -166,10 +166,10 @@ export async function printReceiptElementViaBridge(
  */
 export async function printLabelsViaBridge(
   element: Element | null,
-  options: { pageCss: string; title?: string; copies?: number },
+  options: { pageCss: string; title?: string; copies?: number; branchId?: string | null },
 ): Promise<BridgePrintResult> {
   if (!element) return { printed: false, reason: "No labels are queued." };
-  const settings = loadPrinterSettings();
+  const settings = loadPrinterSettings({ branchId: options.branchId });
   if (!settings.silentPrint || !settings.labelPrinter) {
     return { printed: false, reason: "Silent label printing is not configured." };
   }

@@ -148,13 +148,14 @@ export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
   };
 
   const printGenerated = async (generated: GeneratedDocument): Promise<boolean> => {
-    const settings = loadPrinterSettings();
+    const settings = loadPrinterSettings({ branchId: branchId === "all" ? null : branchId });
     if (settings.silentPrint && settings.reportPrinter) {
       const result = await printHtmlViaBridge(generated.html, {
         printer: settings.reportPrinter,
         copies: 1,
         title: generated.title,
         pageSize: generated.orientation === "landscape" ? "A4 landscape" : "A4 portrait",
+        bridgeUrl: settings.bridgeUrl,
       });
       if (result.printed) return true;
       if (!result.bridgeUnavailable && result.reason) {
@@ -179,6 +180,7 @@ export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
     const result = await printReceiptElementViaBridge(element, {
       pageCss: receiptPageCss(receiptSettings),
       title: "Z-report",
+      branchId: branchId === "all" ? null : branchId,
     });
     if (!result.printed) window.print();
   };

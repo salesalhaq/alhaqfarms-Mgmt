@@ -132,6 +132,7 @@ export function StoreReturnsWorkspace({ item }: { item: WorkspaceModule }) {
       pageCss: receiptPageCss(receiptSettings),
       pageSize: receiptPageSize(receiptSettings),
       title: details ? `Return ${details.return_number}` : "Return receipt",
+      branchId: details?.branch_id || (branchId === "all" ? null : branchId),
     });
     if (!result.printed) window.print();
   };

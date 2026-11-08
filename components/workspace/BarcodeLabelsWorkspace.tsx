@@ -393,7 +393,7 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
     setPrintNotice("");
     const pageCss = `@page label { size: ${size.widthMm}mm ${size.heightMm}mm; margin: 0; }`;
     const root = document.querySelector("[data-barcode-print-root]");
-    const bridgeResult = await printLabelsViaBridge(root, { pageCss, title: "Product labels" });
+    const bridgeResult = await printLabelsViaBridge(root, { pageCss, title: "Product labels", branchId: staff?.branch_id ?? null });
     if (bridgeResult.printed) {
       setPrintNotice("Labels sent to the configured tag printer through the local bridge.");
       return;

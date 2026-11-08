@@ -167,6 +167,7 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
       pageCss: receiptPageCss(receiptSettings),
       pageSize: receiptPageSize(receiptSettings),
       title: saleDetails ? `Receipt ${saleDetails.sale.receipt_number}` : "Receipt",
+      branchId: saleDetails?.sale.branch_id || (branchId === "all" ? null : branchId),
     });
     if (!result.printed) window.print();
   };

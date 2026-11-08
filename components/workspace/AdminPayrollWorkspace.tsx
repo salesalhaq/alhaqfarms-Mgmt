@@ -280,7 +280,7 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
   const printPayslip = async () => {
     const element = document.querySelector(".payslip-print");
     if (!element) return;
-    const settings = loadPrinterSettings();
+    const settings = loadPrinterSettings({ branchId: branchId === "all" ? null : branchId });
     if (settings.silentPrint && settings.reportPrinter) {
       const html = serializeElementForBridge(element, {
         title: "Payslip",
@@ -291,6 +291,7 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
         copies: 1,
         title: "Payslip",
         pageSize: "A4 portrait",
+        bridgeUrl: settings.bridgeUrl,
       });
       if (result.printed) return;
       if (!result.bridgeUnavailable && result.reason) {

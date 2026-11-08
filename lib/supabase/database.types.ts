@@ -494,9 +494,38 @@ export interface Database {
         updated_at: string;
         updated_by: string;
       }>;
+      web_data_backups: Table<{
+        id: string;
+        owner_id: string;
+        branch_ids: string[];
+        object_path: string;
+        file_name: string;
+        size_bytes: number;
+        date_from: string;
+        date_to: string;
+        trigger_type: string;
+        created_at: string;
+      }>;
+      web_data_backup_preferences: Table<{
+        owner_id: string;
+        branch_ids: string[];
+        frequency: string;
+        schedule_day: number | null;
+        schedule_time: string;
+        retention_days: number;
+        last_run_date: string | null;
+        last_run_at: string | null;
+        last_attempt_at: string | null;
+        updated_at: string;
+        updated_by: string;
+      }>;
     };
     Views: Record<string, never>;
     Functions: {
+      claim_due_web_data_backup_preferences: {
+        Args: { p_now?: string };
+        Returns: Database["public"]["Tables"]["web_data_backup_preferences"]["Row"][];
+      };
       assign_product_weight_barcode_code: {
         Args: { p_product_id: string };
         Returns: number;

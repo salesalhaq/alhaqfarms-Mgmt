@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  AlertCircle, ArrowRight, BarChart3, CheckCircle2, ClipboardList, CreditCard, Download, Eye, LoaderCircle, Lock,
+  AlertCircle, ArrowRight, BarChart3, CheckCircle2, ClipboardList, CreditCard, Download, Eye, FileText, LoaderCircle, Lock,
   MapPin, Pencil, Plus, Power, Printer, RefreshCw, Search, Store, Trash2, X,
 } from "lucide-react";
 import Link from "next/link";
@@ -20,6 +20,11 @@ import { ErpSpiceActions } from "@/components/workspace/ErpSpiceActions";
 import { ErpBulkSalesActions } from "@/components/workspace/ErpBulkSalesActions";
 import { ErpVendorActions, type Vendor, type VendorReceipt, type VendorRequest } from "@/components/workspace/ErpVendorActions";
 import { ErpFarmStoreActions, type FarmStore } from "@/components/workspace/ErpFarmStoreActions";
+import {
+  ErpCustomerAccountActions,
+  type CustomerAccount,
+  type CustomerAccountRequest,
+} from "@/components/workspace/ErpCustomerAccountActions";
 
 type ErpRow = Record<string, any>;
 type BranchOption = { id: string; name: string };
@@ -288,6 +293,7 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
   const [bulkSaleToPay, setBulkSaleToPay] = useState<BulkSalePaymentTarget | null>(null);
   const [vendorActionRequest, setVendorActionRequest] = useState<VendorRequest | null>(null);
   const [farmStoreToEdit, setFarmStoreToEdit] = useState<FarmStore | null>(null);
+  const [customerAccountActionRequest, setCustomerAccountActionRequest] = useState<CustomerAccountRequest | null>(null);
 
   const isDashboard = item.slug === "erp-dashboard";
   const isReports = item.slug === "erp-reports";
@@ -820,7 +826,7 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
       return [
         { label: "Accounts", value: formatNumber(visibleRows.length), hint: `${visibleRows.filter((row) => row.is_active).length} active` },
         { label: "Invoiced", value: formatMoney(visibleRows.reduce((total, row) => total + Number(row.invoiced_paisa || 0), 0)), hint: "All loaded invoices" },
-        { label: "Received", value: formatMoney(visibleRows.reduce((total, row) => total + Number(row.paid_paisa || 0) + Number(row.credited_paisa || 0), 0)), hint: "Payments and credits" },
+        { label: "Received", value: formatMoney(visibleRows.reduce((total, row) => total + Number(row.paid_paisa || 0), 0)), hint: `${formatMoney(visibleRows.reduce((total, row) => total + Number(row.credited_paisa || 0), 0))} in account credits` },
         { label: "Receivable", value: formatMoney(visibleRows.reduce((total, row) => total + Number(row.balance_paisa || 0), 0)), hint: `${visibleRows.filter((row) => row.over_limit).length} over credit limit` },
       ];
     }
@@ -869,6 +875,8 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
                         ? "Manage suppliers, collect invoice payments, and record stock returns with supplier credits or replacement deliveries."
                       : item.slug === "farm-stores"
                         ? "Register and edit stores shared with branch settings, and review their stock, staff, sales and day-close activity."
+                      : item.slug === "customer-accounts"
+                        ? "Manage customer accounts, record invoices and balance-limited payments, and review immutable account statements."
                     : `${item.description} This workspace is a live read-only view; changes stay in the Windows app.`}
           </p>
         </div>
@@ -935,8 +943,23 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
               onSaved={() => setReloadKey((key) => key + 1)}
             />
           )}
+          {!isDashboard && !isReports && staff?.role === "admin" && item.slug === "customer-accounts" && item.actionLabel && (
+            <ErpCustomerAccountActions
+              actionLabel={item.actionLabel}
+              request={customerAccountActionRequest}
+              branches={branches}
+              selectedBranchId={branchId}
+              staffBranchId={staff.branch_id}
+              isHqAdmin={isHqAdmin}
+              onCloseRequest={() => setCustomerAccountActionRequest(null)}
+              onSaved={(accountId) => {
+                setReloadKey((key) => key + 1);
+                void openDetail(accountId);
+              }}
+            />
+          )}
           {!isDashboard && !isReports && item.actionLabel
-            && !["production", "spice", "bulk-sales", "vendors", "farm-stores"].includes(item.slug) && (
+            && !["production", "spice", "bulk-sales", "vendors", "farm-stores", "customer-accounts"].includes(item.slug) && (
             <button
               className="primary-button"
               type="button"
@@ -1136,6 +1159,11 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
                   (row) => setVendorActionRequest({ kind: "toggle", vendor: row as Vendor }),
                   (row) => setFarmStoreToEdit(row as FarmStore),
                   isHqAdmin,
+                  (row) => setCustomerAccountActionRequest({ kind: "edit", account: row as CustomerAccount }),
+                  (row) => setCustomerAccountActionRequest({ kind: "toggle", account: row as CustomerAccount }),
+                  (row) => setCustomerAccountActionRequest({ kind: "invoice", account: row as CustomerAccount }),
+                  (row) => setCustomerAccountActionRequest({ kind: "payment", account: row as CustomerAccount }),
+                  staff?.role === "admin",
                 )}</tbody>
               </table>
             </div>
@@ -1153,6 +1181,8 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
                         ? "RAW inputs are deducted when a batch opens; completing it adds graded output to stock and updates its product cost atomically."
                         : item.slug === "bulk-sales"
                           ? "Posting an invoice deducts stock atomically; invoice payments settle only the balance and never change stock."
+                        : item.slug === "customer-accounts"
+                          ? "Account, invoice and payment changes are written atomically; invoices and payments cannot be edited or deleted."
                         : "Live read-only records. Create and edit actions remain in the Windows app."}
             </p>
           </section>
@@ -1237,6 +1267,18 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
                       vendorId: record.id,
                       receipt: receipt as VendorReceipt,
                     })
+                    : undefined}
+                  onEditCustomerAccount={item.slug === "customer-accounts" && staff?.role === "admin"
+                    ? (record) => setCustomerAccountActionRequest({ kind: "edit", account: record as CustomerAccount })
+                    : undefined}
+                  onToggleCustomerAccount={item.slug === "customer-accounts" && staff?.role === "admin"
+                    ? (record) => setCustomerAccountActionRequest({ kind: "toggle", account: record as CustomerAccount })
+                    : undefined}
+                  onInvoiceCustomerAccount={item.slug === "customer-accounts" && staff?.role === "admin"
+                    ? (record) => setCustomerAccountActionRequest({ kind: "invoice", account: record as CustomerAccount })
+                    : undefined}
+                  onPayCustomerAccount={item.slug === "customer-accounts" && staff?.role === "admin"
+                    ? (record) => setCustomerAccountActionRequest({ kind: "payment", account: record as CustomerAccount })
                     : undefined}
                 />
               )}
@@ -1808,16 +1850,16 @@ function ReportView({ report }: { report: ErpReport }) {
 /* Tables                                                              */
 /* ------------------------------------------------------------------ */
 
-function ViewButton({ onClick }: { onClick: () => void }) {
+function ViewButton({ onClick, label = "View" }: { onClick: () => void; label?: string }) {
   return (
     <button type="button" className="secondary-button" onClick={onClick}>
-      <Eye size={15} /> View
+      <Eye size={15} /> {label}
     </button>
   );
 }
 
 function renderHead(slug: string, showBranch: boolean, canOpenDetail: boolean) {
-  const details = canOpenDetail ? <th>Details</th> : null;
+  const details = canOpenDetail ? <th>{slug === "customer-accounts" ? "Statement" : "Details"}</th> : null;
   const actions = ["vendors", "customer-accounts"].includes(slug) ? <th>Actions</th> : null;
   if (slug === "animals") return (
     <tr><th>Batch</th>{showBranch && <th>Branch</th>}<th>Type</th><th className="numeric-cell">Head count</th><th>Opened</th><th className="numeric-cell">Feed</th><th>Last event</th><th>Status</th>{details}</tr>
@@ -1838,7 +1880,7 @@ function renderHead(slug: string, showBranch: boolean, canOpenDetail: boolean) {
     <tr><th>Store</th><th>Location</th><th>Prefix</th><th className="numeric-cell">Staff</th><th className="numeric-cell">Products</th><th className="numeric-cell">Stock value</th><th className="numeric-cell">Sales today</th><th>Last close</th><th>Status</th><th>Actions</th></tr>
   );
   if (slug === "customer-accounts") return (
-    <tr><th>Customer</th>{showBranch && <th>Branch</th>}<th>Phone</th><th className="numeric-cell">Invoices</th><th className="numeric-cell">Invoiced</th><th className="numeric-cell">Balance</th><th>Last activity</th><th>Status</th>{details}{actions}</tr>
+    <tr><th>Customer</th>{showBranch && <th>Branch</th>}<th>Phone</th><th className="numeric-cell">Invoices</th><th className="numeric-cell">Invoiced</th><th className="numeric-cell">Paid</th><th className="numeric-cell">Balance</th><th>Last activity</th><th>Status</th>{details}{actions}</tr>
   );
   if (slug === "erp-expenses") return (
     <tr><th>Date</th>{showBranch && <th>Branch</th>}<th>Category</th><th>Description</th><th>Method</th><th>Reference</th><th className="numeric-cell">Amount</th></tr>
@@ -1861,10 +1903,15 @@ function renderBody(
   toggleVendor: (row: ErpRow) => void,
   editFarmStore: (row: ErpRow) => void,
   canManageStores: boolean,
+  editCustomerAccount: (row: ErpRow) => void,
+  toggleCustomerAccount: (row: ErpRow) => void,
+  invoiceCustomerAccount: (row: ErpRow) => void,
+  payCustomerAccount: (row: ErpRow) => void,
+  canManageCustomerAccounts: boolean,
 ) {
   const detailCell = (row: ErpRow) => {
     if (!canOpenDetail) return null;
-    const view = <ViewButton onClick={() => openDetail(row.id)} />;
+    const view = <ViewButton onClick={() => openDetail(row.id)} label={slug === "customer-accounts" ? "Statement" : "View"} />;
     if (slug === "animals") return (
       <td className="row-actions">
         {view}
@@ -1914,11 +1961,23 @@ function renderBody(
     );
     if (slug === "customer-accounts") return (
       <td className="row-actions">
-        <button className="secondary-button" type="button" disabled title="Opening the customer statement is a Windows desktop workflow.">Statement</button>
-        <button className="secondary-button" type="button" disabled title="Recording customer invoices is a Windows desktop workflow.">Invoice</button>
-        <button className="secondary-button" type="button" disabled title="Recording customer payments is a Windows desktop workflow.">Payment</button>
-        <button className="secondary-button" type="button" disabled title="Editing customer accounts is a Windows desktop workflow.">Edit</button>
-        <button className="secondary-button" type="button" disabled title="Changing account status is a Windows desktop workflow.">Deactivate</button>
+        <button className="secondary-button" type="button" disabled={!canManageCustomerAccounts || !row?.is_active}
+          onClick={() => row && invoiceCustomerAccount(row)} title={!row?.is_active ? "Activate the account before invoicing." : undefined}>
+          <FileText size={12} /> Invoice
+        </button>
+        <button className="secondary-button" type="button"
+          disabled={!canManageCustomerAccounts || !row?.is_active || Number(row?.balance_paisa || 0) <= 0}
+          onClick={() => row && payCustomerAccount(row)} title={Number(row?.balance_paisa || 0) <= 0 ? "This account has no outstanding balance." : undefined}>
+          <CreditCard size={12} /> Payment
+        </button>
+        <button className="secondary-button" type="button" disabled={!canManageCustomerAccounts}
+          onClick={() => row && editCustomerAccount(row)}>
+          <Pencil size={12} /> Edit
+        </button>
+        <button className="secondary-button" type="button" disabled={!canManageCustomerAccounts}
+          onClick={() => row && toggleCustomerAccount(row)}>
+          <Power size={12} /> {row?.is_active ? "Deactivate" : "Activate"}
+        </button>
       </td>
     );
     return null;
@@ -1931,7 +1990,7 @@ function renderBody(
       "bulk-sales": 6,
       vendors: 7,
       "farm-stores": 10,
-      "customer-accounts": 7,
+      "customer-accounts": 8,
       "erp-expenses": 6,
     };
     const hasBranchColumn = ["animals", "production", "spice", "bulk-sales", "customer-accounts", "erp-expenses"].includes(slug);
@@ -2044,11 +2103,12 @@ function renderBody(
       <td>{row.phone || "—"}</td>
       <td className="numeric-cell">{formatNumber(row.invoice_count)}</td>
       <td className="numeric-cell">{formatMoney(row.invoiced_paisa)}</td>
+      <td className="numeric-cell">{formatMoney(row.paid_paisa)}</td>
       <td className="numeric-cell">{formatMoney(row.balance_paisa)}<small>{row.over_limit ? "Over credit limit" : ""}</small></td>
       <td className="nowrap">{row.last_activity ? formatDay(row.last_activity) : "—"}</td>
       <td><span className={`status ${row.is_active ? "green" : "red"}`}>{row.is_active ? "Active" : "Inactive"}</span></td>
       {detailCell(row)}
-      {actionCell()}
+      {actionCell(row)}
     </tr>
   ));
 
@@ -2085,6 +2145,10 @@ function DetailView({
   onToggleVendor,
   onPaySupplierInvoice,
   onReturnSupplierStock,
+  onEditCustomerAccount,
+  onToggleCustomerAccount,
+  onInvoiceCustomerAccount,
+  onPayCustomerAccount,
 }: {
   slug: string;
   detail: ErpDetail;
@@ -2095,6 +2159,10 @@ function DetailView({
   onToggleVendor?: (record: ErpRow) => void;
   onPaySupplierInvoice?: (record: ErpRow, receipt: ErpRow) => void;
   onReturnSupplierStock?: (record: ErpRow, receipt: ErpRow) => void;
+  onEditCustomerAccount?: (record: ErpRow) => void;
+  onToggleCustomerAccount?: (record: ErpRow) => void;
+  onInvoiceCustomerAccount?: (record: ErpRow) => void;
+  onPayCustomerAccount?: (record: ErpRow) => void;
 }) {
   const record = detail.record;
   const items = detail.items || [];
@@ -2317,10 +2385,23 @@ function DetailView({
   if (slug === "customer-accounts") return (
     <>
       <div className="heading-actions" aria-label="Customer account actions">
-        <button className="secondary-button" type="button" disabled title="Recording customer invoices is a Windows desktop workflow.">Invoice</button>
-        <button className="secondary-button" type="button" disabled title="Recording customer payments is a Windows desktop workflow.">Payment</button>
-        <button className="secondary-button" type="button" disabled title="Editing customer accounts is a Windows desktop workflow.">Edit</button>
-        <button className="secondary-button" type="button" disabled title="Changing account status is a Windows desktop workflow.">Deactivate</button>
+        <button className="secondary-button" type="button" disabled={!onInvoiceCustomerAccount || !record.is_active}
+          onClick={() => onInvoiceCustomerAccount?.(record)}>
+          <FileText size={12} /> Invoice
+        </button>
+        <button className="secondary-button" type="button"
+          disabled={!onPayCustomerAccount || !record.is_active || Number(detail.summary?.balancePaisa || 0) <= 0}
+          onClick={() => onPayCustomerAccount?.(record)}>
+          <CreditCard size={12} /> Payment
+        </button>
+        <button className="secondary-button" type="button" disabled={!onEditCustomerAccount}
+          onClick={() => onEditCustomerAccount?.(record)}>
+          <Pencil size={12} /> Edit
+        </button>
+        <button className="secondary-button" type="button" disabled={!onToggleCustomerAccount}
+          onClick={() => onToggleCustomerAccount?.(record)}>
+          <Power size={12} /> {record.is_active ? "Deactivate" : "Activate"}
+        </button>
       </div>
       <div className="sales-detail-context">
         <MetaItem label="Phone">{record.phone || "—"}</MetaItem>

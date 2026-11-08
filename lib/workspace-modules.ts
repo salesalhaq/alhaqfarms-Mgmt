@@ -91,7 +91,7 @@ export const workspaceSections = [
       defineWorkspaceModule("bulk-sales", "Bulk sales", "Farm ERP", "Review wholesale invoices, deliveries, and outstanding balances.", ["Invoice", "Customer", "Date", "Total", "Balance"], "New bulk sale", ["Date range", "Payment"]),
       defineWorkspaceModule("vendors", "Vendors", "Farm ERP", "Review vendor details, purchase history, and outstanding payables.", ["Vendor", "Contact", "Purchases", "Balance", "Status"], "Add vendor", ["Status"]),
       defineWorkspaceModule("farm-stores", "Farm stores", "Farm ERP", "Review farm store locations and their inventory summaries.", ["Store", "Location", "Items", "Stock value", "Status"], "Register store", ["Status"]),
-      defineWorkspaceModule("customer-accounts", "Customer accounts", "Farm ERP", "Review customer account activity, invoices, and receivables.", ["Customer", "Phone", "Invoices", "Balance", "Last activity"], "New account", ["Balance", "Status"]),
+      defineWorkspaceModule("customer-accounts", "Customer accounts", "Farm ERP", "Manage customer accounts, immutable invoices, payments, and receivables.", ["Customer", "Phone", "Invoices", "Balance", "Last activity"], "New account", ["Balance", "Status"]),
       defineWorkspaceModule("erp-expenses", "ERP expenses", "Farm ERP", "Review farm and production expenses by category and period.", ["Date", "Category", "Description", "Vendor", "Amount"], "Record expense", ["Date range", "Category"]),
       defineWorkspaceModule("erp-reports", "ERP reports", "Farm ERP", "Review combined farm ledgers for a selected period.", ["Report", "Period", "Records", "Total", "Updated"], undefined, ["Date range", "Report"]),
     ],

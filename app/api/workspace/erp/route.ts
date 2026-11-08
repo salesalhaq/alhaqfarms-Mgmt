@@ -898,7 +898,7 @@ async function loadCustomerAccounts(
   if (branchId !== "all") query = query.eq("branch_id", branchId);
   if (status === "active") query = query.eq("is_active", true);
   if (status === "inactive") query = query.eq("is_active", false);
-  if (search) query = addSearch(query, ["name", "phone", "email"], search);
+  if (search) query = addSearch(query, ["name", "phone", "email", "address"], search);
 
   const { data, error } = await query;
   if (error) throw error;

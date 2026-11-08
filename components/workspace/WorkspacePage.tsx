@@ -40,6 +40,7 @@ import { AdminAuditWorkspace } from "@/components/workspace/AdminAuditWorkspace"
 import { AdminExpensesWorkspace } from "@/components/workspace/AdminExpensesWorkspace";
 import { FbrPctCategoriesWorkspace } from "@/components/workspace/FbrPctCategoriesWorkspace";
 import { CloudSyncWorkspace } from "@/components/workspace/CloudSyncWorkspace";
+import { postWorkspaceAction } from "@/lib/workspace/write-client";
 
 type DashboardSale = Pick<
   Database["public"]["Tables"]["pos_sales"]["Row"],
@@ -64,6 +65,20 @@ interface DashboardResponse {
     openShift: boolean;
   };
   error?: string;
+}
+
+interface OverviewDiscountRequest {
+  id: string;
+  branchId: string;
+  branchName: string;
+  cashierName: string;
+  canReview: boolean;
+  billDiscountPaisa: number;
+  expiresAt: string;
+}
+
+interface OverviewDiscountResponse {
+  requests?: OverviewDiscountRequest[];
 }
 
 function localDateKey(date: Date): string {
@@ -131,9 +146,14 @@ function Overview({ item }: { item: WorkspaceModule }) {
   const { staff, branches } = useStaffAuth();
   const [branchId, setBranchId] = useState(staff?.branch_id || "");
   const [metrics, setMetrics] = useState<DashboardResponse["overview"]>();
+  const [discountRequests, setDiscountRequests] = useState<OverviewDiscountRequest[]>([]);
+  const [discountError, setDiscountError] = useState<string | null>(null);
+  const [reviewingRequestId, setReviewingRequestId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const canReviewDiscounts = staff?.role === "admin" || staff?.role === "manager";
+  const isHqAdmin = staff?.role === "admin" && staff.branch_id === null;
   const actions = overviewActions.filter((action) =>
     !action.managersOnly || staff?.role === "admin" || staff?.role === "manager"
   );
@@ -169,6 +189,63 @@ function Overview({ item }: { item: WorkspaceModule }) {
     return () => { active = false; };
   }, [branchId, reloadKey]);
 
+  useEffect(() => {
+    if (!canReviewDiscounts) {
+      setDiscountRequests([]);
+      setDiscountError(null);
+      return;
+    }
+
+    const requestBranchId = isHqAdmin ? (branchId || "all") : (staff?.branch_id || branchId);
+    if (!requestBranchId) {
+      setDiscountRequests([]);
+      return;
+    }
+
+    let active = true;
+    const loadRequests = async () => {
+      try {
+        const result = await postWorkspaceAction<OverviewDiscountResponse>(
+          "/api/workspace/point-of-sale-discounts",
+          { action: "list", branchId: requestBranchId },
+        );
+        if (!active) return;
+        setDiscountRequests(result.requests || []);
+        setDiscountError(null);
+      } catch (loadError) {
+        if (!active) return;
+        setDiscountError(loadError instanceof Error ? loadError.message : "Could not load discount approvals.");
+      }
+    };
+
+    void loadRequests();
+    const timer = window.setInterval(() => void loadRequests(), 5_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [branchId, canReviewDiscounts, isHqAdmin, reloadKey, staff?.branch_id]);
+
+  const reviewDiscountRequest = async (request: OverviewDiscountRequest, approve: boolean) => {
+    setReviewingRequestId(request.id);
+    setDiscountError(null);
+    try {
+      await postWorkspaceAction(
+        "/api/workspace/point-of-sale-discounts",
+        {
+          action: approve ? "approve" : "decline",
+          branchId: request.branchId,
+          requestId: request.id,
+        },
+      );
+      setReloadKey((value) => value + 1);
+    } catch (reviewError) {
+      setDiscountError(reviewError instanceof Error ? reviewError.message : "The discount request could not be reviewed.");
+    } finally {
+      setReviewingRequestId(null);
+    }
+  };
+
   return (
     <>
       <div className="page-heading overview-heading">
@@ -199,6 +276,55 @@ function Overview({ item }: { item: WorkspaceModule }) {
             <article className="dashboard-stat card"><span>Sales today</span><strong>{metrics ? metrics.todaySales.count.toLocaleString() : "Unavailable"}</strong><small>{metrics ? formatMoney(metrics.todaySales.total) : "Cloud metrics unavailable"}</small></article>
             <article className="dashboard-stat card"><span>Current shift</span><strong>{metrics ? (metrics.openShift ? "Open" : "Closed") : "Unavailable"}</strong><small>{metrics?.openShift ? "Register ready" : "Open from Point of sale"}</small></article>
           </section>
+
+          {canReviewDiscounts && (
+            <section className="card pos-held-sales-list" aria-label="Pending POS discount approvals">
+              <div className="section-heading">
+                <div><p className="eyebrow page">Manager review</p><h2>Discount approval requests</h2></div>
+                <button
+                  className="button secondary"
+                  disabled={Boolean(reviewingRequestId)}
+                  onClick={() => setReloadKey((value) => value + 1)}
+                  type="button"
+                >
+                  Refresh
+                </button>
+              </div>
+              {discountError && <div className="notice" role="alert">{discountError}</div>}
+              {discountRequests.length === 0
+                ? <p className="empty">No pending discount approvals.</p>
+                : discountRequests.map((request) => (
+                  <article className="pos-held-sale" key={request.id}>
+                    <div>
+                      <strong>{request.cashierName}</strong>
+                      <small>{request.branchName}</small>
+                      <small>Requested discount {formatMoney(request.billDiscountPaisa)}</small>
+                      <small>Expires {new Date(request.expiresAt).toLocaleTimeString()}</small>
+                    </div>
+                    {request.canReview
+                      ? <div>
+                        <button
+                          className="button"
+                          disabled={Boolean(reviewingRequestId) || Date.parse(request.expiresAt) <= Date.now()}
+                          onClick={() => void reviewDiscountRequest(request, true)}
+                          type="button"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          className="button secondary"
+                          disabled={Boolean(reviewingRequestId)}
+                          onClick={() => void reviewDiscountRequest(request, false)}
+                          type="button"
+                        >
+                          Decline
+                        </button>
+                      </div>
+                      : <small>Another staff member must review this request.</small>}
+                  </article>
+                ))}
+            </section>
+          )}
 
           <section className="overview-workspace">
             <div className="section-heading">

@@ -17,6 +17,7 @@ import { printHtmlDocument } from "@/lib/print/print-window";
 import { WorkspaceDialog, WorkspaceError, WorkspaceField } from "@/components/workspace/WorkspaceDialog";
 import { ErpProductionActions } from "@/components/workspace/ErpProductionActions";
 import { ErpSpiceActions } from "@/components/workspace/ErpSpiceActions";
+import { ErpBulkSalesActions } from "@/components/workspace/ErpBulkSalesActions";
 
 type ErpRow = Record<string, any>;
 type BranchOption = { id: string; name: string };
@@ -30,6 +31,7 @@ type SpiceBatchAction = {
   labor_cost_paisa: number;
   other_cost_paisa: number;
 };
+type BulkSalePaymentTarget = { id: string; invoice_number: string; due_paisa: number };
 
 interface ErpOverview {
   animals: { openBatches: number; heads: number; purchaseCostPaisa: number; feedCostPaisa: number };
@@ -278,6 +280,7 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
   const [animalOptionsLoading, setAnimalOptionsLoading] = useState(false);
   const [animalOptionsError, setAnimalOptionsError] = useState<string | null>(null);
   const [spiceBatchToComplete, setSpiceBatchToComplete] = useState<SpiceBatchAction | null>(null);
+  const [bulkSaleToPay, setBulkSaleToPay] = useState<BulkSalePaymentTarget | null>(null);
 
   const isDashboard = item.slug === "erp-dashboard";
   const isReports = item.slug === "erp-reports";
@@ -853,6 +856,8 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
                     ? "Record product and animal-based production runs, consume inputs, allocate costs and update branch stock atomically."
                     : item.slug === "spice"
                       ? "Open spice batches by consuming RAW inputs, then complete them with a grade, output quantity, and derived stock cost."
+                      : item.slug === "bulk-sales"
+                        ? "Create wholesale invoices with branch stock deduction, discounts, optional payments, and outstanding balance tracking."
                     : `${item.description} This workspace is a live read-only view; changes stay in the Windows app.`}
           </p>
         </div>
@@ -885,7 +890,23 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
               }}
             />
           )}
-          {!isDashboard && !isReports && item.actionLabel && item.slug !== "production" && item.slug !== "spice" && (
+          {!isDashboard && !isReports && item.slug === "bulk-sales" && item.actionLabel && (
+            <ErpBulkSalesActions
+              branches={branches}
+              selectedBranchId={branchId}
+              staffBranchId={staff?.branch_id}
+              isHqAdmin={isHqAdmin}
+              actionLabel={item.actionLabel}
+              saleToPay={bulkSaleToPay}
+              onClosePayment={() => setBulkSaleToPay(null)}
+              onSaved={(saleId) => {
+                setReloadKey((key) => key + 1);
+                void openDetail(saleId);
+              }}
+            />
+          )}
+          {!isDashboard && !isReports && item.actionLabel
+            && !["production", "spice", "bulk-sales"].includes(item.slug) && (
             <button
               className="primary-button"
               type="button"
@@ -1076,6 +1097,11 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
                     labor_cost_paisa: row.labor_cost_paisa,
                     other_cost_paisa: row.other_cost_paisa,
                   }),
+                  (row) => setBulkSaleToPay({
+                    id: row.id,
+                    invoice_number: row.invoice_number,
+                    due_paisa: Number(row.due_paisa || 0),
+                  }),
                 )}</tbody>
               </table>
             </div>
@@ -1091,6 +1117,8 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
                       ? "Production runs are posted atomically with input deductions, output stock, cost allocation, and terminal-batch animal events."
                       : item.slug === "spice"
                         ? "RAW inputs are deducted when a batch opens; completing it adds graded output to stock and updates its product cost atomically."
+                        : item.slug === "bulk-sales"
+                          ? "Posting an invoice deducts stock atomically; invoice payments settle only the balance and never change stock."
                         : "Live read-only records. Create and edit actions remain in the Windows app."}
             </p>
           </section>
@@ -1147,6 +1175,13 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
                       batchId: record.id,
                       batchName: record.name,
                       error: null,
+                    })
+                    : undefined}
+                  onRecordBulkPayment={item.slug === "bulk-sales"
+                    ? (record) => setBulkSaleToPay({
+                      id: record.id,
+                      invoice_number: record.invoice_number,
+                      due_paisa: Number(record.due_paisa || 0),
                     })
                     : undefined}
                 />
@@ -1765,6 +1800,7 @@ function renderBody(
   openDetail: (id: string) => void,
   editAnimal: (row: ErpRow) => void,
   completeSpice: (row: ErpRow) => void,
+  recordBulkPayment: (row: ErpRow) => void,
 ) {
   const detailCell = (row: ErpRow) => {
     if (!canOpenDetail) return null;
@@ -1795,7 +1831,8 @@ function renderBody(
     if (slug === "bulk-sales") return (
       <td className="row-actions">
         {view}
-        <button className="secondary-button" type="button" disabled title="Recording bulk-sale payments is a Windows desktop workflow.">
+        <button className="secondary-button" type="button" disabled={Number(row.due_paisa || 0) <= 0}
+          onClick={() => recordBulkPayment(row)} title={Number(row.due_paisa || 0) > 0 ? "Record a payment against this invoice." : "This invoice is fully settled."}>
           <CreditCard size={12} /> Payment
         </button>
       </td>
@@ -1970,11 +2007,13 @@ function DetailView({
   detail,
   onRecordAnimalEvent,
   onCloseAnimalBatch,
+  onRecordBulkPayment,
 }: {
   slug: string;
   detail: ErpDetail;
   onRecordAnimalEvent?: (record: ErpRow) => void;
   onCloseAnimalBatch?: (record: ErpRow) => void;
+  onRecordBulkPayment?: (record: ErpRow) => void;
 }) {
   const record = detail.record;
   const items = detail.items || [];
@@ -2110,7 +2149,11 @@ function DetailView({
         <MetaItem label="Balance">{formatMoney(record.due_paisa)}</MetaItem>
       </div>
       <div className="heading-actions" aria-label="Bulk sale actions">
-        <button className="secondary-button" type="button" disabled title="Recording bulk-sale payments is a Windows desktop workflow."><CreditCard size={12} /> Payment</button>
+        <button className="secondary-button" type="button"
+          disabled={Number(record.due_paisa || 0) <= 0 || !onRecordBulkPayment}
+          onClick={() => onRecordBulkPayment?.(record)}>
+          <CreditCard size={12} /> Payment
+        </button>
       </div>
       {record.notes && <p>{record.notes}</p>}
       <h3>Invoice items</h3>

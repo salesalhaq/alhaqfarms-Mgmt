@@ -213,6 +213,23 @@ h1, h2, h3 { font-family: "Segoe UI", Arial, sans-serif; }
 .toolbar-select { width: auto; min-width: 170px; min-height: 42px; }
 .card { border: 1px solid var(--line); border-radius: 15px; background: var(--surface); box-shadow: 0 5px 20px rgb(34 62 44 / 3%); }
 .table-wrap { overflow: auto; }
+.settings-permission-branch { display: grid; width: min(100%, 420px); gap: 7px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.settings-permission-branch select { min-height: 40px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); padding: 0 11px; color: var(--ink); }
+.settings-permission-panel { min-width: 0; padding: 18px; }
+.settings-permission-panel h2 { margin: 0 0 8px; color: var(--ink); font-size: 15px; }
+.settings-permission-panel > p { margin: 0 0 14px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+.settings-permission-panel .table-wrap { border: 1px solid var(--line); border-radius: 10px; }
+.settings-permission-table { min-width: 680px; }
+.settings-permission-table th:first-child { min-width: 170px; white-space: normal; }
+.settings-permission-table td { min-width: 98px; padding: 8px; }
+.settings-permission-checkbox { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); font-size: 10px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.settings-permission-checkbox input { width: 15px; height: 15px; margin: 0; accent-color: var(--green); }
+.settings-permission-checkbox input:disabled { cursor: not-allowed; }
+.settings-permission-inventory { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 640px) {
+  .settings-permission-panel { padding: 14px; }
+  .settings-permission-inventory { grid-template-columns: minmax(0, 1fr); }
+}
 table { width: 100%; border-collapse: collapse; text-align: left; }
 th { padding: 13px 15px; background: #fafcf9; color: #748077; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
 td { border-top: 1px solid #edf1ed; padding: 14px 15px; color: #35443b; font-size: 12px; vertical-align: middle; }

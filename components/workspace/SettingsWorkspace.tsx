@@ -59,6 +59,7 @@ import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import type { BusinessSettings } from "@/lib/business-settings";
 import { appThemes, themeGroups } from "@/lib/themes";
 import { StorefrontCheckoutWorkspace } from "@/components/workspace/StorefrontCheckoutWorkspace";
+import { PermissionsWorkspace } from "@/components/workspace/PermissionsWorkspace";
 
 type SettingsTab =
   | "profile"
@@ -116,6 +117,7 @@ interface PermissionSetting {
   branch_id: string;
   role: string;
   is_allowed: boolean;
+  updated_at: string;
   permission_key?: string;
   action?: string;
 }
@@ -160,7 +162,7 @@ const TABS: { id: SettingsTab; label: string; icon: typeof UserRound; roles?: st
   { id: "shop", label: "Shop & branding", icon: Store, roles: ["admin"] },
   { id: "storefront", label: "Storefront checkout", icon: Truck, roles: ["admin"], requiresHq: true },
   { id: "branches", label: "Branches", icon: Building2, roles: ["admin"] },
-  { id: "permissions", label: "Permissions", icon: ShieldCheck, roles: ["admin"] },
+  { id: "permissions", label: "Permissions", icon: ShieldCheck, roles: ["admin"], requiresHq: true },
   { id: "cloud", label: "Cloud access", icon: Cloud, roles: ["admin"] },
   { id: "tax", label: "Tax & loyalty", icon: Database, roles: ["admin"] },
   { id: "printers", label: "Printers", icon: Printer, roles: ["admin", "manager"] },
@@ -650,10 +652,6 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
     return () => { active = false; };
   }, [reloadKey]);
 
-  const branchNames = useMemo(
-    () => new Map((settings?.branches || []).map((branch) => [branch.id, branch.name])),
-    [settings?.branches],
-  );
   const setDefaultBranch = async (branchId: string) => {
     setDefaultBranchBusy(branchId);
     setError(null);
@@ -809,13 +807,6 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
       && (!requiresHq || (settings.profile.role === "admin" && settings.profile.branchId === null)))
     : TABS.filter(({ id }) => ["profile", "appearance", "device"].includes(id)), [settings]);
 
-  const renderPermissionRows = (rows: PermissionSetting[]) => rows.map((permission) => [
-    branchNames.get(permission.branch_id) || "Assigned branch",
-    formatLabel(permission.role),
-    formatLabel(permission.permission_key || permission.action || "Permission"),
-    permission.is_allowed ? "Allowed" : "Blocked",
-  ]);
-
   return (
     <section className="workspace-module settings-workspace">
       <div className="workspace-toolbar">
@@ -867,9 +858,10 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
         )}
       </div>
 
-      {loading && <section className="card"><p>Loading settings…</p></section>}
+      {loading && settings && <p className="settings-workspace-note" role="status">Refreshing settings…</p>}
+      {loading && !settings && <section className="card"><p>Loading settings…</p></section>}
       {error && <section className="card" role="alert"><p>{error}</p></section>}
-      {!loading && settings && <>
+      {settings && <>
         {activeTab === "profile" && <>
           <WorkspaceSuccess message={credentialNotice} />
           <section className="card settings-workspace-panel">
@@ -1081,41 +1073,13 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
           <p className="settings-workspace-note">Address and contact details are shown only when present in the shared branch record. Default-branch changes are saved securely and recorded in the audit log.</p>
         </section>}
 
-        {activeTab === "permissions" && settings.profile.role !== "admin" && <section className="card settings-workspace-panel"><h2>Permissions</h2><p>Permission management settings are available to administrators only.</p></section>}
-        {activeTab === "permissions" && settings.profile.role === "admin" && <>
-          <div className="heading-actions" aria-label="Desktop permission actions">
-            <DesktopAction title="Changing permission branch scope is a Windows desktop workflow.">Branch scope</DesktopAction>
-            <DesktopAction title="Saving online-order permissions is a Windows desktop workflow."><Save size={13} /> Save order permissions</DesktopAction>
-            <DesktopAction title="Saving module permissions is a Windows desktop workflow."><Save size={13} /> Save module permissions</DesktopAction>
-            <DesktopAction title="Saving inventory permissions is a Windows desktop workflow."><Save size={13} /> Save inventory permissions</DesktopAction>
-          </div>
-          <section className="card settings-workspace-panel">
-            <h2>Branch module permissions</h2>
-            <p>Explicit synced permission rows visible under the existing branch RLS policy. No missing-row defaults are inferred.</p>
-            <ReadOnlyTable
-              headers={["Branch", "Role", "Permission", "Access"]}
-              rows={renderPermissionRows(settings.permissions.modules)}
-              emptyMessage="No synced module permission overrides are available."
-            />
-          </section>
-          <section className="card settings-workspace-panel">
-            <h2>Online order permissions</h2>
-            <ReadOnlyTable
-              headers={["Branch", "Role", "Action", "Access"]}
-              rows={renderPermissionRows(settings.permissions.webOrders)}
-              emptyMessage="No synced online-order permission overrides are available."
-            />
-          </section>
-          <section className="card settings-workspace-panel">
-            <h2>Inventory permissions</h2>
-            <ReadOnlyTable
-              headers={["Branch", "Role", "Action", "Access"]}
-              rows={renderPermissionRows(settings.permissions.inventory)}
-              emptyMessage="No synced inventory permission overrides are available."
-            />
-          </section>
-          <p className="settings-workspace-note">Permission management controls are disabled in this workspace.</p>
-        </>}
+        {activeTab === "permissions" && settings.profile.role === "admin" && settings.profile.branchId === null && (
+          <PermissionsWorkspace
+            branches={settings.branches}
+            permissions={settings.permissions}
+            onSaved={() => setReloadKey((key) => key + 1)}
+          />
+        )}
 
         {activeTab === "storefront" && settings.profile.role === "admin" && settings.profile.branchId === null && (
           <StorefrontCheckoutWorkspace branches={settings.branches} />

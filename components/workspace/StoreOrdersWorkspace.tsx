@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertCircle, CheckCircle2, CreditCard, Eye, LoaderCircle, Package, RefreshCw, Search, Truck, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
@@ -107,8 +107,9 @@ function initialDateRange(): [string, string] {
   return [localDateInput(from), localDateInput(to)];
 }
 
-export function StoreOrdersWorkspace({ item }: { item: WorkspaceModule }) {
+export function StoreOrdersWorkspace({ item, initialOrderId }: { item: WorkspaceModule; initialOrderId?: string }) {
   const { staff, branches } = useStaffAuth();
+  const openedInitialOrderId = useRef<string | null>(null);
   const [from, to] = useMemo(initialDateRange, []);
   const [fromDate, setFromDate] = useState(from);
   const [toDate, setToDate] = useState(to);
@@ -233,6 +234,44 @@ export function StoreOrdersWorkspace({ item }: { item: WorkspaceModule }) {
       setDetailLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!initialOrderId || !staff || openedInitialOrderId.current === initialOrderId) return;
+    openedInitialOrderId.current = initialOrderId;
+
+    let active = true;
+    setDetailLoading(true);
+    setError(null);
+    void (async () => {
+      try {
+        const response = await fetch(`/api/orders/${encodeURIComponent(initialOrderId)}`, {
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+        const result = await response.json() as StoreOrderDetailsResponse;
+        if (!response.ok || !result.order) {
+          throw new Error(result.error || "Could not load order details.");
+        }
+        if (!active) return;
+        setSelected({
+          ...result.order,
+          items: result.items || [],
+          events: result.events || [],
+          allowedActions: result.allowedActions || [],
+          paymentProofAvailable: Boolean(result.paymentProofAvailable),
+          proofUrl: result.proofUrl || null,
+        });
+      } catch (detailError) {
+        if (active) setError(detailError instanceof Error ? detailError.message : "Could not load order details.");
+      } finally {
+        if (active) setDetailLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [initialOrderId, staff]);
 
   const process = async (action: string, extra: Record<string, boolean | string> = {}) => {
     if (!selected || busy) return;
@@ -361,12 +400,12 @@ export function StoreOrdersWorkspace({ item }: { item: WorkspaceModule }) {
         <div className="notice" role="alert"><AlertCircle size={16} /> {error}</div>
       ) : null}
 
-      <section className="card table-wrap" aria-label="Store order list">
+      <section className="card table-wrap" aria-label={`${item.title} list`}>
         <div className="table-document-heading">
-          <strong>Store orders</strong>
+          <strong>{item.title}</strong>
           <TableDocumentTools
-            tableId="store-orders-table"
-            title="Store orders"
+            tableId={`${item.slug}-table`}
+            title={item.title}
             orientationKey="online-orders"
             disabled={loading || Boolean(error) || !visibleOrders.length}
             buildDocument={(orientation) => visibleOrders.length
@@ -398,15 +437,15 @@ export function StoreOrdersWorkspace({ item }: { item: WorkspaceModule }) {
         </div>
 
         {loading ? (
-          <div className="loading"><LoaderCircle size={18} className="spin" /> Loading store orders…</div>
+          <div className="loading"><LoaderCircle size={18} className="spin" /> Loading {item.title.toLowerCase()}…</div>
         ) : !visibleOrders.length ? (
           <div className="empty">
             <Search size={23} />
-            <h2>{search ? "No matching store orders" : "No store orders found"}</h2>
+            <h2>{search ? "No matching orders" : `No ${item.title.toLowerCase()} found`}</h2>
             <p>{search ? "Try another search or change the status/date filters." : "Orders placed for your branch will appear here once they sync to the cloud."}</p>
           </div>
         ) : (
-          <table id="store-orders-table">
+          <table id={`${item.slug}-table`}>
             <thead>
               <tr>
                 <th>Order</th>
@@ -458,7 +497,7 @@ export function StoreOrdersWorkspace({ item }: { item: WorkspaceModule }) {
         <div className="sales-dialog-backdrop" onMouseDown={(event) => {
           if (event.target === event.currentTarget) setSelected(null);
         }}>
-          <section aria-label="Store order details" aria-modal="true" className="sales-dialog card" role="dialog">
+          <section aria-label={`${item.title} details`} aria-modal="true" className="sales-dialog card" role="dialog">
             <header className="sales-dialog-header">
               <div>
                 <p className="eyebrow page">Order details</p>

@@ -1,6 +1,8 @@
-import { OrderDetails } from "@/components/OrderDetails";
+import { StoreOrdersWorkspace } from "@/components/workspace/StoreOrdersWorkspace";
+import { getWorkspaceModule } from "@/lib/workspace-modules";
 
 export default async function OrderDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  return <OrderDetails orderId={id} />;
+  const item = getWorkspaceModule("online-orders");
+  return item ? <StoreOrdersWorkspace item={item} initialOrderId={id} /> : null;
 }

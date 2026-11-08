@@ -199,6 +199,15 @@ export interface Database {
         deleted_at: string | null;
         server_updated_at: string;
       }>;
+      fbr_pct_categories: Table<{
+        id: string;
+        name: string;
+        pct_code: string;
+        description: string | null;
+        is_active: boolean;
+        created_at: string;
+        updated_at: string;
+      }>;
       expenses: Table<{
         id: string;
         branch_id: string;

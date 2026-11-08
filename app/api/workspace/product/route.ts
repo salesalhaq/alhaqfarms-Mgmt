@@ -191,25 +191,45 @@ export async function POST(request: Request) {
       delete metadata[key];
     }
     if (pctSelection) {
-      const { data: pctProducts, error: pctError } = await authentication.client
-        .from("products")
-        .select("metadata_json")
-        .is("deleted_at", null)
-        .limit(2000);
+      const { data: pctCategory, error: pctError } = await authentication.client
+        .from("fbr_pct_categories")
+        .select("id,name,pct_code,description,is_active")
+        .eq("id", pctSelection)
+        .maybeSingle();
       if (pctError) throw pctError;
-      const matchingMetadata = (pctProducts || [])
-        .map((product) => product.metadata_json)
-        .filter(isRecord)
-        .find((candidate) => {
-          const key = [candidate.fbrPctCategoryId, candidate.fbrPctCode, candidate.fbrPctCategoryName]
-            .find((value) => typeof value === "string" && value.trim());
-          return key === pctSelection;
-        });
-      if (!matchingMetadata) {
-        throw new WriteError("Choose an FBR PCT category from the available list.");
-      }
-      for (const key of ["fbrPctCategoryId", "fbrPctCategoryName", "fbrPctCode", "fbrPctDescription"]) {
-        if (typeof matchingMetadata[key] === "string") metadata[key] = matchingMetadata[key];
+      if (pctCategory) {
+        const existingCategoryId = isRecord(existingMetadata)
+          ? existingMetadata.fbrPctCategoryId
+          : undefined;
+        if (!pctCategory.is_active && pctCategory.id !== existingCategoryId) {
+          throw new WriteError("Choose an active FBR PCT category.");
+        }
+        metadata.fbrPctCategoryId = pctCategory.id;
+        metadata.fbrPctCategoryName = pctCategory.name;
+        metadata.fbrPctCode = pctCategory.pct_code;
+        if (pctCategory.description) metadata.fbrPctDescription = pctCategory.description;
+        else delete metadata.fbrPctDescription;
+      } else {
+        const { data: pctProducts, error: legacyError } = await authentication.client
+          .from("products")
+          .select("metadata_json")
+          .is("deleted_at", null)
+          .limit(2000);
+        if (legacyError) throw legacyError;
+        const matchingMetadata = (pctProducts || [])
+          .map((product) => product.metadata_json)
+          .filter(isRecord)
+          .find((candidate) => {
+            const key = [candidate.fbrPctCategoryId, candidate.fbrPctCode, candidate.fbrPctCategoryName]
+              .find((value) => typeof value === "string" && value.trim());
+            return key === pctSelection;
+          });
+        if (!matchingMetadata) {
+          throw new WriteError("Choose an FBR PCT category from the available list.");
+        }
+        for (const key of ["fbrPctCategoryId", "fbrPctCategoryName", "fbrPctCode", "fbrPctDescription"]) {
+          if (typeof matchingMetadata[key] === "string") metadata[key] = matchingMetadata[key];
+        }
       }
     }
 

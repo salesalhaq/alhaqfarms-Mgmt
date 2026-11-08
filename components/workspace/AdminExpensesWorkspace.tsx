@@ -76,8 +76,7 @@ function localDateKey(date: Date): string {
 
 function defaultDateRange(): [string, string] {
   const to = new Date();
-  const from = new Date(to);
-  from.setDate(from.getDate() - 29);
+  const from = new Date(to.getFullYear(), to.getMonth(), 1);
   return [localDateKey(from), localDateKey(to)];
 }
 

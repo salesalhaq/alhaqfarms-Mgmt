@@ -49,6 +49,7 @@ interface FbrPctOption {
   name: string;
   pct_code: string;
   description: string;
+  is_active: boolean;
 }
 
 interface CategoryRow {
@@ -335,14 +336,15 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
       });
       const result = await response.json() as { rows?: FbrPctOption[]; error?: string };
       if (!response.ok) throw new Error(result.error || "Could not load FBR PCT categories.");
-      const options = result.rows || [];
       const currentId = product?.fbr_pct_category_id || "";
+      const options = (result.rows || []).filter((option) => option.is_active || option.id === currentId);
       if (currentId && !options.some((option) => option.id === currentId)) {
         options.push({
           id: currentId,
           name: product?.fbr_pct_category_name || "Existing classification",
           pct_code: product?.fbr_pct_code || "",
           description: "Existing product classification",
+          is_active: false,
         });
       }
       setPctOptions(options);
@@ -752,7 +754,7 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
                   value={productForm.taxRate}
                 />
               </WorkspaceField>
-              <WorkspaceField label="FBR PCT category" hint="Optional · selected from existing product tax classifications.">
+              <WorkspaceField label="FBR PCT category" hint="Optional · manage classifications on the FBR PCT Categories page.">
                 <select
                   disabled={pctLoading}
                   onChange={(event) => setProductForm((form) => ({ ...form, fbrPctCategoryId: event.target.value }))}
@@ -761,7 +763,7 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
                   <option value="">{pctLoading ? "Loading PCT categories…" : "Not classified"}</option>
                   {pctOptions.map((option) => (
                     <option key={option.id} value={option.id}>
-                      {[option.pct_code, option.name].filter(Boolean).join(" · ")}
+                      {[option.pct_code, option.name].filter(Boolean).join(" · ")}{option.is_active ? "" : " (inactive)"}
                     </option>
                   ))}
                 </select>

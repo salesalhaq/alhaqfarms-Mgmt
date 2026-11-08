@@ -17,6 +17,35 @@ function throwRpcError(error: { code?: string; message?: string } | null): void 
   throw error;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+async function throwCredentialFunctionError(error: unknown): Promise<never> {
+  if (isRecord(error) && error.context instanceof Response) {
+    const response = error.context;
+    let payload: unknown;
+    try {
+      payload = await response.clone().json();
+    } catch {
+      throw new WriteError(`Credential reset service failed (HTTP ${response.status}).`, 503);
+    }
+    if (isRecord(payload) && typeof payload.error === "string") {
+      throw new WriteError(payload.error, response.status >= 400 && response.status < 500 ? response.status : 503);
+    }
+    throw new WriteError(`Credential reset service failed (HTTP ${response.status}).`, 503);
+  }
+
+  if (isRecord(error) && (error.name === "FunctionsFetchError" || error.name === "FunctionsRelayError")) {
+    throw new WriteError(
+      "The credential reset service is unavailable. Confirm the staff-credential-update Supabase Edge Function is deployed, then retry.",
+      503,
+    );
+  }
+
+  throw new WriteError("The credential reset service could not be reached. Confirm its deployment and retry.", 503);
+}
+
 export async function GET(request: Request) {
   const authentication = await authenticateStaff(request);
   if (!authentication.ok) {
@@ -197,7 +226,7 @@ export async function POST(request: Request) {
       const { data, error } = await authentication.client.functions.invoke("staff-credential-update", {
         body: { adminReset: true, staffId: id, mode, value },
       });
-      if (error) throw error;
+      if (error) await throwCredentialFunctionError(error);
       if (!data || data.success !== true || !Number.isSafeInteger(data.securityVersion)) {
         throw new WriteError(typeof data?.error === "string" ? data.error : "The credential reset could not be confirmed.", 503);
       }

@@ -54,6 +54,8 @@ interface PosCustomerResponse {
 }
 interface PosDiscountRequest {
   id: string;
+  branchId: string;
+  branchName: string;
   cashierName: string;
   canReview: boolean;
   billDiscountPaisa: number;
@@ -190,7 +192,9 @@ function roundedTaxPaisa(amountPaisa: number, rateBps: number, taxMode: "inclusi
 
 export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
   const { staff, branches } = useStaffAuth();
+  const canViewAllDiscountRequests = staff?.role === "admin" && !staff.branch_id;
   const [branchId, setBranchId] = useState(staff?.branch_id || "");
+  const [approvalBranchFilter, setApprovalBranchFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [categoryId, setCategoryId] = useState("");
@@ -428,17 +432,19 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
   };
 
   const loadManagerDiscountRequests = useCallback(async () => {
-    if (!branchId || !["manager", "admin"].includes(staff?.role || "")) return;
+    if (!["manager", "admin"].includes(staff?.role || "")) return;
+    const requestBranchId = canViewAllDiscountRequests ? approvalBranchFilter : branchId;
+    if (!requestBranchId) return;
     try {
       const result = await postWorkspaceAction<PosDiscountResponse>(
         "/api/workspace/point-of-sale-discounts",
-        { action: "list", branchId },
+        { action: "list", branchId: requestBranchId },
       );
       setManagerDiscountRequests(result.requests || []);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Could not load discount approvals.");
     }
-  }, [branchId, staff?.role]);
+  }, [approvalBranchFilter, branchId, canViewAllDiscountRequests, staff?.role]);
 
   const requestManagerDiscountApproval = async () => {
     if (!branchId || !discountNeedsManagerApproval
@@ -473,12 +479,12 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
     }
   };
 
-  const reviewManagerDiscount = async (requestId: string, approve: boolean) => {
+  const reviewManagerDiscount = async (request: PosDiscountRequest, approve: boolean) => {
     setDiscountApprovalBusy(true);
     try {
       await postWorkspaceAction<PosDiscountResponse>(
         "/api/workspace/point-of-sale-discounts",
-        { action: approve ? "approve" : "decline", branchId, requestId },
+        { action: approve ? "approve" : "decline", branchId: request.branchId, requestId: request.id },
       );
       await loadManagerDiscountRequests();
     } catch (reviewError) {
@@ -532,14 +538,15 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
     && discountApprovalRequestFingerprint === discountApprovalBasketFingerprint;
 
   useEffect(() => {
-    if (!branchId || !["manager", "admin"].includes(staff?.role || "")) {
+    if (!["manager", "admin"].includes(staff?.role || "")
+        || (!canViewAllDiscountRequests && !branchId)) {
       setManagerDiscountRequests([]);
       return;
     }
     void loadManagerDiscountRequests();
     const timer = window.setInterval(() => void loadManagerDiscountRequests(), 5000);
     return () => window.clearInterval(timer);
-  }, [branchId, loadManagerDiscountRequests, staff?.role]);
+  }, [branchId, canViewAllDiscountRequests, loadManagerDiscountRequests, staff?.role]);
 
   useEffect(() => {
     void loadHeldSales();
@@ -1090,26 +1097,42 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
         </div>
       </div>
 
-      {["manager", "admin"].includes(staff?.role || "") && managerDiscountRequests.length > 0 && (
+      {["manager", "admin"].includes(staff?.role || "")
+        && (canViewAllDiscountRequests || managerDiscountRequests.length > 0) && (
         <section className="card pos-held-sales-list" aria-label="Pending POS discount approvals">
           <div className="sales-dialog-header">
             <div><p className="eyebrow page">Manager review</p><h2>Discount approval requests</h2></div>
-            <button className="button secondary" disabled={discountApprovalBusy}
-              onClick={() => void loadManagerDiscountRequests()} type="button">Refresh</button>
+            <div className="heading-actions">
+              {canViewAllDiscountRequests && (
+                <label className="toolbar-control">
+                  <span>Approval branch</span>
+                  <select className="toolbar-select" value={approvalBranchFilter}
+                    onChange={(event) => setApprovalBranchFilter(event.target.value)}>
+                    <option value="all">All branches</option>
+                    {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                  </select>
+                </label>
+              )}
+              <button className="button secondary" disabled={discountApprovalBusy}
+                onClick={() => void loadManagerDiscountRequests()} type="button">Refresh</button>
+            </div>
           </div>
-          {managerDiscountRequests.map((request) => (
+          {managerDiscountRequests.length === 0
+            ? <p className="empty">No pending discount approvals.</p>
+            : managerDiscountRequests.map((request) => (
             <article className="pos-held-sale" key={request.id}>
               <div>
                 <strong>{request.cashierName}</strong>
+                <small>{request.branchName}</small>
                 <small>Requested discount {formatMoney(request.billDiscountPaisa)}</small>
                 <small>Expires {new Date(request.expiresAt).toLocaleTimeString()}</small>
               </div>
               {request.canReview
                 ? <div>
                   <button className="button" disabled={discountApprovalBusy || Date.parse(request.expiresAt) <= Date.now()}
-                    onClick={() => void reviewManagerDiscount(request.id, true)} type="button">Approve</button>
+                    onClick={() => void reviewManagerDiscount(request, true)} type="button">Approve</button>
                   <button className="button secondary" disabled={discountApprovalBusy}
-                    onClick={() => void reviewManagerDiscount(request.id, false)} type="button">Decline</button>
+                    onClick={() => void reviewManagerDiscount(request, false)} type="button">Decline</button>
                 </div>
                 : <small>Another staff member must review this request.</small>}
             </article>

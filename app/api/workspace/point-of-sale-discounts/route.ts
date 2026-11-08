@@ -6,6 +6,7 @@ import {
   readInteger,
   readJsonBody,
   readUuid,
+  WriteError,
   writeFailure,
 } from "@/lib/server/write";
 import type { Json } from "@/lib/supabase/database.types";
@@ -24,8 +25,16 @@ export async function POST(request: Request) {
     assertSameOrigin(request);
     const body = await readJsonBody(request);
     const action = readEnum(body.action, "Discount approval action", ACTIONS);
-    const branchId = readUuid(body.branchId, "Branch");
-    assertBranchAccess(authentication.identity, branchId);
+    const allBranches = action === "list" && body.branchId === "all";
+    if (allBranches && (
+      authentication.identity.staff.role !== "admin"
+      || authentication.identity.staff.branch_id !== null
+    )) {
+      throw new WriteError("Only the HQ administrator can view all branch discount requests.", 403);
+    }
+
+    const branchId = allBranches ? null : readUuid(body.branchId, "Branch");
+    if (branchId) assertBranchAccess(authentication.identity, branchId);
     const payload: { [key: string]: Json | undefined } = { branchId };
 
     if (action === "request") {
@@ -47,6 +56,26 @@ export async function POST(request: Request) {
       payload.requestId = readUuid(body.requestId, "Discount request");
     }
 
+    if (allBranches) {
+      const results = await Promise.all(authentication.identity.branches.map(async (branch) => {
+        const { data, error } = await authentication.client.rpc("staff_manage_pos_discount", {
+          p_action: "list",
+          p_payload: { branchId: branch.id },
+        });
+        if (error?.code === "PGRST202") {
+          throw new WriteError("POS discount approvals are not configured in Supabase. Apply migration 012_pos_held_sales.sql.", 503);
+        }
+        if (error) throw error;
+        const result = data as { requests?: Array<Record<string, unknown>> } | null;
+        return (result?.requests || []).map((discountRequest) => ({
+          ...discountRequest,
+          branchId: branch.id,
+          branchName: branch.name,
+        }));
+      }));
+      return authenticationResponse(request, authentication, { requests: results.flat() });
+    }
+
     const { data, error } = await authentication.client.rpc("staff_manage_pos_discount", {
       p_action: action,
       p_payload: payload,
@@ -58,6 +87,18 @@ export async function POST(request: Request) {
     }
     if (error) throw error;
 
+    if (action === "list") {
+      const branchName = authentication.identity.branches.find((branch) => branch.id === branchId)?.name || "";
+      const result = data as { requests?: Array<Record<string, unknown>> } | null;
+      return authenticationResponse(request, authentication, {
+        ...result,
+        requests: (result?.requests || []).map((discountRequest) => ({
+          ...discountRequest,
+          branchId,
+          branchName,
+        })),
+      });
+    }
     return authenticationResponse(request, authentication, data);
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && error.code === "P0001"

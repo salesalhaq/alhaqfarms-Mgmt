@@ -1,9 +1,160 @@
-import { authenticateStaff, authenticationResponse, isUuid } from "@/lib/server/staff-auth";
+import { authenticateStaff, authenticationResponse, isSameOriginRequest, isUuid } from "@/lib/server/staff-auth";
 
 export const dynamic = "force-dynamic";
 
 const DEVICE_LIMIT = 500;
 const VALID_STATUS = new Set(["pending", "approved", "revoked"]);
+
+export async function POST(request: Request) {
+  const authentication = await authenticateStaff(request);
+  if (!authentication.ok) {
+    return authenticationResponse(request, authentication, { error: authentication.error }, authentication.status);
+  }
+  if (!isSameOriginRequest(request)) {
+    return authenticationResponse(request, authentication, { error: "This request must come from the signed-in workspace." }, 403);
+  }
+  if (authentication.identity.staff.role !== "admin") {
+    return authenticationResponse(request, authentication, { error: "Only administrators can manage registered devices." }, 403);
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    const parsed: unknown = await request.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
+    body = parsed as Record<string, unknown>;
+  } catch {
+    return authenticationResponse(request, authentication, { error: "Send a valid device action." }, 400);
+  }
+
+  const action = typeof body.action === "string" ? body.action : "";
+  const now = new Date().toISOString();
+  const staffId = authentication.identity.staff.local_staff_id;
+  const rawClient = authentication.client as unknown as { from(table: string): any };
+  const recordAudit = async (deviceId: string, branchId: string | null, auditAction: string, name: string) => {
+    const { error } = await rawClient.from("audit_log").insert({
+      id: crypto.randomUUID(),
+      actor_id: staffId,
+      branch_id: branchId,
+      action: auditAction,
+      entity_type: "device",
+      entity_id: deviceId,
+      details_json: { name },
+      occurred_at: now,
+      deleted_at: null,
+      server_updated_at: now,
+    });
+    if (!error) return null;
+    console.error("Could not save device audit entry.", error);
+    return error.message;
+  };
+
+  try {
+    if (action === "register") {
+      const name = typeof body.name === "string" ? body.name.trim() : "";
+      const fingerprint = typeof body.fingerprint === "string" ? body.fingerprint.trim() : "";
+      const platform = typeof body.platform === "string" ? body.platform.trim().slice(0, 100) : "";
+      const notes = typeof body.notes === "string" ? body.notes.trim().slice(0, 500) : "";
+      const branchId = typeof body.branchId === "string" ? body.branchId : "";
+      if (!name || name.length > 100 || !fingerprint || fingerprint.length > 200) {
+        return authenticationResponse(request, authentication, { error: "Enter a device name and valid fingerprint." }, 400);
+      }
+      if (!isUuid(branchId) || !authentication.identity.branches.some((branch) => branch.id === branchId)) {
+        return authenticationResponse(request, authentication, { error: "Choose an accessible branch for this device." }, 400);
+      }
+      if (!staffId) {
+        return authenticationResponse(request, authentication, { error: "Your staff profile is not linked for device registration." }, 409);
+      }
+
+      const deviceId = crypto.randomUUID();
+      const { data, error } = await rawClient
+        .from("devices")
+        .insert({
+          id: deviceId,
+          branch_id: branchId,
+          name,
+          fingerprint,
+          platform: platform || null,
+          status: "pending",
+          notes: notes || null,
+          registered_by: staffId,
+          last_seen_at: now,
+          created_at: now,
+          updated_at: now,
+          deleted_at: null,
+          server_updated_at: now,
+        })
+        .select("id,name,status")
+        .single();
+      if (error) {
+        if (error.code === "23505") {
+          return authenticationResponse(request, authentication, { error: "This browser is already registered or its fingerprint is in use." }, 409);
+        }
+        throw new Error(error.message);
+      }
+      const auditWarning = await recordAudit(deviceId, branchId, "device.registered", name);
+      return authenticationResponse(request, authentication, {
+        device: data,
+        ...(auditWarning ? { warning: `Device registered, but its audit entry could not be saved: ${auditWarning}` } : {}),
+      });
+    }
+
+    if (action !== "approve" && action !== "revoke") {
+      return authenticationResponse(request, authentication, { error: "Choose a supported device action." }, 400);
+    }
+
+    const deviceId = typeof body.deviceId === "string" ? body.deviceId : "";
+    if (!isUuid(deviceId)) {
+      return authenticationResponse(request, authentication, { error: "Choose a valid device." }, 400);
+    }
+    if (action === "approve" && !staffId) {
+      return authenticationResponse(request, authentication, { error: "Your staff profile is not linked for device approval." }, 409);
+    }
+
+    const { data: device, error: deviceError } = await rawClient
+      .from("devices")
+      .select("id,branch_id,name,status")
+      .eq("id", deviceId)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (deviceError) throw new Error(deviceError.message);
+    if (!device) return authenticationResponse(request, authentication, { error: "Device not found." }, 404);
+    if (device.status === "revoked" && action === "approve") {
+      return authenticationResponse(request, authentication, { error: "A revoked device cannot be approved again." }, 409);
+    }
+    if (device.status === (action === "approve" ? "approved" : "revoked")) {
+      return authenticationResponse(request, authentication, { device });
+    }
+
+    const updates = action === "approve"
+      ? { status: "approved", approved_by: staffId, approved_at: now, updated_at: now, server_updated_at: now }
+      : { status: "revoked", updated_at: now, server_updated_at: now };
+    const { data: updated, error: updateError } = await rawClient
+      .from("devices")
+      .update(updates)
+      .eq("id", deviceId)
+      .is("deleted_at", null)
+      .select("id,name,status")
+      .maybeSingle();
+    if (updateError) throw new Error(updateError.message);
+    if (!updated) return authenticationResponse(request, authentication, { error: "Device status was not changed." }, 409);
+
+    const auditWarning = await recordAudit(
+      deviceId,
+      device.branch_id,
+      action === "approve" ? "device.approved" : "device.revoked",
+      device.name,
+    );
+    return authenticationResponse(request, authentication, {
+      device: updated,
+      ...(auditWarning ? { warning: `Device status was changed, but its audit entry could not be saved: ${auditWarning}` } : {}),
+    });
+  } catch (error) {
+    console.error("Could not manage registered device.", error);
+    return authenticationResponse(request, authentication, {
+      error: error instanceof Error ? error.message : "Could not manage the registered device.",
+    }, 500);
+  }
+}
 
 export async function GET(request: Request) {
   const authentication = await authenticateStaff(request);

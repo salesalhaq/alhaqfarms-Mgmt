@@ -21,6 +21,7 @@ The online management client shares staff identities and branch-scoped data with
 - All rendered web tables have per-table AUTO/portrait/landscape settings, print and preview actions, and CSV/PDF actions. PDF opens the browser print dialog, where staff can choose Save as PDF; exports include the rows currently displayed (the current page for paginated lists).
 - Other read-only dashboards show recent synchronized sales and returns, a 14-day sales trend, and—when permitted—storefront order and payment-review activity. Activity queries use the signed-in user's existing branch RLS scope and are limited to the latest 100 records per source.
 - The Farm ERP modules are live read-only views for admin accounts: dashboard, animals, production, spice, bulk sales, vendors, farm stores, customer accounts, ERP expenses, and ERP reports. They reuse the existing RLS scope, support branch/search/status/date filters and read-only record details, and bound list and aggregate queries to recent records while labelling approximate totals. Creating or editing ERP records remains Windows-only.
+- Devices supports browser registration and device approval/revocation. HR & Payroll supports employee, compensation, attendance, advance, department, and payroll-run actions for authorized managers and administrators; manual tax configuration and employee archive/restore remain Windows-only.
 - Order mutations are intentionally not enabled. Existing cloud update policies do not enforce the desktop action-permission matrix or its transactional stock/order lifecycle.
 
 The Windows app keeps a local scrypt verifier so staff can sign in offline. Supabase stores a separate bcrypt verifier; plaintext passwords and PINs are not added to table sync or the desktop outbox.
@@ -55,6 +56,7 @@ E:\ALhaqFM APP\database\supabase\migrations\0028_staff_daily_report.sql
 E:\Alhaqfm Web\supabase\migrations\029_branch_tax_and_fbr_settings.sql
 E:\Alhaqfm Web\supabase\migrations\030_web_cloud_backups.sql
 E:\Alhaqfm Web\supabase\migrations\032_stock_transfer_workflow.sql
+E:\Alhaqfm Web\supabase\migrations\033_hr_payroll_web_actions.sql
 ```
 
 The web migration creates branch-scoped POS and FBR settings and updates checkout/held-sale validation. Apply it before deploying this version of the web app. Configure a separate 32-byte random key (64 hex characters) as `FBR_CONFIG_ENCRYPTION_KEY` in the Cloudflare Worker secret store before administrators save FBR credentials. For local development, use a different key in `.dev.vars`; do not commit real keys. A key rotation requires re-encrypting existing credentials before replacing the old key.
@@ -86,6 +88,8 @@ To enable scheduled cloud copies, deploy the Edge Function and install its 15-mi
 Until these deployment steps are complete, manual local and cloud backups work, but saved automatic schedules will not run.
 
 Migration `032_stock_transfer_workflow.sql` installs the atomic create/dispatch/receive/cancel RPC and the active branch lookup used by Transfers and Receive Stock. Apply it before deploying these transfer workflows. It does not depend on the optional backup scheduler setup in migration 031. Receipt confirmation is available from either page; only confirmed quantities are added to destination stock.
+
+Migration `033_hr_payroll_web_actions.sql` installs the transactional payroll-run RPC used to generate, pay, and void web payroll runs. Apply it before deploying HR & Payroll actions. Employee, attendance, compensation, advance, and department actions use authenticated branch-scoped APIs; the web payroll calculation follows the desktop attendance and advance-recovery rules, while tax settings remain desktop-managed.
 
 From `E:\ALhaqFM APP\database\supabase`, set the shared gateway secret and deploy these functions:
 

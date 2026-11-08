@@ -8,8 +8,6 @@ import {
   CalendarRange,
   CheckCircle2,
   Clock3,
-  Download,
-  FileText,
   Plus,
   Printer,
   Receipt,
@@ -19,8 +17,9 @@ import {
   Wallet,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
+import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { formatDateTime, formatMoney, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { printCurrentPage } from "@/lib/print/print-window";
@@ -30,12 +29,17 @@ import { printHtmlViaBridge, serializeElementForBridge } from "@/lib/print/bridg
 type PayrollRow = {
   id: string;
   staffId: string;
+  branchId: string | null;
   staffName: string;
   branchName: string;
+  email: string | null;
+  phone: string | null;
   departmentId: string | null;
   departmentName: string;
   role: string;
   isActive: boolean;
+  baseSalaryPaisa: number;
+  allowancesPaisa: number;
   monthlyPaisa: number;
   advancePaisa: number;
   presentDays: number;
@@ -46,13 +50,6 @@ type PayrollRow = {
   grossPaisa: number;
   deductionsPaisa: number;
   netPaisa: number;
-};
-
-type PayrollDocument = {
-  id: string;
-  name: string;
-  kind: "attendance" | "payroll" | "export";
-  disabled?: boolean;
 };
 
 type Department = {
@@ -168,11 +165,17 @@ type PayrollSummaryResponse = {
   };
   payrollRuns?: PayrollRun[];
   taxReport?: TaxReport;
-  documents: PayrollDocument[];
   readOnly?: boolean;
   warning?: string;
   limitations?: string[];
   error?: string;
+};
+
+type PayrollActionDialog = {
+  action: string;
+  title: string;
+  employeeId?: string;
+  fields: Record<string, string>;
 };
 
 function formatDateInput(date: Date): string {
@@ -203,6 +206,22 @@ function formatDate(value: string | null | undefined): string {
   const parsed = new Date(`${value}T00:00:00`);
   if (Number.isNaN(parsed.getTime())) return value;
   return new Intl.DateTimeFormat("en-PK", { dateStyle: "medium" }).format(parsed);
+}
+
+function formatPaisaInput(value: number): string {
+  return (value / 100).toFixed(2);
+}
+
+function parseMoneyInput(value: string, label: string): number {
+  const normalized = value.trim();
+  if (!normalized) return 0;
+  if (!/^\d{1,12}(?:\.\d{1,2})?$/.test(normalized)) {
+    throw new Error(`${label} must be a non-negative amount with up to two decimal places.`);
+  }
+  const [whole, fraction = ""] = normalized.split(".");
+  const amount = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
+  if (!Number.isSafeInteger(amount)) throw new Error(`${label} is too large.`);
+  return amount;
 }
 
 const emptySummary: PayrollSummaryResponse = {
@@ -252,13 +271,8 @@ const emptySummary: PayrollSummaryResponse = {
     rows: [],
     totalWithheldPaisa: 0,
   },
-  documents: [
-    { id: "attendance-register", name: "Attendance register", kind: "attendance", disabled: true },
-    { id: "payroll-register", name: "Payroll register", kind: "payroll", disabled: true },
-    { id: "payroll-export", name: "Payslip export", kind: "export", disabled: true },
-  ],
-  readOnly: true,
-  warning: "This workspace is intentionally read-only until the payroll export flow is verified.",
+  readOnly: false,
+  warning: undefined,
   limitations: [],
 };
 
@@ -273,6 +287,9 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
   const [summary, setSummary] = useState<PayrollSummaryResponse | null>(null);
   const [expandedRunId, setExpandedRunId] = useState("");
   const [selectedPayslip, setSelectedPayslip] = useState<{ item: PayrollItem; run: PayrollRun } | null>(null);
+  const [actionDialog, setActionDialog] = useState<PayrollActionDialog | null>(null);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -342,6 +359,111 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
       active = false;
     };
   }, [branchId, fromDate, reloadKey, staff, staffId, taxYear, toDate]);
+
+  const openActionDialog = (action: string, row?: PayrollRow) => {
+    const branchForForm = row?.branchId
+      || (branchId !== "all" ? branchId : staff?.branch_id || branches[0]?.id || "");
+    const today = formatDateInput(new Date());
+    const fields: Record<string, string> = {};
+    let title = "";
+    if (action === "saveEmployee") {
+      title = row ? "Edit employee" : "Add employee";
+      Object.assign(fields, {
+        fullName: row?.staffName || "",
+        jobTitle: row?.role || "",
+        email: row?.email || "",
+        phone: row?.phone || "",
+        branchId: branchForForm,
+        departmentId: row?.departmentId || "",
+      });
+    } else if (action === "saveCompensation") {
+      title = "Save compensation";
+      Object.assign(fields, {
+        baseSalary: formatPaisaInput(row?.baseSalaryPaisa || 0),
+        allowances: formatPaisaInput(row?.allowancesPaisa || 0),
+        effectiveFrom: today,
+        notes: "",
+      });
+    } else if (action === "recordAttendance") {
+      title = "Record attendance";
+      Object.assign(fields, { attendanceDate: today, status: "present", notes: "" });
+    } else if (action === "recordAdvance") {
+      title = "Record staff advance";
+      Object.assign(fields, { amount: "", advanceDate: today, notes: "" });
+    } else if (action === "saveDepartment") {
+      title = "Add department";
+      Object.assign(fields, { branchId: branchForForm, name: "", description: "" });
+    } else if (action === "generatePayrollRun") {
+      title = "Generate payroll run";
+      Object.assign(fields, { branchId: branchForForm, periodStart: fromDate, periodEnd: toDate, notes: "" });
+    }
+    setError(null);
+    setActionDialog({ action, title, employeeId: row?.staffId, fields });
+  };
+
+  const submitActionDialog = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!actionDialog) return;
+    setActionBusy(true);
+    setError(null);
+    setActionNotice(null);
+    try {
+      const formData = new FormData(event.currentTarget);
+      const fields: Record<string, FormDataEntryValue> = Object.fromEntries(formData.entries());
+      const payload: Record<string, unknown> = {
+        action: actionDialog.action,
+        ...fields,
+        ...(actionDialog.employeeId ? { employeeId: actionDialog.employeeId } : {}),
+      };
+      if (actionDialog.action === "saveCompensation") {
+        payload.baseSalaryPaisa = parseMoneyInput(String(fields.baseSalary || ""), "Base salary");
+        payload.allowancesPaisa = parseMoneyInput(String(fields.allowances || ""), "Allowances");
+        delete payload.baseSalary;
+        delete payload.allowances;
+      } else if (actionDialog.action === "recordAdvance") {
+        payload.amountPaisa = parseMoneyInput(String(fields.amount || ""), "Advance amount");
+        delete payload.amount;
+      }
+
+      const response = await fetch("/api/workspace/admin-payroll/actions", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json() as { error?: string; warning?: string };
+      if (!response.ok) throw new Error(result.error || "Could not save this HR or payroll action.");
+      setActionNotice(result.warning || null);
+      setActionDialog(null);
+      setReloadKey((value) => value + 1);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Could not save this HR or payroll action.");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const runAction = async (action: string, values: Record<string, unknown>) => {
+    setActionBusy(true);
+    setError(null);
+    setActionNotice(null);
+    try {
+      const response = await fetch("/api/workspace/admin-payroll/actions", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ...values }),
+      });
+      const result = await response.json() as { error?: string; warning?: string };
+      if (!response.ok) throw new Error(result.error || "Could not save this HR or payroll action.");
+      setActionNotice(result.warning || null);
+      setReloadKey((value) => value + 1);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Could not save this HR or payroll action.");
+    } finally {
+      setActionBusy(false);
+    }
+  };
 
   const branchOptions = useMemo(() => {
     if (!staff) return [];
@@ -413,6 +535,7 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
   ];
 
   const isLocked = !authLoading && !staff;
+  const isHqAdmin = staff?.role === "admin" && staff.branch_id === null;
 
   if (isLocked) {
     return (
@@ -420,7 +543,7 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
         <ShieldCheck size={16} />
         <div>
           <strong>Payroll workspace is locked.</strong>
-          <p>Sign in with an authenticated staff account to view the read-only payroll and attendance summary for your branch scope.</p>
+          <p>Sign in with an authenticated manager or administrator account to manage attendance and payroll for your branch scope.</p>
         </div>
       </div>
     );
@@ -432,7 +555,7 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
         <div>
           <p className="eyebrow page">{item.section}</p>
           <h1>{item.title}</h1>
-          <p>{item.description} This workspace is read-only and only shows data available to the signed-in staff profile.</p>
+          <p>{item.description} Attendance, compensation, and payroll actions are recorded to the shared branch ledger.</p>
         </div>
         <div className="dashboard-controls">
           {staff?.role === "admin" && (
@@ -469,17 +592,19 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
         </div>
       </div>
 
-      <div className="heading-actions" aria-label="Desktop payroll actions">
-        <button className="primary-button" type="button" disabled title="Adding employees is a Windows desktop workflow.">
+      <div className="heading-actions" aria-label="HR and payroll actions">
+        <button className="primary-button" type="button" onClick={() => openActionDialog("saveEmployee")}>
           <Plus size={14} /> Add employee
         </button>
-        <button className="primary-button" type="button" disabled title="Generating payroll runs is a Windows desktop workflow.">
+        <button className="primary-button" type="button" onClick={() => openActionDialog("generatePayrollRun")}>
           <Plus size={14} /> New payroll run
         </button>
-        <button className="secondary-button" type="button" disabled title="Adding departments is a Windows desktop workflow.">
-          <Plus size={14} /> Add department
-        </button>
-        <button className="secondary-button" type="button" disabled title="Payroll tax settings are stored on the Windows desktop device.">
+        {isHqAdmin && (
+          <button className="secondary-button" type="button" onClick={() => openActionDialog("saveDepartment")}>
+            <Plus size={14} /> Add department
+          </button>
+        )}
+        <button className="secondary-button" type="button" disabled title="Payroll tax settings are still managed in the Windows desktop app.">
           <ShieldCheck size={14} /> Tax settings
         </button>
       </div>
@@ -490,6 +615,7 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
           <span>{error}</span>
         </div>
       ) : null}
+      {actionNotice && <div className="notice warning" role="status">{actionNotice}</div>}
 
       {loading ? (
         <div className="card loading">Loading payroll and attendance…</div>
@@ -524,9 +650,7 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
             <section className="card" style={{ padding: "1.25rem" }}>
               <div className="hr-panel-heading">
                 <h2 className="section-title"><Building2 size={11} /> Departments</h2>
-                <button className="secondary-button" type="button" disabled title="Adding departments is a Windows desktop workflow.">
-                  <Plus size={12} /> Add
-                </button>
+                {isHqAdmin && <button className="secondary-button" type="button" onClick={() => openActionDialog("saveDepartment")}><Plus size={12} /> Add</button>}
               </div>
               <div className="table-wrap">
                 <table className="data-table">
@@ -548,11 +672,11 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
                           </td>
                           <td>{department.staffCount}</td>
                           <td><span className={`status ${department.isActive ? "green" : "red"}`}>{department.isActive ? "Active" : "Inactive"}</span></td>
-                          <td>
-                            <button className="secondary-button" type="button" disabled title="Changing departments is a Windows desktop workflow.">
+                          <td>{isHqAdmin && (
+                            <button className="secondary-button" type="button" disabled={actionBusy} onClick={() => void runAction("setDepartmentActive", { departmentId: department.id, active: !department.isActive })}>
                               {department.isActive ? "Deactivate" : "Activate"}
                             </button>
-                          </td>
+                          )}</td>
                         </tr>
                       ))
                     ) : (
@@ -669,18 +793,21 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
                 </tbody>
               </table>
             </div>
-            <p className="page-note">Manual withholding and the payroll tax toggle are managed in the Windows desktop app. This view mirrors the synchronized payroll items.</p>
+            <p className="page-note">Withholding already recorded in synchronized payroll runs is included. Configure new manual withholding in the Windows desktop app.</p>
           </section>
 
           <section className="card" style={{ padding: "1.25rem" }}>
             <div className="hr-panel-heading">
               <h2 className="section-title"><Users size={11} /> Employees</h2>
-              <button className="primary-button" type="button" disabled title="Adding employees is a Windows desktop workflow.">
-                <Plus size={14} /> Add employee
-              </button>
+              <div className="heading-actions">
+                <TableDocumentTools tableId="hr-employees-table" title="HR employees" disabled={!summary.rows.length} />
+                <button className="primary-button" type="button" onClick={() => openActionDialog("saveEmployee")}>
+                  <Plus size={14} /> Add employee
+                </button>
+              </div>
             </div>
             <div className="table-wrap">
-              <table className="data-table">
+              <table className="data-table" id="hr-employees-table">
                 <thead>
                   <tr>
                     <th>Employee</th>
@@ -706,14 +833,13 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
                         <td><span className={`status ${row.isActive ? "green" : "red"}`}>{row.isActive ? "Active" : "Inactive"}</span></td>
                         <td>
                           <div className="row-actions">
-                            <button className="secondary-button" type="button" disabled title="Editing employees is a Windows desktop workflow.">Edit</button>
-                            <button className="secondary-button" type="button" disabled title="Saving compensation is a Windows desktop workflow.">Pay</button>
-                            <button className="secondary-button" type="button" disabled title="Recording attendance is a Windows desktop workflow.">Attendance</button>
-                            <button className="secondary-button" type="button" disabled title="Recording advances is a Windows desktop workflow.">Advance</button>
-                            <button className="secondary-button" type="button" disabled title="Changing employee status is a Windows desktop workflow.">{row.isActive ? "Deactivate" : "Activate"}</button>
-                            <button className="secondary-button" type="button" disabled title="Restoring employees is a Windows desktop workflow.">Restore</button>
-                            <button className="secondary-button" type="button" disabled title="Archiving employees is a Windows desktop workflow.">Archive</button>
-                            <button className="secondary-button" type="button" disabled title="Deleting employees is a Windows desktop workflow.">Delete</button>
+                            <button className="secondary-button" type="button" onClick={() => openActionDialog("saveEmployee", row)}>Edit</button>
+                            <button className="secondary-button" type="button" onClick={() => openActionDialog("saveCompensation", row)}>Pay</button>
+                            <button className="secondary-button" type="button" onClick={() => openActionDialog("recordAttendance", row)}>Attendance</button>
+                            <button className="secondary-button" type="button" onClick={() => openActionDialog("recordAdvance", row)}>Advance</button>
+                            <button className="secondary-button" type="button" disabled={actionBusy} onClick={() => void runAction("setEmployeeActive", { employeeId: row.staffId, active: !row.isActive })}>
+                              {row.isActive ? "Deactivate" : "Activate"}
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -731,12 +857,15 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
           <section className="card" style={{ padding: "1.25rem" }}>
             <div className="hr-panel-heading">
               <h2 className="section-title"><Wallet size={11} /> Payroll runs</h2>
-              <button className="primary-button" type="button" disabled title="Generating payroll runs is a Windows desktop workflow.">
-                <Plus size={14} /> New payroll run
-              </button>
+              <div className="heading-actions">
+                <TableDocumentTools tableId="payroll-runs-table" title="Payroll runs" disabled={!(summary.payrollRuns ?? []).length} />
+                <button className="primary-button" type="button" onClick={() => openActionDialog("generatePayrollRun")}>
+                  <Plus size={14} /> New payroll run
+                </button>
+              </div>
             </div>
             <div className="table-wrap">
-              <table className="data-table">
+              <table className="data-table" id="payroll-runs-table">
                 <thead>
                   <tr>
                     <th>Period</th>
@@ -775,10 +904,18 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
                             </button>
                             {run.status === "draft" && (
                               <>
-                                <button className="primary-button" type="button" disabled title="Marking a payroll run paid is a Windows desktop workflow.">
+                                <button className="primary-button" type="button" disabled={actionBusy} onClick={() => {
+                                  if (window.confirm(`Mark payroll for ${formatDate(run.periodStart)} to ${formatDate(run.periodEnd)} as paid?`)) {
+                                    void runAction("markPayrollRunPaid", { runId: run.id });
+                                  }
+                                }}>
                                   <CheckCircle2 size={12} /> Mark paid
                                 </button>
-                                <button className="secondary-button" type="button" disabled title="Voiding a payroll run is a Windows desktop workflow.">
+                                <button className="secondary-button" type="button" disabled={actionBusy} onClick={() => {
+                                  if (window.confirm("Void this draft payroll run? Its payslips will remain in the audit history.")) {
+                                    void runAction("voidPayrollRun", { runId: run.id });
+                                  }
+                                }}>
                                   Void
                                 </button>
                               </>
@@ -885,7 +1022,7 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
                 </p>
               </div>
               <div className="badge-row">
-                <span className="status-chip neutral">Read-only</span>
+                <span className="status-chip neutral">Live cloud ledger</span>
               </div>
             </div>
 
@@ -920,25 +1057,11 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
           <section className="card" style={{ padding: "1.25rem" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
               <h2 style={{ margin: 0 }}>Payroll ledger</h2>
-              <div className="flex gap-2">
-                {summary.documents.map((document) => (
-                  <button
-                    key={document.id}
-                    type="button"
-                    className="button secondary"
-                    disabled={document.disabled}
-                    title={document.disabled ? "Generation is disabled until the document workflow is verified." : "Read-only document view"}
-                    style={{ opacity: document.disabled ? 0.6 : 1 }}
-                  >
-                    {document.kind === "attendance" ? <FileText size={14} /> : document.kind === "export" ? <Download size={14} /> : <Wallet size={14} />}
-                    {document.name}
-                  </button>
-                ))}
-              </div>
+              <TableDocumentTools tableId="hr-payroll-ledger-table" title={`HR payroll ledger ${summary.period.label}`} disabled={!summary.rows.length} />
             </div>
 
             <div className="table-wrap">
-              <table className="data-table">
+              <table className="data-table" id="hr-payroll-ledger-table">
                 <thead>
                   <tr>
                     <th>Staff</th>
@@ -979,6 +1102,153 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
             </div>
           </section>
         </>
+      )}
+
+      {actionDialog && (
+        <div className="sales-dialog-backdrop" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !actionBusy) setActionDialog(null);
+        }}>
+          <section className="sales-dialog card" role="dialog" aria-modal="true" aria-labelledby="hr-action-title">
+            <header className="sales-dialog-header">
+              <div><p className="eyebrow page">HR & payroll</p><h2 id="hr-action-title">{actionDialog.title}</h2></div>
+              <button className="button secondary" type="button" onClick={() => setActionDialog(null)} disabled={actionBusy} aria-label="Close dialog">
+                <X size={16} />
+              </button>
+            </header>
+            <form className="workspace-form" onSubmit={(event) => void submitActionDialog(event)}>
+              {actionDialog.employeeId && <input type="hidden" name="employeeId" value={actionDialog.employeeId} />}
+              {actionDialog.action === "saveEmployee" && (
+                <>
+                  {!actionDialog.employeeId && (
+                    <label className="workspace-field">Branch
+                      <select name="branchId" required defaultValue={actionDialog.fields.branchId}>
+                        {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                      </select>
+                    </label>
+                  )}
+                  <label className="workspace-field">Employee name
+                    <input name="fullName" required maxLength={200} defaultValue={actionDialog.fields.fullName} />
+                  </label>
+                  <label className="workspace-field">Job title
+                    <input name="jobTitle" required maxLength={100} defaultValue={actionDialog.fields.jobTitle} />
+                  </label>
+                  <div className="workspace-form-grid">
+                    <label className="workspace-field">Email
+                      <input name="email" type="email" maxLength={254} defaultValue={actionDialog.fields.email} />
+                    </label>
+                    <label className="workspace-field">Phone
+                      <input name="phone" type="tel" maxLength={50} defaultValue={actionDialog.fields.phone} />
+                    </label>
+                  </div>
+                  <label className="workspace-field">Department
+                    <select name="departmentId" defaultValue={actionDialog.fields.departmentId}>
+                      <option value="">Unassigned</option>
+                      {(summary?.departments ?? []).filter((department) => department.isActive).map((department) => (
+                        <option key={department.id} value={department.id}>{department.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              )}
+              {actionDialog.action === "saveCompensation" && (
+                <>
+                  <p className="muted">Employee: {summary?.rows.find((row) => row.staffId === actionDialog.employeeId)?.staffName}</p>
+                  <div className="workspace-form-grid">
+                    <label className="workspace-field">Base salary (Rs.)
+                      <input name="baseSalary" required inputMode="decimal" pattern="[0-9]+([.][0-9]{1,2})?" defaultValue={actionDialog.fields.baseSalary} />
+                    </label>
+                    <label className="workspace-field">Allowances (Rs.)
+                      <input name="allowances" inputMode="decimal" pattern="[0-9]*([.][0-9]{1,2})?" defaultValue={actionDialog.fields.allowances} />
+                    </label>
+                  </div>
+                  <label className="workspace-field">Effective from
+                    <input name="effectiveFrom" type="date" required defaultValue={actionDialog.fields.effectiveFrom} />
+                  </label>
+                  <label className="workspace-field">Notes
+                    <textarea name="notes" maxLength={500} defaultValue={actionDialog.fields.notes} />
+                  </label>
+                </>
+              )}
+              {actionDialog.action === "recordAttendance" && (
+                <>
+                  <p className="muted">Employee: {summary?.rows.find((row) => row.staffId === actionDialog.employeeId)?.staffName}</p>
+                  <label className="workspace-field">Date
+                    <input name="attendanceDate" type="date" required max={formatDateInput(new Date())} defaultValue={actionDialog.fields.attendanceDate} />
+                  </label>
+                  <label className="workspace-field">Status
+                    <select name="status" defaultValue={actionDialog.fields.status}>
+                      <option value="present">Present</option>
+                      <option value="absent">Absent</option>
+                      <option value="half_day">Half day</option>
+                      <option value="leave">Leave</option>
+                      <option value="holiday">Holiday</option>
+                    </select>
+                  </label>
+                  <label className="workspace-field">Notes
+                    <textarea name="notes" maxLength={300} defaultValue={actionDialog.fields.notes} />
+                  </label>
+                </>
+              )}
+              {actionDialog.action === "recordAdvance" && (
+                <>
+                  <p className="muted">Employee: {summary?.rows.find((row) => row.staffId === actionDialog.employeeId)?.staffName}</p>
+                  <label className="workspace-field">Amount (Rs.)
+                    <input name="amount" required inputMode="decimal" pattern="[0-9]+([.][0-9]{1,2})?" defaultValue={actionDialog.fields.amount} />
+                  </label>
+                  <label className="workspace-field">Advance date
+                    <input name="advanceDate" type="date" required max={formatDateInput(new Date())} defaultValue={actionDialog.fields.advanceDate} />
+                  </label>
+                  <label className="workspace-field">Notes
+                    <textarea name="notes" maxLength={500} defaultValue={actionDialog.fields.notes} />
+                  </label>
+                </>
+              )}
+              {actionDialog.action === "saveDepartment" && (
+                <>
+                  <label className="workspace-field">Branch
+                    <select name="branchId" required defaultValue={actionDialog.fields.branchId}>
+                      {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="workspace-field">Department name
+                    <input name="name" required maxLength={100} defaultValue={actionDialog.fields.name} />
+                  </label>
+                  <label className="workspace-field">Description
+                    <textarea name="description" maxLength={300} defaultValue={actionDialog.fields.description} />
+                  </label>
+                </>
+              )}
+              {actionDialog.action === "generatePayrollRun" && (
+                <>
+                  <label className="workspace-field">Branch
+                    <select name="branchId" required defaultValue={actionDialog.fields.branchId}>
+                      {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                    </select>
+                  </label>
+                  <div className="workspace-form-grid">
+                    <label className="workspace-field">Period start
+                      <input name="periodStart" type="date" required defaultValue={actionDialog.fields.periodStart} />
+                    </label>
+                    <label className="workspace-field">Period end
+                      <input name="periodEnd" type="date" required defaultValue={actionDialog.fields.periodEnd} />
+                    </label>
+                  </div>
+                  <label className="workspace-field">Notes
+                    <textarea name="notes" maxLength={500} defaultValue={actionDialog.fields.notes} />
+                  </label>
+                  <p className="muted">The draft run uses compensation effective on period end, recorded attendance, and outstanding advances.</p>
+                </>
+              )}
+              {error && <div className="notice" role="alert">{error}</div>}
+              <div className="modal-actions">
+                <button className="button secondary" type="button" onClick={() => setActionDialog(null)} disabled={actionBusy}>Cancel</button>
+                <button className="primary-button" type="submit" disabled={actionBusy}>
+                  {actionBusy ? "Saving…" : actionDialog.action === "generatePayrollRun" ? "Generate draft run" : "Save"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
       )}
 
       {selectedPayslip && (

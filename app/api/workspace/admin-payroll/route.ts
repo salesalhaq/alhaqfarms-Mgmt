@@ -7,6 +7,8 @@ interface EmployeeRow {
   branch_id: string | null;
   full_name: string;
   job_title: string | null;
+  email: string | null;
+  phone: string | null;
   department_id: string | null;
   is_active: boolean;
 }
@@ -180,6 +182,9 @@ export async function GET(request: Request) {
       403,
     );
   }
+  if (role !== "admin" && !authentication.identity.moduleAccess["hr-payroll"]) {
+    return authenticationResponse(request, authentication, { error: "HR and payroll access is disabled for this account." }, 403);
+  }
 
   const parameters = new URL(request.url).searchParams;
   const fromValue = (parameters.get("from") || "").trim();
@@ -232,11 +237,12 @@ export async function GET(request: Request) {
   let payrollItems: PayrollItemRow[] = [];
   let recoveries: RecoveryRow[] = [];
   let advances: AdvanceRow[] = [];
+  const dataWarnings: string[] = [];
 
   try {
     const employeesResult = await rawClient
       .from("hr_employees")
-      .select("id,branch_id,full_name,job_title,department_id,is_active")
+      .select("id,branch_id,full_name,job_title,email,phone,department_id,is_active")
       .in("branch_id", activeBranchList)
       .is("deleted_at", null)
       .order("full_name", { ascending: true });
@@ -258,9 +264,11 @@ export async function GET(request: Request) {
       .order("name", { ascending: true });
     if (!departmentsResult.error) {
       departments = (departmentsResult.data || []) as DepartmentRow[];
+    } else {
+      dataWarnings.push(`Departments: ${departmentsResult.error.message}`);
     }
-  } catch {
-    departments = [];
+  } catch (error) {
+    dataWarnings.push(error instanceof Error ? `Departments: ${error.message}` : "Departments could not be loaded.");
   }
 
   try {
@@ -273,9 +281,11 @@ export async function GET(request: Request) {
       .order("effective_from", { ascending: false });
     if (!compensationResult.error) {
       compensationRows = (compensationResult.data || []) as CompensationRow[];
+    } else {
+      dataWarnings.push(`Compensation: ${compensationResult.error.message}`);
     }
-  } catch {
-    compensationRows = [];
+  } catch (error) {
+    dataWarnings.push(error instanceof Error ? `Compensation: ${error.message}` : "Compensation could not be loaded.");
   }
 
   try {
@@ -292,9 +302,11 @@ export async function GET(request: Request) {
       .order("attendance_date", { ascending: false });
     if (!attendanceResult.error) {
       attendanceRows = (attendanceResult.data || []) as AttendanceRow[];
+    } else {
+      dataWarnings.push(`Attendance: ${attendanceResult.error.message}`);
     }
-  } catch {
-    attendanceRows = [];
+  } catch (error) {
+    dataWarnings.push(error instanceof Error ? `Attendance: ${error.message}` : "Attendance could not be loaded.");
   }
 
   try {
@@ -327,6 +339,8 @@ export async function GET(request: Request) {
           .order("staff_name", { ascending: true });
         if (!itemsResult.error) {
           payrollItems = (itemsResult.data || []) as PayrollItemRow[];
+        } else {
+          dataWarnings.push(`Payroll items: ${itemsResult.error.message}`);
         }
         const recoveryResult = await rawClient
           .from("payroll_advance_recoveries")
@@ -335,13 +349,18 @@ export async function GET(request: Request) {
           .is("deleted_at", null);
         if (!recoveryResult.error) {
           recoveries = (recoveryResult.data || []) as RecoveryRow[];
+        } else {
+          dataWarnings.push(`Advance recoveries: ${recoveryResult.error.message}`);
         }
       }
+    } else {
+      dataWarnings.push(`Payroll runs: ${runsResult.error.message}`);
     }
-  } catch {
+  } catch (error) {
     payrollRuns = [];
     payrollItems = [];
     recoveries = [];
+    dataWarnings.push(error instanceof Error ? `Payroll data: ${error.message}` : "Payroll data could not be loaded.");
   }
 
   try {
@@ -352,8 +371,9 @@ export async function GET(request: Request) {
       .is("deleted_at", null)
       .order("advance_date", { ascending: false })
       .range(from, to))) as AdvanceRow[];
-  } catch {
+  } catch (error) {
     advances = [];
+    dataWarnings.push(error instanceof Error ? `Advances: ${error.message}` : "Staff advances could not be loaded.");
   }
 
   const attendanceByStaff = new Map<string, AttendanceTotals>();
@@ -416,8 +436,11 @@ export async function GET(request: Request) {
     return {
       id: employee.id || `employee-${index}`,
       staffId: employee.id,
+      branchId: employee.branch_id,
       staffName: asString(employee.full_name, `Employee ${index + 1}`),
       branchName: employee.branch_id ? branchNames.get(employee.branch_id) ?? "Branch unavailable" : "Unassigned",
+      email: employee.email,
+      phone: employee.phone,
       departmentId: employee.department_id,
       departmentName: employee.department_id ? departmentNames.get(employee.department_id) ?? "Unassigned" : "Unassigned",
       role: toTitleCase(employee.job_title || payroll?.role || "staff"),
@@ -425,6 +448,8 @@ export async function GET(request: Request) {
       monthlyPaisa: compensation
         ? asNumber(compensation.base_salary_paisa) + asNumber(compensation.allowances_paisa)
         : 0,
+      baseSalaryPaisa: compensation ? asNumber(compensation.base_salary_paisa) : 0,
+      allowancesPaisa: compensation ? asNumber(compensation.allowances_paisa) : 0,
       advancePaisa: advanceOutstandingByStaff.get(employee.id) || 0,
       presentDays,
       absentDays,
@@ -628,6 +653,7 @@ export async function GET(request: Request) {
       .gte("period_end", taxPeriodStart)
       .lte("period_end", taxPeriodEnd)
       .limit(1000);
+    if (taxRunsResult.error) throw new Error(taxRunsResult.error.message);
     const taxRunIds = ((taxRunsResult.data || []) as Array<{ id: string }>).map((run) => run.id);
     if (taxRunIds.length) {
       const taxItemsResult = await rawClient
@@ -636,6 +662,7 @@ export async function GET(request: Request) {
         .in("run_id", taxRunIds)
         .is("deleted_at", null)
         .gt("tax_withheld_paisa", 0);
+      if (taxItemsResult.error) throw new Error(taxItemsResult.error.message);
       const grouped = new Map<string, { staffId: string; staffName: string; departmentName: string; runs: Set<string>; taxWithheldPaisa: number }>();
       for (const item of (taxItemsResult.data || []) as Array<{ run_id: string; staff_id: string; staff_name: string; department_name: string | null; tax_withheld_paisa: number }>) {
         const key = item.staff_id;
@@ -663,8 +690,9 @@ export async function GET(request: Request) {
         }))
         .sort((left, right) => left.staffName.localeCompare(right.staffName));
     }
-  } catch {
+  } catch (error) {
     taxRows = [];
+    dataWarnings.push(error instanceof Error ? `Tax report: ${error.message}` : "The tax report could not be loaded.");
   }
 
   const payload = {
@@ -721,17 +749,12 @@ export async function GET(request: Request) {
       rows: taxRows,
       totalWithheldPaisa: taxRows.reduce((sum, row) => sum + row.taxWithheldPaisa, 0),
     },
-    documents: [
-      { id: "attendance-register", name: "Attendance register", kind: "attendance", disabled: true },
-      { id: "payroll-register", name: "Payroll register", kind: "payroll", disabled: true },
-      { id: "payslip-export", name: "Payslip export", kind: "export", disabled: true },
-    ],
-    readOnly: true,
-    warning: "This payroll and attendance view is intentionally read-only. Recording attendance, generating payroll runs, and exporting documents remain Windows desktop workflows.",
+    readOnly: false,
+    warning: dataWarnings.length ? `Some HR and payroll data could not be loaded: ${dataWarnings.join("; ")}` : undefined,
     limitations: [
       "Attendance is aggregated from synchronized daily attendance records for the selected dates.",
       "Payroll totals come from payroll runs whose period overlaps the selected dates.",
-      "Manual tax withholding and payroll tax settings are managed in the Windows desktop app.",
+      "Manual tax withholding and payroll tax settings are still managed in the Windows desktop app.",
     ],
   };
 

@@ -1402,3 +1402,56 @@ tbody tr:hover { background: #fcfdfb; }
 @media (max-width: 640px) {
   .workspace-form-grid { grid-template-columns: 1fr; }
 }
+
+:root[data-theme^="palette-"] {
+  color-scheme: var(--theme-color-scheme);
+  --page: var(--theme-page-bg);
+  --surface: var(--theme-surface-bg);
+  --surface-soft: var(--theme-panel-bg);
+  --ink: var(--theme-text);
+  --muted: var(--theme-muted);
+  --line: var(--theme-border);
+  --green: var(--theme-accent);
+  --green-dark: var(--theme-text);
+  --green-soft: var(--theme-panel-bg);
+  --theme-sidebar-bg: color-mix(in srgb, var(--theme-page-bg) 88%, var(--theme-accent));
+  --theme-header-bg: color-mix(in srgb, var(--theme-glass-bg) 16%, var(--theme-page-bg) 84%);
+  --theme-card-bg: var(--theme-accent);
+  --theme-input-bg: color-mix(in srgb, var(--theme-glass-bg) 10%, var(--theme-page-bg));
+  --theme-panel-bg: color-mix(in srgb, var(--theme-glass-bg) 18%, var(--theme-page-bg));
+  --theme-surface-bg: color-mix(in srgb, var(--theme-card-bg) 12%, var(--theme-panel-bg));
+}
+
+:root[data-theme^="palette-"] .app-shell {
+  color: var(--theme-text);
+  background: var(--theme-page-bg);
+}
+:root[data-theme^="palette-"] .app-shell .sidebar { background-color: var(--theme-sidebar-bg); }
+:root[data-theme^="palette-"] .app-shell .topbar { background-color: var(--theme-header-bg); }
+:root[data-theme^="palette-"] .app-shell :is(.card, .summary-card, .branch-pill, .table-wrap) {
+  background-color: var(--theme-surface-bg);
+  border-color: var(--theme-border);
+}
+:root[data-theme^="palette-"] .app-shell :is(input:not([type="checkbox"]), select, textarea) {
+  color: var(--theme-text);
+  background-color: var(--theme-input-bg);
+  border-color: var(--theme-border);
+}
+:root[data-theme^="palette-"] .app-shell :is(.primary-button, .button:not(.secondary):not(.link)) {
+  color: var(--theme-on-accent);
+}
+:root[data-theme^="palette-"] .app-shell :is(.secondary-button, .icon-button, .button.secondary) {
+  color: var(--theme-text);
+  background-color: var(--theme-panel-bg);
+  border-color: var(--theme-border);
+}
+:root[data-theme^="palette-"] .app-shell .nav-link { color: var(--theme-muted); }
+:root[data-theme^="palette-"] .app-shell .nav-link:is(.active, :hover) {
+  color: var(--theme-text);
+  background-color: var(--theme-panel-bg);
+}
+:root[data-theme^="palette-"] .app-shell table th {
+  color: var(--theme-text);
+  background-color: var(--theme-panel-bg);
+}
+:root[data-theme^="palette-"] .app-shell table :is(th, td) { border-color: var(--theme-border); }

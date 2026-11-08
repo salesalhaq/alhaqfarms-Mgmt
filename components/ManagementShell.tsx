@@ -10,6 +10,7 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
+import { AppearanceProvider } from "@/components/AppearanceProvider";
 import { BrandLockup } from "@/components/BrandLockup";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { workspaceSections } from "@/lib/workspace-modules";
@@ -89,6 +90,7 @@ export function ManagementShell({ children }: { children: ReactNode }) {
   const canSeeSection = (section: string) => !adminSections.has(section) || staff.role === "admin";
 
   return (
+    <AppearanceProvider staffId={staff.user_id}>
     <div className="app-shell">
       <aside className="sidebar">
         <BrandLockup className="brand-row" />
@@ -145,5 +147,6 @@ export function ManagementShell({ children }: { children: ReactNode }) {
         </main>
       </div>
     </div>
+    </AppearanceProvider>
   );
 }

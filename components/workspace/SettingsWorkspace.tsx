@@ -4,8 +4,6 @@ import {
   Ban,
   Building2,
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
   Cloud,
   Database,
   DatabaseBackup,
@@ -21,7 +19,6 @@ import {
   RefreshCw,
   Save,
   Scale,
-  Search,
   ShieldCheck,
   Smartphone,
   Store,
@@ -32,7 +29,7 @@ import {
   UserRound,
   Wifi,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
   DEFAULT_SCALE_SETTINGS,
   loadScaleSettings,
@@ -55,6 +52,9 @@ import {
   printHtmlViaBridge,
 } from "@/lib/print/bridge-print";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
+import { WorkspaceDialog, WorkspaceError, WorkspaceField, WorkspaceSuccess } from "@/components/workspace/WorkspaceDialog";
+import { useAppearance } from "@/components/AppearanceProvider";
+import { appThemes, themeGroups } from "@/lib/themes";
 
 type SettingsTab =
   | "profile"
@@ -519,119 +519,43 @@ function PrinterSettingsPanel({ branchId }: { branchId: string | null }) {
   );
 }
 
-function ReadOnlyTable({ headers, rows, emptyMessage, searchQuery, compactControls = false }: {
+function ReadOnlyTable({ headers, rows, emptyMessage }: {
   headers: string[];
   rows: (string | number | ReactNode)[][];
   emptyMessage: string;
-  searchQuery: string;
-  compactControls?: boolean;
 }) {
-  const [sortColumn, setSortColumn] = useState(0);
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-  const [pageSize, setPageSize] = useState(10);
-  const [requestedPage, setRequestedPage] = useState(0);
-  const [tableFilter, setTableFilter] = useState("");
-  useEffect(() => setRequestedPage(0), [searchQuery]);
-  const filteredRows = useMemo(() => {
-    const query = [searchQuery, tableFilter].map((value) => value.trim().toLocaleLowerCase()).filter(Boolean).join(" ");
-    const matches = query
-      ? rows.filter((row) => {
-        const rowText = row.map(String).join(" ").toLocaleLowerCase();
-        return query.split(/\s+/).every((term) => rowText.includes(term));
-      })
-      : rows;
-    return [...matches].sort((left, right) => {
-      const comparison = String(left[sortColumn] ?? "").localeCompare(String(right[sortColumn] ?? ""), undefined, {
-        numeric: true,
-        sensitivity: "base",
-      });
-      return sortDirection === "asc" ? comparison : -comparison;
-    });
-  }, [rows, searchQuery, sortColumn, sortDirection, tableFilter]);
-  const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize));
-  const page = Math.min(requestedPage, pageCount - 1);
-  const pageRows = filteredRows.slice(page * pageSize, (page + 1) * pageSize);
-  const firstRow = filteredRows.length ? page * pageSize + 1 : 0;
-  const lastRow = Math.min((page + 1) * pageSize, filteredRows.length);
-
   return (
     <div className="settings-workspace-table">
-      {!compactControls && (
-        <label className="settings-workspace-table-search">
-          <Search size={14} aria-hidden="true" />
-          <input
-            type="search"
-            value={tableFilter}
-            aria-label="Search this settings table"
-            placeholder="Filter rows…"
-            onChange={(event) => {
-              setTableFilter(event.target.value);
-              setRequestedPage(0);
-            }}
-          />
-        </label>
-      )}
       <div className="table-wrap">
         <table className="workspace-table">
-          <thead><tr>{headers.map((header, index) => (
-            <th key={header} aria-sort={sortColumn === index ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>
-              <button
-                type="button"
-                className="settings-workspace-sort"
-                aria-label={`Sort by ${header}${sortColumn === index ? `, ${sortDirection === "asc" ? "ascending" : "descending"}` : ""}`}
-                onClick={() => {
-                  if (sortColumn === index) setSortDirection((direction) => direction === "asc" ? "desc" : "asc");
-                  else {
-                    setSortColumn(index);
-                    setSortDirection("asc");
-                  }
-                  setRequestedPage(0);
-                }}
-              >
-                {header}{sortColumn === index ? (sortDirection === "asc" ? " ↑" : " ↓") : ""}
-              </button>
-            </th>
-          ))}</tr></thead>
+          <thead><tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr></thead>
           <tbody>
-            {pageRows.length
-              ? pageRows.map((row, index) => <tr key={`${page * pageSize + index}-${row.join("-")}`}>{row.map((cell, cellIndex) => <td key={`${cellIndex}-${cell}`}>{cell}</td>)}</tr>)
-              : <tr><td colSpan={headers.length}>{(searchQuery || tableFilter).trim() ? "No rows match this filter." : emptyMessage}</td></tr>}
+            {rows.length
+              ? rows.map((row, index) => <tr key={`${index}-${row.map(String).join("-")}`}>{row.map((cell, cellIndex) => <td key={`${cellIndex}-${String(cell)}`}>{cell}</td>)}</tr>)
+              : <tr><td colSpan={headers.length}>{emptyMessage}</td></tr>}
           </tbody>
         </table>
       </div>
-      {!compactControls && (
-        <div className="settings-workspace-table-controls">
-          <span>Showing {firstRow}–{lastRow} of {filteredRows.length}</span>
-          <label>
-            Rows
-            <select aria-label="Rows per page" value={pageSize} onChange={(event) => {
-              setPageSize(Number(event.target.value));
-              setRequestedPage(0);
-            }}>
-              {[10, 25, 50].map((size) => <option key={size} value={size}>{size}</option>)}
-            </select>
-          </label>
-          <button type="button" aria-label="Previous page" disabled={page === 0} onClick={() => setRequestedPage(page - 1)}>
-            <ChevronLeft size={14} />
-          </button>
-          <span>Page {page + 1} of {pageCount}</span>
-          <button type="button" aria-label="Next page" disabled={page >= pageCount - 1} onClick={() => setRequestedPage(page + 1)}>
-            <ChevronRight size={14} />
-          </button>
-        </div>
-      )}
     </div>
   );
 }
 
 export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
+  const { themeId, setThemeId } = useAppearance();
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const [globalSearch, setGlobalSearch] = useState("");
   const [defaultBranchBusy, setDefaultBranchBusy] = useState<string | null>(null);
+  const [credentialDialogOpen, setCredentialDialogOpen] = useState(false);
+  const [credentialMode, setCredentialMode] = useState<"pin" | "password">("pin");
+  const [currentSecret, setCurrentSecret] = useState("");
+  const [newSecret, setNewSecret] = useState("");
+  const [confirmSecret, setConfirmSecret] = useState("");
+  const [credentialBusy, setCredentialBusy] = useState(false);
+  const [credentialError, setCredentialError] = useState<string | null>(null);
+  const [credentialNotice, setCredentialNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -681,6 +605,52 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
       setDefaultBranchBusy(null);
     }
   };
+  const openCredentialDialog = () => {
+    setCredentialMode("pin");
+    setCurrentSecret("");
+    setNewSecret("");
+    setConfirmSecret("");
+    setCredentialError(null);
+    setCredentialDialogOpen(true);
+  };
+  const closeCredentialDialog = () => {
+    if (credentialBusy) return;
+    setCredentialDialogOpen(false);
+    setCredentialError(null);
+    setCurrentSecret("");
+    setNewSecret("");
+    setConfirmSecret("");
+  };
+  const changeOwnCredential = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (newSecret !== confirmSecret) {
+      setCredentialError("The confirmation does not match.");
+      return;
+    }
+
+    setCredentialBusy(true);
+    setCredentialError(null);
+    try {
+      const response = await fetch("/api/auth/change-credential", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentSecret, mode: credentialMode, value: newSecret }),
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || "The credential could not be changed.");
+
+      setCredentialDialogOpen(false);
+      setCurrentSecret("");
+      setNewSecret("");
+      setConfirmSecret("");
+      setCredentialNotice(credentialMode === "pin" ? "Your POS PIN has been changed." : "Your password has been changed.");
+    } catch (saveError) {
+      setCredentialError(saveError instanceof Error ? saveError.message : "The credential could not be changed.");
+    } finally {
+      setCredentialBusy(false);
+    }
+  };
   const visibleTabs = useMemo(() => settings
     ? TABS.filter(({ roles, requiresHq }) => (!roles || roles.includes(settings.profile.role))
       && (!requiresHq || (settings.profile.role === "admin" && settings.profile.branchId === null)))
@@ -698,19 +668,9 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
       <div className="workspace-toolbar">
         <div>
           <h1>{item.title}</h1>
-          <p>Read-only view of settings available to your signed-in account.</p>
+          <p>Settings available to your signed-in account. Sensitive changes require verification.</p>
         </div>
         <div className="settings-workspace-actions">
-          {activeTab !== "profile" && <label className="settings-workspace-search">
-              <Search size={15} aria-hidden="true" />
-              <input
-                type="search"
-                aria-label="Search settings tables"
-                placeholder="Search settings tables…"
-                value={globalSearch}
-                onChange={(event) => setGlobalSearch(event.target.value)}
-              />
-            </label>}
           <button type="button" className="secondary-button" disabled={loading} onClick={() => setReloadKey((key) => key + 1)}>
             <RefreshCw size={13} /> Refresh
           </button>
@@ -740,13 +700,12 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
       {error && <section className="card" role="alert"><p>{error}</p></section>}
       {!loading && settings && <>
         {activeTab === "profile" && <>
+          <WorkspaceSuccess message={credentialNotice} />
           <section className="card settings-workspace-panel">
             <h2>Profile &amp; security</h2>
             <p>Your profile is loaded from the authenticated cloud staff record.</p>
             <ReadOnlyTable
               headers={["Setting", "Current value"]}
-              searchQuery=""
-              compactControls
               rows={[
                 ["Name", settings.profile.fullName],
                 ["Email", settings.profile.email],
@@ -758,18 +717,17 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
           </section>
           <section className="card settings-workspace-panel">
             <h2>Credential controls</h2>
-            <p>Credential values are never read by this Settings API. PIN and password changes require the secure credential workflow, which is not available in this read-only workspace.</p>
+            <p>Use your current password to change your password, or your current PIN or password to change your PIN. Your other credential stays unchanged.</p>
             <div className="heading-actions">
-              <DesktopAction title="Changing a PIN or password is a Windows desktop workflow.">
+              <button className="secondary-button" onClick={openCredentialDialog} type="button">
                 <KeyRound size={13} /> Change PIN or password
-              </DesktopAction>
+              </button>
             </div>
           </section>
           <section className="card settings-workspace-panel">
             <h2><ShieldCheck size={14} /> Access &amp; permissions</h2>
             <ReadOnlyTable
               headers={["Capability", "Access"]}
-              searchQuery={globalSearch}
               rows={[
                 ["Point of sale", "Allowed"],
                 ["Sell & take payments", "Allowed"],
@@ -787,18 +745,42 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
           </section>
         </>}
 
-        {activeTab === "appearance" && <LocalOnlyPanel
-          title="Your appearance"
-          description="Your theme is saved on this device. Choosing one changes your view without changing another staff member's settings."
-          fields={[
-            { label: "Application theme", type: "select", options: ["Light", "Dark", "System"] },
-            { label: "Display density", type: "select", options: ["Comfortable", "Compact"] },
-            { label: "Corner style", type: "select", options: ["Large", "Soft", "Sharp"] },
-            { label: "Enable glass effects", type: "checkbox" },
-          ]}
-          actions={<DesktopAction title="Saving appearance preferences is a Windows desktop workflow."><Save size={13} /> Save appearance</DesktopAction>}
-          note="The desktop theme preference is stored on that device. A desktop theme selection is not assumed to be the web user's theme, so all appearance controls are disabled."
-        />}
+        {activeTab === "appearance" && (
+          <section className="card settings-workspace-panel">
+            <h2>Your appearance</h2>
+            <p>Choose a color palette for this workspace. Your selection is saved in this browser for your staff account and applies across the management pages.</p>
+            {themeGroups.map((group) => (
+              <div className="settings-appearance-group" key={group.id}>
+                <h3>{group.label}</h3>
+                <div className="settings-appearance-grid">
+                  {appThemes.filter((theme) => theme.group === group.id).map((theme) => {
+                    const selected = theme.id === themeId;
+                    return (
+                      <button
+                        type="button"
+                        key={theme.id}
+                        className={`settings-appearance-option${selected ? " selected" : ""}`}
+                        aria-pressed={selected}
+                        onClick={() => setThemeId(theme.id)}
+                      >
+                        <span
+                          className="settings-appearance-swatch"
+                          aria-hidden="true"
+                          style={{ background: `linear-gradient(135deg, ${theme.background} 0 38%, ${theme.accent} 38% 70%, ${theme.glass} 70%)` }}
+                        />
+                        <span className="settings-appearance-option-label">
+                          <strong>{theme.name}</strong>
+                          {selected && <CheckCircle2 size={15} aria-label="Selected" />}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            <p className="settings-workspace-note">This preference is separate from the Windows app and does not change settings for other staff accounts or devices.</p>
+          </section>
+        )}
 
         {activeTab === "shop" && <LocalOnlyPanel
           title="Shop & branding"
@@ -833,7 +815,6 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
           <p>Only branches returned for this authenticated user's existing access are shown. HQ administrators can choose the default branch.</p>
           <ReadOnlyTable
             headers={["Branch", "Code", "Status", "Address", "Timezone", "Receipt prefix", "Default", "Contact", "Actions"]}
-            searchQuery={globalSearch}
             rows={settings.branches.map((branch) => [
               branch.name,
               branch.code,
@@ -876,7 +857,6 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
             <p>Explicit synced permission rows visible under the existing branch RLS policy. No missing-row defaults are inferred.</p>
             <ReadOnlyTable
               headers={["Branch", "Role", "Permission", "Access"]}
-              searchQuery={globalSearch}
               rows={renderPermissionRows(settings.permissions.modules)}
               emptyMessage="No synced module permission overrides are available."
             />
@@ -885,7 +865,6 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
             <h2>Online order permissions</h2>
             <ReadOnlyTable
               headers={["Branch", "Role", "Action", "Access"]}
-              searchQuery={globalSearch}
               rows={renderPermissionRows(settings.permissions.webOrders)}
               emptyMessage="No synced online-order permission overrides are available."
             />
@@ -894,7 +873,6 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
             <h2>Inventory permissions</h2>
             <ReadOnlyTable
               headers={["Branch", "Role", "Action", "Access"]}
-              searchQuery={globalSearch}
               rows={renderPermissionRows(settings.permissions.inventory)}
               emptyMessage="No synced inventory permission overrides are available."
             />
@@ -914,7 +892,6 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
               <p>Read-only values from the branch-scoped storefront settings table.</p>
               <ReadOnlyTable
                 headers={["Branch", "Status", "Maximum order amount"]}
-                searchQuery={globalSearch}
                 rows={settings.storefront.cashOnDelivery.map((entry) => [
                   branchNames.get(entry.branch_id) || "Assigned branch",
                   entry.is_active ? "Enabled" : "Disabled",
@@ -927,7 +904,6 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
               <h2>Delivery areas</h2>
               <ReadOnlyTable
                 headers={["Branch", "Area", "Status", "Delivery charge", "Free delivery threshold"]}
-                searchQuery={globalSearch}
                 rows={settings.storefront.deliveryAreas.map((area) => [
                   branchNames.get(area.branch_id) || "Assigned branch",
                   area.area_name,
@@ -1062,7 +1038,6 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
             </div>
             <ReadOnlyTable
               headers={["Backup", "Created", "Size", "Actions"]}
-              searchQuery={globalSearch}
               rows={[]}
               emptyMessage="Local backup files exist only on the Windows host and are not listed here."
             />
@@ -1085,7 +1060,6 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
             <h2><Monitor size={14} /> This device</h2>
             <ReadOnlyTable
               headers={["Setting", "Current value"]}
-              searchQuery={globalSearch}
               rows={[
                 ["Signed-in profile", `${settings.profile.fullName} · ${formatLabel(settings.profile.role)}`],
                 ["Branch", settings.branches.find((branch) => branch.id === settings.profile.branchId)?.name || "HQ · all accessible branches"],
@@ -1116,25 +1090,92 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
           </section>
         </>}
       </>}
+      {credentialDialogOpen && (
+        <WorkspaceDialog
+          title="Change security details"
+          eyebrow="Profile & security"
+          label="Change PIN or password"
+          onClose={closeCredentialDialog}
+          footer={(
+            <>
+              <button className="button secondary" disabled={credentialBusy} onClick={closeCredentialDialog} type="button">
+                Cancel
+              </button>
+              <button className="button" disabled={credentialBusy} form="settings-credential-form" type="submit">
+                {credentialBusy ? "Saving…" : "Save"}
+              </button>
+            </>
+          )}
+        >
+          <form className="form-stack" id="settings-credential-form" onSubmit={(event) => void changeOwnCredential(event)}>
+            <p>{credentialMode === "password"
+              ? "Enter your current password to change your password."
+              : "Enter your current PIN or password to change your PIN."} The other sign-in credential will remain unchanged.</p>
+            <div className="heading-actions">
+              {(["pin", "password"] as const).map((mode) => (
+                <button
+                  className={credentialMode === mode ? "button" : "button secondary"}
+                  key={mode}
+                  onClick={() => {
+                    setCredentialMode(mode);
+                    setCredentialError(null);
+                    setNewSecret("");
+                    setConfirmSecret("");
+                  }}
+                  type="button"
+                >
+                  {mode === "pin" ? "Change PIN" : "Change password"}
+                </button>
+              ))}
+            </div>
+            <WorkspaceField label={credentialMode === "password" ? "Current password" : "Current PIN or password"}>
+              <input
+                autoComplete="current-password"
+                autoFocus
+                onChange={(event) => setCurrentSecret(event.target.value)}
+                required
+                type="password"
+                value={currentSecret}
+              />
+            </WorkspaceField>
+            <WorkspaceField label={credentialMode === "pin" ? "New PIN (4–8 digits)" : "New password (10–200 characters)"}>
+              <input
+                autoComplete="new-password"
+                inputMode={credentialMode === "pin" ? "numeric" : undefined}
+                maxLength={credentialMode === "pin" ? 8 : 200}
+                minLength={credentialMode === "pin" ? 4 : 10}
+                onChange={(event) => setNewSecret(credentialMode === "pin"
+                  ? event.target.value.replace(/\D/g, "").slice(0, 8)
+                  : event.target.value)}
+                pattern={credentialMode === "pin" ? "[0-9]{4,8}" : undefined}
+                required
+                type="password"
+                value={newSecret}
+              />
+            </WorkspaceField>
+            <WorkspaceField label={`Confirm new ${credentialMode}`}>
+              <input
+                autoComplete="new-password"
+                maxLength={credentialMode === "pin" ? 8 : 200}
+                onChange={(event) => setConfirmSecret(credentialMode === "pin"
+                  ? event.target.value.replace(/\D/g, "").slice(0, 8)
+                  : event.target.value)}
+                required
+                type="password"
+                value={confirmSecret}
+              />
+            </WorkspaceField>
+            <WorkspaceError message={credentialError} />
+          </form>
+        </WorkspaceDialog>
+      )}
       <style jsx>{`
         .settings-workspace { display: grid; gap: 14px; }
         .workspace-toolbar { align-items: center; justify-content: space-between; }
         .workspace-toolbar h1 { margin: 0 0 5px; font-size: 20px; }
         .workspace-toolbar p { margin: 0; color: var(--muted); font-size: 12px; }
         .settings-workspace-actions { display: flex; align-items: center; gap: 8px; }
-        .settings-workspace-search, .settings-workspace-table-search { display: flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 9px; padding: 0 10px; color: var(--muted); background: var(--surface); }
-        .settings-workspace-search { min-height: 36px; width: min(280px, 42vw); }
-        .settings-workspace-search input, .settings-workspace-table-search input { width: 100%; min-width: 0; border: 0; outline: 0; color: var(--ink); background: transparent; font: inherit; font-size: 11px; }
-        .settings-workspace-search input { min-height: 34px; }
         .settings-workspace-table { display: grid; gap: 8px; min-width: 0; }
-        .settings-workspace-table-search { width: min(260px, 100%); min-height: 32px; }
-        .settings-workspace-table-search input { min-height: 30px; }
-        .settings-workspace-sort { border: 0; padding: 0; color: inherit; background: transparent; font: inherit; font-weight: inherit; text-align: left; cursor: pointer; }
-        .settings-workspace-table-controls { display: flex; align-items: center; justify-content: flex-end; gap: 10px; color: var(--muted); font-size: 10px; }
-        .settings-workspace-table-controls label { display: inline-flex; align-items: center; gap: 5px; }
-        .settings-workspace-table-controls select, .settings-workspace-table-controls button { min-height: 28px; border: 1px solid var(--line); border-radius: 7px; padding: 0 7px; color: var(--ink); background: var(--surface); font: inherit; }
-        .settings-workspace-table-controls button { display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
-        .settings-workspace-table-controls button:disabled { opacity: .45; cursor: default; }
         .settings-workspace-tabs { display: flex; gap: 6px; overflow-x: auto; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
         .settings-workspace-tabs button { display: inline-flex; min-height: 36px; flex: 0 0 auto; align-items: center; gap: 7px; border: 1px solid transparent; border-radius: 9px; padding: 0 10px; color: var(--muted); background: transparent; font: inherit; font-size: 11px; cursor: pointer; }
         .settings-workspace-tabs button:hover, .settings-workspace-tabs button.active { border-color: var(--line); color: var(--green-dark); background: var(--surface); }
@@ -1152,14 +1193,21 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
         .settings-workspace-check { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 10px; font-weight: 700; }
         .settings-workspace-check input[type="checkbox"] { width: 16px; height: 16px; }
         .settings-workspace-note { margin: 13px 0 0 !important; border-left: 3px solid var(--amber); padding: 8px 10px; background: var(--surface-soft); }
+        .settings-appearance-group { display: grid; gap: 9px; margin-top: 20px; }
+        .settings-appearance-group h3 { margin: 0; color: var(--muted); font-size: 11px; font-weight: 700; }
+        .settings-appearance-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 10px; }
+        .settings-appearance-option { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 11px; padding: 9px; color: var(--ink); background: var(--surface-soft); text-align: left; cursor: pointer; }
+        .settings-appearance-option:hover { border-color: var(--green); }
+        .settings-appearance-option.selected { border-color: var(--green); box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 18%, transparent); }
+        .settings-appearance-swatch { display: block; height: 66px; border: 1px solid var(--line); border-radius: 7px; }
+        .settings-appearance-option-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; }
+        .settings-appearance-option-label svg { flex: 0 0 auto; color: var(--green); }
         .settings-scale-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 10px; }
         .settings-scale-grid .field { margin: 0; }
         @media (max-width: 640px) {
           .settings-workspace-panel { padding: 14px; }
           .settings-workspace-tabs { margin-right: -4px; }
           .settings-workspace-actions { align-items: stretch; }
-          .settings-workspace-search { width: 100%; }
-          .settings-workspace-table-controls { justify-content: flex-start; flex-wrap: wrap; }
         }
       `}</style>
     </section>

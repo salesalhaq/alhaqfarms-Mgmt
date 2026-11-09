@@ -67,6 +67,7 @@ import { TaxSettingsWorkspace } from "@/components/workspace/TaxSettingsWorkspac
 import { SettingsBackupWorkspace } from "@/components/workspace/SettingsBackupWorkspace";
 import { SettingsDeviceWorkspace } from "@/components/workspace/SettingsDeviceWorkspace";
 import { SerialScale } from "@/components/workspace/SerialScale";
+import { TableControls } from "@/components/workspace/TableControls";
 
 type SettingsTab =
   | "profile"
@@ -574,15 +575,16 @@ function PrinterSettingsPanel({ branchId, variant = "all" }: { branchId: string 
   );
 }
 
-function ReadOnlyTable({ headers, rows, emptyMessage }: {
+function ReadOnlyTable({ headers, rows, emptyMessage, tableId }: {
   headers: string[];
   rows: (string | number | ReactNode)[][];
   emptyMessage: string;
+  tableId?: string;
 }) {
   return (
     <div className="settings-workspace-table">
       <div className="table-wrap">
-        <table className="workspace-table">
+        <table className="workspace-table" id={tableId}>
           <thead><tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr></thead>
           <tbody>
             {rows.length
@@ -1059,11 +1061,19 @@ export function SettingsWorkspace({ item }: { item: WorkspaceModule }) {
           </section>
         )}
 
+        {activeTab === "branches" && settings.branches.length > 0 && (
+          <TableControls
+            tableId="settings-branches-table"
+            ariaLabel="Branches"
+            filterColumns={[{ column: "Status" }, { column: "Default" }]}
+          />
+        )}
         {activeTab === "branches" && <section className="card settings-workspace-panel">
           <WorkspaceSuccess message={branchNotice} />
           <h2>Branches</h2>
           <p>Manage branch details and receipt prefixes. Deactivating a branch preserves its records and removes it from active branch selectors.</p>
           <ReadOnlyTable
+            tableId="settings-branches-table"
             headers={["Branch", "Code", "Status", "Address", "Timezone", "Receipt prefix", "Default", "Contact", "Actions"]}
             rows={settings.branches.map((branch) => [
               branch.name,

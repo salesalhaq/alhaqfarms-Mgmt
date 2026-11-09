@@ -22,6 +22,7 @@ import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { formatDateTime, formatMoney, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { TableControls } from "@/components/workspace/TableControls";
 
 type AdminDashboardRange = "today" | "7d" | "30d" | "month";
 
@@ -329,7 +330,9 @@ export function AdminDashboardWorkspace({ item }: { item: WorkspaceModule }) {
           </section>
 
           <div className="dashboard-grid">
-            <section className="card table-wrap dashboard-recent-orders" aria-label="Recent sales">
+            <div className="dashboard-table-item">
+              {data.sales.length > 0 && <TableControls tableId={salesTableId} ariaLabel="Recent sales" filterColumns={[{ column: "Status" }]} />}
+              <section className="card table-wrap dashboard-recent-orders" aria-label="Recent sales">
               <div className="section-heading dashboard-table-heading">
                 <div>
                   <p className="eyebrow page">Recent sales</p>
@@ -363,9 +366,12 @@ export function AdminDashboardWorkspace({ item }: { item: WorkspaceModule }) {
               ) : (
                 <p className="empty-state">No sales were recorded in this period.</p>
               )}
-            </section>
+              </section>
+            </div>
 
-            <section className="card table-wrap dashboard-recent-orders" aria-label="Recent customer activity">
+            <div className="dashboard-table-item">
+              {data.customers.length > 0 && <TableControls tableId={customerTableId} ariaLabel="Recent customer activity" />}
+              <section className="card table-wrap dashboard-recent-orders" aria-label="Recent customer activity">
               <div className="section-heading dashboard-table-heading">
                 <div>
                   <p className="eyebrow page">Customer activity</p>
@@ -399,9 +405,12 @@ export function AdminDashboardWorkspace({ item }: { item: WorkspaceModule }) {
               ) : (
                 <p className="empty-state">No customer activity was captured in this period.</p>
               )}
-            </section>
+              </section>
+            </div>
 
-            <section className="card table-wrap dashboard-recent-orders" aria-label="Recent online orders">
+            <div className="dashboard-table-item">
+              {data.orders.length > 0 && <TableControls tableId={orderTableId} ariaLabel="Recent online orders" filterColumns={[{ column: "Status" }, { column: "Payment" }]} />}
+              <section className="card table-wrap dashboard-recent-orders" aria-label="Recent online orders">
               <div className="section-heading dashboard-table-heading">
                 <div>
                   <p className="eyebrow page">Recent orders</p>
@@ -435,9 +444,12 @@ export function AdminDashboardWorkspace({ item }: { item: WorkspaceModule }) {
               ) : (
                 <p className="empty-state">No storefront orders were recorded in this period.</p>
               )}
-            </section>
+              </section>
+            </div>
 
-            <section className="card table-wrap dashboard-recent-orders" aria-label="Recent operations review">
+            <div className="dashboard-table-item">
+              {data.returns.length > 0 && <TableControls tableId={operationsTableId} ariaLabel="Recent returns and queue" filterColumns={[{ column: "Status" }]} />}
+              <section className="card table-wrap dashboard-recent-orders" aria-label="Recent operations review">
               <div className="section-heading dashboard-table-heading">
                 <div>
                   <p className="eyebrow page">Recent actions</p>
@@ -471,7 +483,8 @@ export function AdminDashboardWorkspace({ item }: { item: WorkspaceModule }) {
               ) : (
                 <p className="empty-state">No return activity was recorded in this period.</p>
               )}
-            </section>
+              </section>
+            </div>
           </div>
 
           <div className="card" style={{ marginTop: "1rem" }}>

@@ -12,6 +12,7 @@ import type {
 } from "@/lib/supabase/database.types";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { TableControls } from "@/components/workspace/TableControls";
 import { formatReportMoney, type GeneratedDocument } from "@/lib/print/document";
 import { generateDailyReportDocument } from "@/lib/print/report-daily";
 import { printHtmlDocument } from "@/lib/print/print-window";
@@ -72,6 +73,8 @@ function SummaryTable({ title, headers, children, empty }: {
 }) {
   const tableId = `daily-report-table-${title.toLocaleLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
   return (
+    <>
+    {!empty && <TableControls tableId={tableId} ariaLabel={`${title} report`} />}
     <section className="daily-report-panel card">
       <div className="daily-report-panel-heading">
         <h2>{title}</h2>
@@ -86,6 +89,7 @@ function SummaryTable({ title, headers, children, empty }: {
         </table>
       </div>
     </section>
+    </>
   );
 }
 

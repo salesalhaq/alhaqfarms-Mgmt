@@ -14,6 +14,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { TableControls } from "@/components/workspace/TableControls";
 import { formatMoney, formatQuantity } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 
@@ -314,6 +315,7 @@ export function AdminFinanceWorkspace({ item }: { item: WorkspaceModule }) {
             </section>
           </div>
 
+          {report.byDay.length > 0 && <TableControls tableId="profit-tax-by-day" ariaLabel="Daily profit and tax report" />}
           <section className="card table-wrap workspace-table" aria-label="Profit and tax day by day">
             <div className="table-document-heading">
               <strong>Day by day · {report.from} to {report.to} · {report.branchName}</strong>
@@ -357,13 +359,15 @@ export function AdminFinanceWorkspace({ item }: { item: WorkspaceModule }) {
           </section>
 
           <div className="dashboard-grid">
-            <section className="card dashboard-panel" aria-label="Tax by rate">
+            <div className="dashboard-table-item">
+              {report.byTaxRate.length > 0 && <TableControls tableId="profit-tax-by-rate" ariaLabel="Tax by rate report" filterColumns={[{ column: "Rate" }]} />}
+              <section className="card dashboard-panel" aria-label="Tax by rate">
               <div className="section-heading">
                 <div><p className="eyebrow page">Tax</p><h2>Tax by rate</h2></div>
                 <Percent size={19} aria-hidden="true" />
               </div>
               <div className="table-wrap">
-                <table>
+                <table id="profit-tax-by-rate">
                   <thead><tr><th>Rate</th><th>Lines</th><th>Net sales</th><th>Tax</th></tr></thead>
                   <tbody>
                     {report.byTaxRate.length ? report.byTaxRate.map((row) => (
@@ -377,15 +381,18 @@ export function AdminFinanceWorkspace({ item }: { item: WorkspaceModule }) {
                   </tbody>
                 </table>
               </div>
-            </section>
+              </section>
+            </div>
 
-            <section className="card dashboard-panel" aria-label="Top products by profit detail">
+            <div className="dashboard-table-item">
+              {report.byProduct.length > 0 && <TableControls tableId="profit-tax-by-product" ariaLabel="Product profit detail" filterColumns={[{ column: "Product" }]} />}
+              <section className="card dashboard-panel" aria-label="Top products by profit detail">
               <div className="section-heading">
                 <div><p className="eyebrow page">Products</p><h2>Product profit detail</h2></div>
                 <BarChart3 size={19} aria-hidden="true" />
               </div>
               <div className="table-wrap">
-                <table>
+                <table id="profit-tax-by-product">
                   <thead><tr><th>Product</th><th>Quantity</th><th>Net sales</th><th>Profit</th></tr></thead>
                   <tbody>
                     {report.byProduct.length ? report.byProduct.slice(0, 10).map((row) => (
@@ -405,7 +412,8 @@ export function AdminFinanceWorkspace({ item }: { item: WorkspaceModule }) {
                   </tbody>
                 </table>
               </div>
-            </section>
+              </section>
+            </div>
           </div>
 
           <p className="list-limit-note">

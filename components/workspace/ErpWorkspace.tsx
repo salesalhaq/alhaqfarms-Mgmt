@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { TableControls } from "@/components/workspace/TableControls";
 import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import type { GeneratedDocument, PrintOrientation } from "@/lib/print/document";
@@ -1752,6 +1753,13 @@ function ReportView({ report }: { report: ErpReport }) {
         </section>
       </section>
 
+      {report.production.top.length > 0 && (
+        <TableControls
+          tableId="erp-report-production-table"
+          ariaLabel="Production report output"
+          filterColumns={[{ column: "Output product" }]}
+        />
+      )}
       <section className="card dashboard-panel">
         <div className="section-heading"><div><p className="eyebrow page">Production</p><h2>Runs and output</h2></div></div>
         <section className="dashboard-stats" aria-label="Production report">
@@ -1762,7 +1770,7 @@ function ReportView({ report }: { report: ErpReport }) {
         </section>
         {report.production.top.length > 0 && (
           <div className="table-wrap" style={{ marginTop: 14 }}>
-            <table>
+            <table id="erp-report-production-table">
               <thead><tr><th>Output product</th><th className="numeric-cell">Runs</th><th className="numeric-cell">Quantity</th><th className="numeric-cell">Cost</th></tr></thead>
               <tbody>{report.production.top.map((entry) => (
                 <tr key={entry.name}>
@@ -1777,6 +1785,13 @@ function ReportView({ report }: { report: ErpReport }) {
         )}
       </section>
 
+      {report.spice.batchRows.length > 0 && (
+        <TableControls
+          tableId="erp-report-spice-table"
+          ariaLabel="Completed spice batch report"
+          filterColumns={[{ column: "Batch" }, { column: "Name" }]}
+        />
+      )}
       <section className="card dashboard-panel">
         <div className="section-heading"><div><p className="eyebrow page">Spice</p><h2>Completed batches</h2></div></div>
         <section className="dashboard-stats" aria-label="Spice report">
@@ -1787,7 +1802,7 @@ function ReportView({ report }: { report: ErpReport }) {
         </section>
         {report.spice.batchRows.length > 0 && (
           <div className="table-wrap" style={{ marginTop: 14 }}>
-            <table>
+            <table id="erp-report-spice-table">
               <thead><tr><th>Batch</th><th>Name</th><th>Output</th><th className="numeric-cell">Cost</th><th className="numeric-cell">Quantity</th></tr></thead>
               <tbody>{report.spice.batchRows.map((batch) => (
                 <tr key={batch.id || `${batch.batch_number}-${batch.name}`}>
@@ -1818,6 +1833,13 @@ function ReportView({ report }: { report: ErpReport }) {
         </section>
       </section>
 
+      {report.expenses.byCategory.length > 0 && (
+        <TableControls
+          tableId="erp-report-expenses-table"
+          ariaLabel="Expense category report"
+          filterColumns={[{ column: "Category" }]}
+        />
+      )}
       <section className="card dashboard-panel">
         <div className="section-heading"><div><p className="eyebrow page">Expenses</p><h2>Spend by category</h2></div></div>
         <section className="dashboard-stats" aria-label="Expense report">
@@ -1826,7 +1848,7 @@ function ReportView({ report }: { report: ErpReport }) {
         </section>
         {report.expenses.byCategory.length > 0 && (
           <div className="table-wrap" style={{ marginTop: 14 }}>
-            <table>
+            <table id="erp-report-expenses-table">
               <thead><tr><th>Category</th><th className="numeric-cell">Records</th><th className="numeric-cell">Total</th></tr></thead>
               <tbody>{report.expenses.byCategory.map((entry) => (
                 <tr key={entry.name}>

@@ -4,6 +4,7 @@ import { AlertCircle, LoaderCircle, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { TableControls } from "@/components/workspace/TableControls";
 import { formatMoney, formatQuantity, labelize } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 
@@ -193,6 +194,20 @@ export function SalesReportsWorkspace({ item }: { item: WorkspaceModule }) {
             <span className="muted">{rowCount} rows · {report.branchName}</span>
           </div>
 
+          {rowCount > 0 && (
+            <TableControls
+              key={tableId}
+              tableId={tableId}
+              ariaLabel={`${item.title} ${activeTab.label}`}
+              filterColumns={tab === "cashier"
+                ? [{ column: "Cashier" }]
+                : tab === "product"
+                  ? [{ column: "Product" }]
+                  : tab === "payment"
+                    ? [{ column: "Method" }]
+                    : []}
+            />
+          )}
           <section className="card table-wrap workspace-table" aria-label={`${item.title} ${activeTab.label}`}>
             <div className="table-document-heading">
               <strong>{activeTab.label} · {report.from} to {report.to}</strong>

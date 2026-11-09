@@ -9,6 +9,7 @@ import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
 import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { TableControls } from "@/components/workspace/TableControls";
 import {
   WorkspaceDialog,
   WorkspaceError,
@@ -567,6 +568,13 @@ export function InventoryWorkspace({ item }: { item: WorkspaceModule }) {
                 <PackageSearch size={19} aria-hidden="true" />
               </div>
 
+              {payload.stocktakes.length > 0 && (
+                <TableControls
+                  tableId="inventory-stocktakes"
+                  ariaLabel="Stocktake history"
+                  filterColumns={isAdmin ? [{ column: "Branch" }] : []}
+                />
+              )}
               <section className="card table-wrap workspace-table" aria-label="Stocktake history">
                 <div className="table-document-heading">
                   <strong>Immutable count snapshots · {payload.branchName}</strong>

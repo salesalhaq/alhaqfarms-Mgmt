@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { TableControls } from "@/components/workspace/TableControls";
 import { formatMoney } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 
@@ -256,6 +257,14 @@ export function ReportCenterWorkspace({ item }: { item: WorkspaceModule }) {
       )}
 
       {summary && (
+        <>
+        {selectedRows.length > 0 && (
+          <TableControls
+            tableId="report-center-selected"
+            ariaLabel="Selected report summaries"
+            filterColumns={[{ column: "Report" }, { column: "Branch" }]}
+          />
+        )}
         <section className="card table-wrap workspace-table" aria-label="Selected report summaries">
           <div className="table-document-heading">
             <strong>Selected summaries · {fromDate} to {toDate}</strong>
@@ -280,6 +289,7 @@ export function ReportCenterWorkspace({ item }: { item: WorkspaceModule }) {
             </tbody>
           </table>
         </section>
+        </>
       )}
 
       {REPORT_GROUPS.map((group) => (

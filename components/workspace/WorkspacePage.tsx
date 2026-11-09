@@ -19,6 +19,7 @@ import { SalesWorkspace } from "@/components/workspace/SalesWorkspace";
 import { StockReportsWorkspace } from "@/components/workspace/StockReportsWorkspace";
 import { StoreOrdersWorkspace } from "@/components/workspace/StoreOrdersWorkspace";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { TableControls } from "@/components/workspace/TableControls";
 import { TransfersWorkspace } from "@/components/workspace/TransfersWorkspace";
 import { PurchasingWorkspace } from "@/components/workspace/PurchasingWorkspace";
 import { ProductsWorkspace } from "@/components/workspace/ProductsWorkspace";
@@ -570,6 +571,13 @@ function Dashboard({ item }: { item: WorkspaceModule }) {
           </section>
 
           <p className="dashboard-period-note">{dashboardTitle} · {period}{branchId ? ` · ${branches.find((branch) => branch.id === branchId)?.name || "Selected branch"}` : " · all authorized branches"}</p>
+          {visibleSales.length > 0 && (
+            <TableControls
+              tableId={`dashboard-sales-${item.slug}`}
+              ariaLabel="Recent sales receipts"
+              filterColumns={[{ column: "Status" }]}
+            />
+          )}
           <section className="card table-wrap dashboard-recent-orders" aria-label="Recent sales receipts">
             <div className="section-heading dashboard-table-heading">
               <h2>Recent sales</h2>
@@ -594,6 +602,14 @@ function Dashboard({ item }: { item: WorkspaceModule }) {
           </section>
 
           {canViewOrders && (
+            <>
+            {visibleOrders.length > 0 && (
+              <TableControls
+                tableId={`dashboard-orders-${item.slug}`}
+                ariaLabel="Recent online orders"
+                filterColumns={[{ column: "Status" }, { column: "Payment" }]}
+              />
+            )}
             <section className="card table-wrap dashboard-recent-orders" aria-label="Recent online orders">
               <div className="section-heading dashboard-table-heading">
                 <h2>Recent online orders</h2>
@@ -621,6 +637,7 @@ function Dashboard({ item }: { item: WorkspaceModule }) {
                 <div className="empty"><ClipboardList size={23} /><h2>No online orders in this period</h2><p>Try a longer date range or check back after orders arrive.</p></div>
               )}
             </section>
+            </>
           )}
         </>
       )}

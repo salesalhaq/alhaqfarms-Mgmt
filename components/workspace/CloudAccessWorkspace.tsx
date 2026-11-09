@@ -4,6 +4,7 @@ import { AlertCircle, CheckCircle2, Cloud, LoaderCircle, RefreshCw, UserRound, U
 import Link from "next/link";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { WorkspaceError, WorkspaceSuccess } from "@/components/workspace/WorkspaceDialog";
+import { TableControls } from "@/components/workspace/TableControls";
 
 interface Branch {
   id: string;
@@ -108,6 +109,13 @@ export function CloudAccessWorkspace({ branches }: { branches: Branch[] }) {
 
   return (
     <>
+      {!loading && accounts.length > 0 && (
+        <TableControls
+          tableId="cloud-access-table"
+          ariaLabel="Cloud account assignments"
+          filterColumns={[{ column: "Branch" }, { column: "Role" }, { column: "Status" }]}
+        />
+      )}
       <section className="card settings-workspace-panel">
         <h2><UserRoundPlus size={14} /> Assign a cloud account to a branch</h2>
         <p>Create the user first in Supabase Authentication. This form links that existing login to a branch and role; it does not create an Auth user or set a password.</p>
@@ -179,7 +187,7 @@ function ReadOnlyTable({ accounts }: { accounts: CloudAccount[] }) {
   return (
     <div className="settings-workspace-table">
       <div className="table-wrap">
-        <table className="workspace-table">
+        <table className="workspace-table" id="cloud-access-table">
           <thead><tr><th>Staff</th><th>Email</th><th>Branch</th><th>Role</th><th>Status</th></tr></thead>
           <tbody>
             {accounts.length ? accounts.map((account) => (

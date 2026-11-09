@@ -4,6 +4,7 @@ import { AlertCircle, LoaderCircle, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { TableControls } from "@/components/workspace/TableControls";
 import { formatMoney } from "@/lib/format";
 
 interface StoreReportDay {
@@ -225,6 +226,7 @@ export function StoreReportsWorkspace({ item }: { item: PageItem }) {
             ))}
           </div>
 
+          {report.byDay.length > 0 && <TableControls tableId="store-reports-daily" ariaLabel="Daily sales and refunds report" />}
           <section className="daily-report-panel card">
             <div className="daily-report-panel-heading">
               <h2>Sales and refunds by day</h2>
@@ -261,7 +263,9 @@ export function StoreReportsWorkspace({ item }: { item: PageItem }) {
           </section>
 
           <div className="daily-report-grid">
-            <section className="daily-report-panel card">
+            <div className="table-controls-item">
+              {report.payments.length > 0 && <TableControls tableId="store-reports-payments" ariaLabel="Payment mix report" filterColumns={[{ column: "Method" }]} />}
+              <section className="daily-report-panel card">
               <div className="daily-report-panel-heading">
                 <h2>Payment mix</h2>
                 <TableDocumentTools tableId="store-reports-payments" title={`${item.title} payment mix`} disabled={!report.payments.length} />
@@ -288,9 +292,12 @@ export function StoreReportsWorkspace({ item }: { item: PageItem }) {
                   </tbody>
                 </table>
               </div>
-            </section>
+              </section>
+            </div>
 
-            <section className="daily-report-panel card">
+            <div className="table-controls-item">
+              {report.products.length > 0 && <TableControls tableId="store-reports-products" ariaLabel="Top products report" filterColumns={[{ column: "Product" }]} />}
+              <section className="daily-report-panel card">
               <div className="daily-report-panel-heading">
                 <h2>Top products</h2>
                 <TableDocumentTools tableId="store-reports-products" title={`${item.title} product mix`} disabled={!report.products.length} />
@@ -321,7 +328,8 @@ export function StoreReportsWorkspace({ item }: { item: PageItem }) {
                   </tbody>
                 </table>
               </div>
-            </section>
+              </section>
+            </div>
           </div>
         </>
       )}

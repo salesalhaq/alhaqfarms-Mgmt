@@ -4,6 +4,7 @@ import { AlertCircle, BarChart3, LoaderCircle, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { TableControls } from "@/components/workspace/TableControls";
 import { formatMoney } from "@/lib/format";
 
 type ReportType = "sales" | "returns" | "payments" | "tax";
@@ -245,6 +246,13 @@ export function AdminReportsWorkspace({
             ))}
           </div>
 
+          {report.rows.length > 0 && (
+            <TableControls
+              tableId="admin-reports-table"
+              ariaLabel="Admin report rows"
+              filterColumns={[{ column: "Branch" }, { column: "Measure" }]}
+            />
+          )}
           <section className="daily-report-panel card">
             <div className="daily-report-panel-heading">
               <h2>{reportOptions.find((option) => option.value === reportType)?.label ?? "Report"} · {selectedBranchName}</h2>

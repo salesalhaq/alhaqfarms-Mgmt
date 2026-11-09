@@ -315,6 +315,9 @@ tbody tr:hover { background: #fcfdfb; }
 .dashboard-stat strong { font-family: "Segoe UI", Arial, sans-serif; font-size: 26px; letter-spacing: -.04em; }
 .dashboard-stat small { color: #87938a; font-size: 10px; }
 .dashboard-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(260px, .65fr); gap: 15px; margin-bottom: 22px; }
+.dashboard-grid > .dashboard-table-item { min-width: 0; }
+.dashboard-table-item > .dashboard-recent-orders { margin-top: 0; }
+.table-controls-item { min-width: 0; }
 .admin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; margin-bottom: 22px; }
 .close-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; overflow: hidden; margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--line); }
 .close-strip > div { display: grid; gap: 5px; padding: 12px; background: #fbfcfb; }
@@ -359,6 +362,15 @@ tbody tr:hover { background: #fcfdfb; }
 .store-dashboard-table-filter { flex: 0 0 130px; min-width: 0; }
 .store-dashboard-table-filter .searchable-filter-trigger { min-height: 36px; font-size: 10px; }
 .dashboard-table-empty { padding: 18px !important; color: var(--muted); text-align: center; }
+.table-controls { gap: 7px; margin: 0 0 10px; }
+.table-controls .horizontal-filter-content { align-items: flex-end; gap: 8px; }
+.table-controls-search { flex: 1 0 220px; min-width: 180px; }
+.table-controls-search svg { top: 12px; left: 12px; }
+.table-controls-search input { box-sizing: border-box; min-height: 40px; }
+.table-controls-filter { flex: 0 0 150px; min-width: 0; }
+.table-controls-filter .searchable-filter-trigger { min-height: 40px; font-size: 10px; }
+.table-controls-count { flex: 0 0 auto; align-self: flex-end; padding: 0 4px 11px; color: var(--muted); font-size: 10px; white-space: nowrap; }
+.table-controls + .dashboard-recent-orders { margin-top: 0; }
 .shortcut-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 11px; margin-top: 12px; }
 .shortcut-card { display: flex; min-width: 0; align-items: center; gap: 11px; padding: 14px; transition: border-color .16s ease, transform .16s ease; }
 .shortcut-card:hover { transform: translateY(-1px); border-color: #b6d2be; }

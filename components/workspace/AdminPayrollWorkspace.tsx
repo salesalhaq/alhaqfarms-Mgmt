@@ -20,6 +20,7 @@ import {
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { TableControls } from "@/components/workspace/TableControls";
 import { formatDateTime, formatMoney, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { printCurrentPage } from "@/lib/print/print-window";
@@ -698,13 +699,17 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
           )}
 
           <div className="hr-report-grid">
-            <section className="card" style={{ padding: "1.25rem" }}>
+            <div className="table-controls-item">
+              {(summary.departments ?? []).length > 0 && (
+                <TableControls tableId="hr-departments-table" ariaLabel="Departments" filterColumns={[{ column: "Status" }]} />
+              )}
+              <section className="card" style={{ padding: "1.25rem" }}>
               <div className="hr-panel-heading">
                 <h2 className="section-title"><Building2 size={11} /> Departments</h2>
                 {isHqAdmin && <button className="secondary-button" type="button" onClick={() => openActionDialog("saveDepartment")}><Plus size={12} /> Add</button>}
               </div>
               <div className="table-wrap">
-                <table className="data-table">
+                <table className="data-table" id="hr-departments-table">
                   <thead>
                     <tr>
                       <th>Department</th>
@@ -738,12 +743,17 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
                   </tbody>
                 </table>
               </div>
-            </section>
+              </section>
+            </div>
 
-            <section className="card" style={{ padding: "1.25rem" }}>
+            <div className="table-controls-item">
+              {(summary.departmentCost?.departments ?? []).length > 0 && (
+                <TableControls tableId="hr-department-cost-table" ariaLabel="Payroll cost by department" filterColumns={[{ column: "Department" }]} />
+              )}
+              <section className="card" style={{ padding: "1.25rem" }}>
               <h2 className="section-title"><Wallet size={11} /> Payroll cost by department · {summary.departmentCost?.monthLabel || summary.period.label}</h2>
               <div className="table-wrap">
-                <table className="data-table">
+                <table className="data-table" id="hr-department-cost-table">
                   <thead>
                     <tr>
                       <th>Department</th>
@@ -789,9 +799,13 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
                   ) : null}
                 </table>
               </div>
-            </section>
+              </section>
+            </div>
           </div>
 
+          {(summary.taxReport?.rows ?? []).length > 0 && (
+            <TableControls tableId="hr-withholding-summary-table" ariaLabel="Payroll withholding summary" filterColumns={[{ column: "Department" }]} />
+          )}
           <section className="card" style={{ padding: "1.25rem" }}>
             <div className="hr-panel-heading">
               <h2 className="section-title">Pakistan tax-year withholding summary</h2>
@@ -817,7 +831,7 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
               </div>
             </div>
             <div className="table-wrap">
-              <table className="data-table">
+              <table className="data-table" id="hr-withholding-summary-table">
                 <thead>
                   <tr>
                     <th>Staff</th>
@@ -851,6 +865,9 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
             </p>
           </section>
 
+          {summary.rows.length > 0 && (
+            <TableControls tableId="hr-employees-table" ariaLabel="Employees" filterColumns={[{ column: "Department" }, { column: "Status" }]} />
+          )}
           <section className="card" style={{ padding: "1.25rem" }}>
             <div className="hr-panel-heading">
               <h2 className="section-title"><Users size={11} /> Employees</h2>
@@ -909,6 +926,14 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
             </div>
           </section>
 
+          {(summary.payrollRuns ?? []).length > 0 && (
+            <TableControls
+              tableId="payroll-runs-table"
+              ariaLabel="Payroll runs"
+              filterColumns={[{ column: "Status" }]}
+              onFilterChange={() => setExpandedRunId("")}
+            />
+          )}
           <section className="card" style={{ padding: "1.25rem" }}>
             <div className="hr-panel-heading">
               <h2 className="section-title"><Wallet size={11} /> Payroll runs</h2>
@@ -1090,6 +1115,9 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
             ))}
           </section>
 
+          {summary.rows.length > 0 && (
+            <TableControls tableId="hr-payroll-ledger-table" ariaLabel="Payroll ledger" filterColumns={[{ column: "Branch" }]} />
+          )}
           <section className="card" style={{ padding: "1.25rem" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
               <div>

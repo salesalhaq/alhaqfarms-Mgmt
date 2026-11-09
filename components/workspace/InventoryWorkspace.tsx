@@ -6,6 +6,8 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import {
   WorkspaceDialog,
@@ -413,25 +415,27 @@ export function InventoryWorkspace({ item }: { item: WorkspaceModule }) {
       </div>
       <WorkspaceSuccess message={actionMessage} />
 
-      <div className="daily-report-toolbar daily-report-no-print">
+      <HorizontalFilterScroller className="inventory-filterbar daily-report-no-print" ariaLabel="Inventory filters">
         {isAdmin && (
-          <label className="toolbar-control">
+          <label className="toolbar-control inventory-filter">
             <span>Branch</span>
-            <select
-              className="toolbar-select"
+            <SearchableFilter
               value={branchId || "all"}
-              onChange={(event) => {
+              ariaLabel="Filter inventory by branch"
+              placeholder="All accessible branches"
+              options={[
+                { value: "all", label: "All accessible branches" },
+                ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+              ]}
+              onChange={(value) => {
                 setDetail(null);
                 setProductId("");
-                setBranchId(event.target.value);
+                setBranchId(value);
               }}
-            >
-              <option value="all">All accessible branches</option>
-              {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-            </select>
+            />
           </label>
         )}
-        <label className="search-field">
+        <label className="search-field inventory-search">
           <Search size={16} />
           <input
             aria-label="Search inventory"
@@ -440,19 +444,23 @@ export function InventoryWorkspace({ item }: { item: WorkspaceModule }) {
             onChange={(event) => setSearch(event.target.value)}
           />
         </label>
-        <label className="toolbar-control">
+        <label className="toolbar-control inventory-filter">
           <span>Movement product</span>
-          <select className="toolbar-select" value={productId} onChange={(event) => setProductId(event.target.value)}>
-            <option value="">All products</option>
-            {movementProductOptions.map((product) => (
-              <option key={product.id} value={product.id}>{product.name}</option>
-            ))}
-          </select>
+          <SearchableFilter
+            value={productId}
+            ariaLabel="Filter inventory by movement product"
+            placeholder="All products"
+            options={[
+              { value: "", label: "All products" },
+              ...movementProductOptions.map((product) => ({ value: product.id, label: product.name })),
+            ]}
+            onChange={setProductId}
+          />
         </label>
-        <button className="button secondary" type="button" onClick={() => setReloadKey((value) => value + 1)} disabled={loading}>
+        <button className="button secondary inventory-refresh" type="button" onClick={() => setReloadKey((value) => value + 1)} disabled={loading}>
           {loading ? <><LoaderCircle className="spin" size={14} /> Loading…</> : <><RefreshCw size={14} /> Refresh</>}
         </button>
-      </div>
+      </HorizontalFilterScroller>
 
       {error && (
         <div className="card panel" role="alert">

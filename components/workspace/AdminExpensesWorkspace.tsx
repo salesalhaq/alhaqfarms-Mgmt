@@ -4,6 +4,9 @@ import { AlertCircle, LoaderCircle, Plus, RefreshCw, Search, Save } from "lucide
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { TableControls } from "@/components/workspace/TableControls";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { WorkspaceDialog, WorkspaceError, WorkspaceField, WorkspaceSuccess } from "@/components/workspace/WorkspaceDialog";
 import { formatMoney } from "@/lib/format";
 import { postWorkspaceAction } from "@/lib/workspace/write-client";
@@ -264,27 +267,35 @@ export function AdminExpensesWorkspace({ item }: { item: PageItem }) {
 
       <WorkspaceSuccess message={successMessage} />
 
-      <div className="daily-report-toolbar daily-report-no-print">
+      <HorizontalFilterScroller className="daily-report-toolbar daily-report-no-print" ariaLabel="Expense report filters">
         {isAdmin && (
-          <label className="toolbar-control">
+          <label className="toolbar-control" style={{ flex: "0 0 220px" }}>
             <span>Branch</span>
-            <select className="toolbar-select" value={branchId || "all"} onChange={(event) => setBranchId(event.target.value)}>
-              <option value="all">All accessible branches</option>
-              {branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>{branch.name}</option>
-              ))}
-            </select>
+            <SearchableFilter
+              value={branchId || "all"}
+              ariaLabel="Filter expenses by branch"
+              placeholder="All accessible branches"
+              options={[
+                { value: "all", label: "All accessible branches" },
+                ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+              ]}
+              onChange={setBranchId}
+            />
           </label>
         )}
 
-        <label className="toolbar-control">
+        <label className="toolbar-control" style={{ flex: "0 0 180px" }}>
           <span>Category</span>
-          <select className="toolbar-select" value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
-            <option value="all">All categories</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>{category.name}</option>
-            ))}
-          </select>
+          <SearchableFilter
+            value={categoryId}
+            ariaLabel="Filter expenses by category"
+            placeholder="All categories"
+            options={[
+              { value: "all", label: "All categories" },
+              ...categories.map((category) => ({ value: category.id, label: category.name })),
+            ]}
+            onChange={setCategoryId}
+          />
         </label>
 
         <label className="toolbar-control">
@@ -297,23 +308,20 @@ export function AdminExpensesWorkspace({ item }: { item: PageItem }) {
           <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
         </label>
 
-        <label className="toolbar-control search-field">
-          <span>Search</span>
-          <div className="search-input-wrap">
-            <Search size={14} />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="description, reference, notes"
-              aria-label="Search expense descriptions"
-            />
-          </div>
+        <label className="search-field admin-expenses-search">
+          <Search size={16} aria-hidden="true" />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Description, reference or notes"
+            aria-label="Search expense descriptions"
+          />
         </label>
 
         <button className="button secondary" type="button" onClick={() => setReloadKey((value) => value + 1)} disabled={loading}>
           {loading ? (<><LoaderCircle className="spinner" size={14} /> Loading…</>) : (<><RefreshCw size={14} /> Refresh</>)}
         </button>
-      </div>
+      </HorizontalFilterScroller>
 
       {error && (
         <div className="card panel" role="alert">
@@ -359,6 +367,14 @@ export function AdminExpensesWorkspace({ item }: { item: PageItem }) {
             </div>
           </div>
 
+          {rows.length > 0 && (
+            <TableControls
+              tableId="admin-expenses-table"
+              ariaLabel="Expense details"
+              includeSearch={false}
+              filterColumns={[{ column: "Payment" }]}
+            />
+          )}
           <section className="daily-report-panel card">
             <div className="daily-report-panel-heading">
               <h2>Expense details</h2>

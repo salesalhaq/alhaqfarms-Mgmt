@@ -1,10 +1,12 @@
 "use client";
 
-import { AlertCircle, CalendarDays, LoaderCircle, Search, ShieldAlert } from "lucide-react";
+import { AlertCircle, LoaderCircle, Search, ShieldAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 
 interface AuditBranch {
   id: string;
@@ -173,36 +175,44 @@ export function AdminAuditWorkspace({ item }: { item: WorkspaceModule }) {
         <span>Read-only audit stream · record replay and editing remain disabled until a secure approval workflow is available.</span>
       </div>
 
-      <div className="workspace-toolbar">
-        <label className="date-field">
-          <CalendarDays size={14} aria-hidden="true" />
+      <HorizontalFilterScroller className="audit-filterbar" ariaLabel="Audit log filters">
+        <label className="toolbar-control audit-date-filter">
+          <span>From</span>
           <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} aria-label="Audit from date" />
         </label>
-        <label className="date-field">
-          <CalendarDays size={14} aria-hidden="true" />
+        <label className="toolbar-control audit-date-filter">
+          <span>To</span>
           <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} aria-label="Audit to date" />
         </label>
         {canSelectBranch && (
-          <label className="visually-hidden-label">
-            Branch
-            <select className="toolbar-select" value={branchId} onChange={(event) => setBranchId(event.target.value)}>
-              <option value="all">All accessible branches</option>
-              {availableBranches.map((branch) => (
-                <option key={branch.id} value={branch.id}>{branch.name}</option>
-              ))}
-            </select>
+          <label className="toolbar-control" style={{ flex: "0 0 190px" }}>
+            <span>Branch</span>
+            <SearchableFilter
+              value={branchId}
+              ariaLabel="Filter audit log by branch"
+              placeholder="All accessible branches"
+              options={[
+                { value: "all", label: "All accessible branches" },
+                ...availableBranches.map((branch) => ({ value: branch.id, label: branch.name })),
+              ]}
+              onChange={setBranchId}
+            />
           </label>
         )}
-        <label className="visually-hidden-label">
-          Action
-          <select className="toolbar-select" value={actionFilter} onChange={(event) => setActionFilter(event.target.value)}>
-            <option value="all">All actions</option>
-            {availableActions.map((action) => (
-              <option key={action} value={action}>{formatActionLabel(action)}</option>
-            ))}
-          </select>
+        <label className="toolbar-control" style={{ flex: "0 0 180px" }}>
+          <span>Action</span>
+          <SearchableFilter
+            value={actionFilter}
+            ariaLabel="Filter audit log by action"
+            placeholder="All actions"
+            options={[
+              { value: "all", label: "All actions" },
+              ...availableActions.map((action) => ({ value: action, label: formatActionLabel(action) })),
+            ]}
+            onChange={setActionFilter}
+          />
         </label>
-        <label className="search-field">
+        <label className="search-field audit-search">
           <Search size={16} aria-hidden="true" />
           <input
             value={actorSearch}
@@ -212,7 +222,7 @@ export function AdminAuditWorkspace({ item }: { item: WorkspaceModule }) {
           />
         </label>
         <button className="button secondary" type="button" onClick={clearFilters}>Clear</button>
-      </div>
+      </HorizontalFilterScroller>
 
       {error && <div className="notice" role="alert">{error}</div>}
 

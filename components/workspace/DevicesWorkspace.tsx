@@ -4,6 +4,8 @@ import { AlertCircle, Ban, CheckCircle2, LoaderCircle, MonitorSmartphone, Plus, 
 import { useEffect, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { formatDateTime, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 
@@ -55,6 +57,12 @@ export function DevicesWorkspace({ item }: { item: WorkspaceModule }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [savingAction, setSavingAction] = useState("");
+
+  const clearFilters = () => {
+    setBranchId("all");
+    setStatus("all");
+    setSearch("");
+  };
 
   useEffect(() => {
     try {
@@ -186,7 +194,7 @@ export function DevicesWorkspace({ item }: { item: WorkspaceModule }) {
         ))}
       </section>
 
-      <div className="workspace-toolbar">
+      <HorizontalFilterScroller className="device-filterbar" ariaLabel="Device filters">
         <label className="search-field">
           <Search size={16} />
           <input
@@ -196,23 +204,36 @@ export function DevicesWorkspace({ item }: { item: WorkspaceModule }) {
             onChange={(event) => setSearch(event.target.value)}
           />
         </label>
-        <label className="visually-hidden-label">
-          Branch
-          <select className="toolbar-select" value={branchId} onChange={(event) => setBranchId(event.target.value)}>
-            <option value="all">All accessible branches</option>
-            {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-          </select>
+        <label className="toolbar-control" style={{ flex: "0 0 190px" }}>
+          <span>Branch</span>
+          <SearchableFilter
+            value={branchId}
+            ariaLabel="Filter devices by branch"
+            placeholder="All accessible branches"
+            options={[
+              { value: "all", label: "All accessible branches" },
+              ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+            ]}
+            onChange={setBranchId}
+          />
         </label>
-        <label className="visually-hidden-label">
-          Status
-          <select className="toolbar-select" value={status} onChange={(event) => setStatus(event.target.value)}>
-            <option value="all">All statuses</option>
-            <option value="approved">Approved</option>
-            <option value="pending">Pending</option>
-            <option value="revoked">Revoked</option>
-          </select>
+        <label className="toolbar-control" style={{ flex: "0 0 150px" }}>
+          <span>Status</span>
+          <SearchableFilter
+            value={status}
+            ariaLabel="Filter devices by status"
+            placeholder="All statuses"
+            options={[
+              { value: "all", label: "All statuses" },
+              { value: "approved", label: "Approved" },
+              { value: "pending", label: "Pending" },
+              { value: "revoked", label: "Revoked" },
+            ]}
+            onChange={setStatus}
+          />
         </label>
-      </div>
+        <button className="button link" type="button" onClick={clearFilters}>Clear</button>
+      </HorizontalFilterScroller>
 
       {error && (
         <div className="card panel" role="alert">

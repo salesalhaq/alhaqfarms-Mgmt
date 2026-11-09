@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { TableControls } from "@/components/workspace/TableControls";
 import { formatDateTime, formatMoney, labelize, statusTone } from "@/lib/format";
@@ -595,15 +597,17 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
           <h1>{item.title}</h1>
           <p>{item.description} Attendance, compensation, and payroll actions are recorded to the shared branch ledger.</p>
         </div>
-        <div className="dashboard-controls">
+        <HorizontalFilterScroller className="payroll-filterbar" ariaLabel="HR and payroll filters">
           {staff?.role === "admin" && (
-            <label className="toolbar-control">
+            <label className="toolbar-control" style={{ flex: "0 0 190px" }}>
               <span>Branch</span>
-              <select className="toolbar-select" value={branchId} onChange={(event) => setBranchId(event.target.value)}>
-                {branchOptions.map((option) => (
-                  <option key={option.id} value={option.id}>{option.name}</option>
-                ))}
-              </select>
+              <SearchableFilter
+                value={branchId}
+                ariaLabel="Filter payroll by branch"
+                placeholder="Select branch"
+                options={branchOptions.map((option) => ({ value: option.id, label: option.name }))}
+                onChange={setBranchId}
+              />
             </label>
           )}
           <label className="toolbar-control">
@@ -617,17 +621,19 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
           {staffOptions.length > 0 && (
             <label className="toolbar-control">
               <span>Staff</span>
-              <select className="toolbar-select" value={staffId} onChange={(event) => setStaffId(event.target.value)}>
-                {staffOptions.map((option) => (
-                  <option key={option.id} value={option.id}>{option.name}</option>
-                ))}
-              </select>
+              <SearchableFilter
+                value={staffId}
+                ariaLabel="Filter payroll by staff member"
+                placeholder="All staff"
+                options={staffOptions.map((option) => ({ value: option.id, label: option.name }))}
+                onChange={setStaffId}
+              />
             </label>
           )}
           <button className="button secondary" onClick={() => setReloadKey((value) => value + 1)} disabled={loading} type="button">
             {loading ? "Refreshing…" : "Refresh"}
           </button>
-        </div>
+        </HorizontalFilterScroller>
       </div>
 
       <div className="heading-actions" aria-label="HR and payroll actions">

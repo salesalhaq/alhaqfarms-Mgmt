@@ -10,6 +10,8 @@ import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { TableControls } from "@/components/workspace/TableControls";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import type { GeneratedDocument, PrintOrientation } from "@/lib/print/document";
@@ -1033,10 +1035,9 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
         <div className="notice" role="alert"><AlertCircle size={17} /> {animalOptionsError}</div>
       )}
 
-      <section className="card" aria-label={`${item.title} controls`}>
-        <div className="workspace-toolbar">
+      <HorizontalFilterScroller className="erp-filterbar" ariaLabel={`${item.title} filters`}>
           {!isDashboard && !isReports && (
-            <label className="search-field">
+            <label className="search-field erp-search">
               <Search size={17} aria-hidden="true" />
               <input
                 type="search"
@@ -1053,68 +1054,95 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
             </label>
           )}
           {isHqAdmin && (
-            <label className="toolbar-control">
+            <label className="toolbar-control" style={{ flex: "0 0 190px" }}>
               <span>Branch</span>
-              <select className="toolbar-select" value={branchId} onChange={(event) => setBranchId(event.target.value)}>
-                <option value="all">All branches</option>
-                {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-              </select>
+              <SearchableFilter
+                value={branchId}
+                ariaLabel="Filter Farm ERP records by branch"
+                placeholder="All branches"
+                options={[
+                  { value: "all", label: "All branches" },
+                  ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+                ]}
+                onChange={setBranchId}
+              />
             </label>
           )}
           {filter && (
-            <label className="toolbar-control">
+            <label className="toolbar-control" style={{ flex: "0 0 175px" }}>
               <span>{filter.label}</span>
-              <select className="toolbar-select" value={status} onChange={(event) => setStatus(event.target.value)}>
-                {filter.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
+              <SearchableFilter
+                value={status}
+                ariaLabel={`Filter Farm ERP records by ${filter.label.toLocaleLowerCase()}`}
+                placeholder={filter.options[0]?.label || `All ${filter.label.toLocaleLowerCase()}`}
+                options={filter.options.map((option) => ({ value: option.value, label: option.label }))}
+                onChange={setStatus}
+              />
             </label>
           )}
           {item.slug === "erp-expenses" && categories.length > 0 && (
-            <label className="toolbar-control">
+            <label className="toolbar-control" style={{ flex: "0 0 175px" }}>
               <span>Category</span>
-              <select className="toolbar-select" value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
-                <option value="">All categories</option>
-                {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-              </select>
+              <SearchableFilter
+                value={categoryId}
+                ariaLabel="Filter Farm ERP expenses by category"
+                placeholder="All categories"
+                options={[
+                  { value: "", label: "All categories" },
+                  ...categories.map((category) => ({ value: category.id, label: category.name })),
+                ]}
+                onChange={setCategoryId}
+              />
             </label>
           )}
           {item.slug === "bulk-sales" && (
-            <label className="toolbar-control">
+            <label className="toolbar-control" style={{ flex: "0 0 160px" }}>
               <span>Payment</span>
-              <select className="toolbar-select" value={paymentFilter} onChange={(event) => setPaymentFilter(event.target.value)}>
-                <option value="">All balances</option>
-                <option value="paid">Paid in full</option>
-                <option value="partial">Part paid</option>
-                <option value="unpaid">Unpaid</option>
-              </select>
+              <SearchableFilter
+                value={paymentFilter}
+                ariaLabel="Filter bulk sales by payment"
+                placeholder="All balances"
+                options={[
+                  { value: "", label: "All balances" },
+                  { value: "paid", label: "Paid in full" },
+                  { value: "partial", label: "Part paid" },
+                  { value: "unpaid", label: "Unpaid" },
+                ]}
+                onChange={setPaymentFilter}
+              />
             </label>
           )}
           {item.slug === "customer-accounts" && (
-            <label className="toolbar-control">
+            <label className="toolbar-control" style={{ flex: "0 0 175px" }}>
               <span>Balance</span>
-              <select className="toolbar-select" value={balanceFilter} onChange={(event) => setBalanceFilter(event.target.value)}>
-                <option value="">All balances</option>
-                <option value="outstanding">Outstanding</option>
-                <option value="clear">Clear</option>
-                <option value="over">Over credit limit</option>
-              </select>
+              <SearchableFilter
+                value={balanceFilter}
+                ariaLabel="Filter customer accounts by balance"
+                placeholder="All balances"
+                options={[
+                  { value: "", label: "All balances" },
+                  { value: "outstanding", label: "Outstanding" },
+                  { value: "clear", label: "Clear" },
+                  { value: "over", label: "Over credit limit" },
+                ]}
+                onChange={setBalanceFilter}
+              />
             </label>
           )}
           {usesDates && (
             <>
-              <label className="toolbar-control">
+              <label className="toolbar-control" style={{ flex: "0 0 155px" }}>
                 <span>From</span>
-                <input className="toolbar-select" type="date" value={from} max={to} onChange={(event) => setFrom(event.target.value)} />
+                <input type="date" value={from} max={to} onChange={(event) => setFrom(event.target.value)} />
               </label>
-              <label className="toolbar-control">
+              <label className="toolbar-control" style={{ flex: "0 0 155px" }}>
                 <span>To</span>
-                <input className="toolbar-select" type="date" value={to} min={from} onChange={(event) => setTo(event.target.value)} />
+                <input type="date" value={to} min={from} onChange={(event) => setTo(event.target.value)} />
               </label>
             </>
           )}
           <button className="button secondary" type="button" onClick={clearFilters}>Clear</button>
-        </div>
-      </section>
+      </HorizontalFilterScroller>
 
       {error && <div className="notice" role="alert"><AlertCircle size={17} /> {error}</div>}
       {loading && <div className="card loading"><LoaderCircle size={18} className="spin" /> Loading Farm ERP records…</div>}

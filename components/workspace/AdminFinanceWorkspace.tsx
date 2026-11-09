@@ -15,6 +15,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { TableControls } from "@/components/workspace/TableControls";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { formatMoney, formatQuantity } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 
@@ -219,14 +221,20 @@ export function AdminFinanceWorkspace({ item }: { item: WorkspaceModule }) {
             completed refunds; cost follows the cost captured on each sale line.
           </p>
         </div>
-        <div className="dashboard-controls">
+        <HorizontalFilterScroller className="finance-filterbar" ariaLabel="Profit and tax report filters">
           {staff?.role === "admin" && (
-            <label className="toolbar-control">
+            <label className="toolbar-control" style={{ flex: "0 0 220px" }}>
               <span>Branch</span>
-              <select className="toolbar-select" value={branchId || "all"} onChange={(event) => setBranchId(event.target.value)}>
-                <option value="all">All accessible branches</option>
-                {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-              </select>
+              <SearchableFilter
+                value={branchId || "all"}
+                ariaLabel="Filter profit and tax report by branch"
+                placeholder="All accessible branches"
+                options={[
+                  { value: "all", label: "All accessible branches" },
+                  ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+                ]}
+                onChange={setBranchId}
+              />
             </label>
           )}
           <label className="toolbar-control">
@@ -243,7 +251,7 @@ export function AdminFinanceWorkspace({ item }: { item: WorkspaceModule }) {
           <button className="button secondary" type="button" onClick={exportCsv} disabled={!report?.byDay.length}>
             <Download size={14} /> Export CSV
           </button>
-        </div>
+        </HorizontalFilterScroller>
       </div>
 
       {error && <div className="notice" role="alert"><AlertCircle size={15} /> {error}</div>}

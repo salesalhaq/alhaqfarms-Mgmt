@@ -4,6 +4,8 @@ import { AlertCircle, Archive, Copy, KeyRound, LoaderCircle, Pencil, Plus, Refre
 import { useEffect, useState, type FormEvent } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { WorkspaceDialog, WorkspaceError, WorkspaceField, WorkspaceSuccess } from "@/components/workspace/WorkspaceDialog";
 import { formatDateTime, labelize } from "@/lib/format";
 import { postWorkspaceAction } from "@/lib/workspace/write-client";
@@ -320,7 +322,7 @@ export function StaffAccountsWorkspace({ item }: { item: WorkspaceModule }) {
         ))}
       </section>
 
-      <div className="workspace-toolbar">
+      <HorizontalFilterScroller className="staff-accounts-filterbar" ariaLabel="Staff account filters">
         <label className="search-field">
           <Search size={16} aria-hidden="true" />
           <input
@@ -332,32 +334,50 @@ export function StaffAccountsWorkspace({ item }: { item: WorkspaceModule }) {
         </label>
         <label className="toolbar-control">
           <span>Role</span>
-          <select className="toolbar-select" value={role} onChange={(event) => setRole(event.target.value)}>
-            <option value="all">All roles</option>
-            <option value="admin">Admin</option>
-            <option value="manager">Manager</option>
-            <option value="cashier">Cashier</option>
-          </select>
+          <SearchableFilter
+            value={role}
+            ariaLabel="Filter staff by role"
+            placeholder="All roles"
+            options={[
+              { value: "all", label: "All roles" },
+              { value: "admin", label: "Admin" },
+              { value: "manager", label: "Manager" },
+              { value: "cashier", label: "Cashier" },
+            ]}
+            onChange={setRole}
+          />
         </label>
         <label className="toolbar-control">
           <span>Status</span>
-          <select className="toolbar-select" value={status} onChange={(event) => setStatus(event.target.value)}>
-            <option value="all">All statuses</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            {canManageHq && <option value="archived">Archived / deleted</option>}
-          </select>
+          <SearchableFilter
+            value={status}
+            ariaLabel="Filter staff by status"
+            placeholder="All statuses"
+            options={[
+              { value: "all", label: "All statuses" },
+              { value: "active", label: "Active" },
+              { value: "inactive", label: "Inactive" },
+              ...(canManageHq ? [{ value: "archived", label: "Archived / deleted" }] : []),
+            ]}
+            onChange={setStatus}
+          />
         </label>
         {canManageHq && (
           <label className="toolbar-control">
             <span>Branch</span>
-            <select className="toolbar-select" value={branchId} onChange={(event) => setBranchId(event.target.value)}>
-              <option value="all">All branches</option>
-              {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-            </select>
+            <SearchableFilter
+              value={branchId}
+              ariaLabel="Filter staff by branch"
+              placeholder="All branches"
+              options={[
+                { value: "all", label: "All branches" },
+                ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+              ]}
+              onChange={setBranchId}
+            />
           </label>
         )}
-      </div>
+      </HorizontalFilterScroller>
 
       {error && (
         <div className="card panel" role="alert">

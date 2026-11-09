@@ -18,6 +18,8 @@ import { ean13ForWeight } from "@/lib/scale/weight-barcode";
 import { printLabelsViaBridge } from "@/lib/print/bridge-print";
 import { loadPrinterSettings } from "@/lib/print/printer-settings";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { SerialScale } from "./SerialScale";
 
 interface Product {
@@ -502,8 +504,8 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
         <article className="stat-card"><span>Label size</span><strong>{size.label}</strong><small>Shared printer setting</small></article>
       </div>
 
-      <div className="toolbar labels-toolbar">
-        <label className="search-box">
+      <HorizontalFilterScroller className="toolbar labels-toolbar" ariaLabel="Barcode label filters and settings">
+        <label className="search-field labels-product-search">
           <Search size={16} aria-hidden="true" />
           <input
             aria-label="Search products or scan a code"
@@ -515,25 +517,35 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
             }}
           />
         </label>
-        <label className="field compact-field">
+        <label className="toolbar-control labels-category-filter">
           <span>Category</span>
-          <select value={categoryId} onChange={(event) => { setCategoryId(event.target.value); setPage(1); }}>
-            <option value="">All categories</option>
-            {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-          </select>
+          <SearchableFilter
+            value={categoryId}
+            ariaLabel="Filter products by category"
+            placeholder="All categories"
+            options={[
+              { value: "", label: "All categories" },
+              ...categories.map((category) => ({ value: category.id, label: category.name })),
+            ]}
+            onChange={(value) => { setCategoryId(value); setPage(1); }}
+          />
         </label>
-        <label className="field compact-field">
+        <label className="toolbar-control labels-size-filter">
           <span>Label size</span>
-          <select value={sizeId} onChange={(event) => setSizeId(event.target.value)}>
-            {SIZES.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-          </select>
+          <SearchableFilter
+            value={sizeId}
+            ariaLabel="Choose label size"
+            placeholder="Select label size"
+            options={SIZES.map((option) => ({ value: option.id, label: option.label }))}
+            onChange={setSizeId}
+          />
         </label>
         <label className="toggle-field"><input type="checkbox" checked={showName} onChange={(event) => setShowName(event.target.checked)} /> Name</label>
         <label className="toggle-field"><input type="checkbox" checked={showPrice} onChange={(event) => setShowPrice(event.target.checked)} /> Price</label>
         <label className="toggle-field"><input type="checkbox" checked={showCode} onChange={(event) => setShowCode(event.target.checked)} /> Code</label>
         <button type="button" className="secondary-button" onClick={() => setSelected({})} disabled={!labelCount || weightBusy}>Clear</button>
         {(search || categoryId) && <button type="button" className="secondary-button" onClick={clearFilters}>Clear filters</button>}
-      </div>
+      </HorizontalFilterScroller>
 
       <section className="labels-measured">
         <div className="labels-measured-heading">

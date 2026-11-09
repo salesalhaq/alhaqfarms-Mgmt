@@ -483,6 +483,14 @@ export function InventoryWorkspace({ item }: { item: WorkspaceModule }) {
             ))}
           </section>
 
+          {payload.products.length > 0 && (
+            <TableControls
+              tableId="inventory-products"
+              ariaLabel="Branch inventory"
+              includeSearch={false}
+              filterColumns={[{ column: "Status" }]}
+            />
+          )}
           <section className="card table-wrap workspace-table" aria-label="Branch inventory">
             <div className="table-document-heading">
               <strong>Branch inventory · {payload.branchName}</strong>
@@ -529,6 +537,14 @@ export function InventoryWorkspace({ item }: { item: WorkspaceModule }) {
             <BarChart3 size={19} aria-hidden="true" />
           </div>
 
+          {payload.movements.length > 0 && (
+            <TableControls
+              tableId="inventory-movements"
+              ariaLabel="Stock movement history"
+              includeSearch={false}
+              filterColumns={[{ column: "Movement" }]}
+            />
+          )}
           <section className="card table-wrap workspace-table" aria-label="Stock movement history">
             <div className="table-document-heading">
               <strong>Latest {payload.movements.length} movement{payload.movements.length === 1 ? "" : "s"} · {payload.branchName}</strong>

@@ -8,6 +8,7 @@ import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
 import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { TableControls } from "@/components/workspace/TableControls";
 import { WorkspaceDialog, WorkspaceError, WorkspaceField, WorkspaceSuccess } from "@/components/workspace/WorkspaceDialog";
 import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
 import { postWorkspaceAction } from "@/lib/workspace/write-client";
@@ -651,6 +652,19 @@ export function PurchasingWorkspace({ item }: { item: WorkspaceModule }) {
             />
           </HorizontalFilterScroller>
 
+          {!loading && !error && visibleRows.length > 0 && (
+            <TableControls
+              key={tableId}
+              tableId={tableId}
+              ariaLabel={`Purchasing ${view}`}
+              includeSearch={false}
+              filterColumns={view === "suppliers"
+                ? [{ column: "Status" }]
+                : view === "orders"
+                  ? [{ column: "Supplier" }, { column: "Status" }]
+                  : [{ column: "Supplier" }, { column: "Received by" }]}
+            />
+          )}
           <section className="card">
             <WorkspaceError message={actionError} />
             <WorkspaceSuccess message={actionMessage} />

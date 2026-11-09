@@ -4,6 +4,9 @@ import { AlertCircle, LoaderCircle, RefreshCw, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { TableControls } from "@/components/workspace/TableControls";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 
@@ -143,14 +146,20 @@ export function ReturnReportsWorkspace({ item }: { item: WorkspaceModule }) {
         </div>
       </div>
 
-      <div className="daily-report-toolbar daily-report-no-print">
+      <HorizontalFilterScroller className="daily-report-toolbar daily-report-no-print" ariaLabel="Return report filters">
         {isAdmin && (
-          <label className="toolbar-control">
+          <label className="toolbar-control" style={{ flex: "0 0 220px" }}>
             <span>Branch</span>
-            <select className="toolbar-select" value={branchId || "all"} onChange={(event) => setBranchId(event.target.value)}>
-              <option value="all">All accessible branches</option>
-              {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-            </select>
+            <SearchableFilter
+              value={branchId || "all"}
+              ariaLabel="Filter return report by branch"
+              placeholder="All accessible branches"
+              options={[
+                { value: "all", label: "All accessible branches" },
+                ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+              ]}
+              onChange={setBranchId}
+            />
           </label>
         )}
         <label className="toolbar-control">
@@ -163,12 +172,18 @@ export function ReturnReportsWorkspace({ item }: { item: WorkspaceModule }) {
         </label>
         <label className="toolbar-control">
           <span>Status</span>
-          <select className="toolbar-select" value={status} onChange={(event) => setStatus(event.target.value)}>
-            <option value="all">All statuses</option>
-            {STATUS_OPTIONS.map((option) => <option key={option} value={option}>{labelize(option)}</option>)}
-          </select>
+          <SearchableFilter
+            value={status}
+            ariaLabel="Filter returns by status"
+            placeholder="All statuses"
+            options={[
+              { value: "all", label: "All statuses" },
+              ...STATUS_OPTIONS.map((option) => ({ value: option, label: labelize(option) })),
+            ]}
+            onChange={setStatus}
+          />
         </label>
-        <label className="search-field">
+        <label className="search-field" style={{ flex: "1 0 220px", minWidth: 180 }}>
           <Search size={16} />
           <input
             aria-label="Search returns"
@@ -180,7 +195,7 @@ export function ReturnReportsWorkspace({ item }: { item: WorkspaceModule }) {
         <button className="button secondary" type="button" onClick={() => setReloadKey((value) => value + 1)} disabled={loading}>
           {loading ? <><LoaderCircle className="spin" size={14} /> Loading…</> : <><RefreshCw size={14} /> Refresh</>}
         </button>
-      </div>
+      </HorizontalFilterScroller>
 
       {error && (
         <div className="card panel" role="alert">
@@ -202,6 +217,14 @@ export function ReturnReportsWorkspace({ item }: { item: WorkspaceModule }) {
             ))}
           </section>
 
+          {report.reasons.length > 0 && (
+            <TableControls
+              tableId="return-reports-reasons"
+              ariaLabel="Returns by reason"
+              includeSearch={false}
+              filterColumns={[{ column: "Reason" }]}
+            />
+          )}
           <section className="card table-wrap workspace-table" aria-label="Returns by reason">
             <div className="table-document-heading">
               <strong>Top reasons · {report.branchName}</strong>

@@ -17,12 +17,14 @@ export function TableControls({
   ariaLabel,
   filterColumns: requestedFilters,
   searchPlaceholder = "Search this table",
+  includeSearch = true,
   onFilterChange,
 }: {
   tableId: string;
   ariaLabel: string;
   filterColumns?: TableColumnFilter[];
   searchPlaceholder?: string;
+  includeSearch?: boolean;
   onFilterChange?: () => void;
 }) {
   const filterColumns = requestedFilters || EMPTY_COLUMN_FILTERS;
@@ -101,19 +103,21 @@ export function TableControls({
 
   return (
     <HorizontalFilterScroller className="table-controls" ariaLabel={ariaLabel}>
-      <label className="search-field table-controls-search">
-        <Search size={16} aria-hidden="true" />
-        <input
-          type="search"
-          aria-label={`Search ${ariaLabel.toLocaleLowerCase()}`}
-          placeholder={searchPlaceholder}
-          value={search}
-          onChange={(event) => {
-            onFilterChange?.();
-            setSearch(event.target.value);
-          }}
-        />
-      </label>
+      {includeSearch && (
+        <label className="search-field table-controls-search">
+          <Search size={16} aria-hidden="true" />
+          <input
+            type="search"
+            aria-label={`Search ${ariaLabel.toLocaleLowerCase()}`}
+            placeholder={searchPlaceholder}
+            value={search}
+            onChange={(event) => {
+              onFilterChange?.();
+              setSearch(event.target.value);
+            }}
+          />
+        </label>
+      )}
       {filterColumns.map(({ column, label }) => (
         <label className="toolbar-control table-controls-filter" key={column}>
           <span>{label || column}</span>

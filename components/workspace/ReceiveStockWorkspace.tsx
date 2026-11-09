@@ -251,7 +251,13 @@ export function ReceiveStockWorkspace({ item }: { item: WorkspaceModule }) {
           </div>
 
           {payload.incoming.length > 0 && (
-            <TableControls tableId="receive-stock-incoming" ariaLabel="Incoming transfers" filterColumns={[{ column: "Status" }]} />
+            <TableControls
+              tableId="receive-stock-incoming"
+              ariaLabel="Incoming transfers"
+              filterColumns={staff?.role === "admin"
+                ? [{ column: "From" }, { column: "To" }, { column: "Status" }]
+                : [{ column: "From" }, { column: "Status" }]}
+            />
           )}
           <section className="card table-wrap workspace-table" aria-label="Incoming transfers">
             <div className="table-document-heading">
@@ -300,7 +306,13 @@ export function ReceiveStockWorkspace({ item }: { item: WorkspaceModule }) {
           </div>
 
           {payload.received.length > 0 && (
-            <TableControls tableId="receive-stock-received" ariaLabel="Received transfers" filterColumns={[{ column: "Status" }]} />
+            <TableControls
+              tableId="receive-stock-received"
+              ariaLabel="Received transfers"
+              filterColumns={staff?.role === "admin"
+                ? [{ column: "From" }, { column: "To" }, { column: "Status" }]
+                : [{ column: "From" }, { column: "Status" }]}
+            />
           )}
           <section className="card table-wrap workspace-table" aria-label="Recently received transfers">
             <div className="table-document-heading">

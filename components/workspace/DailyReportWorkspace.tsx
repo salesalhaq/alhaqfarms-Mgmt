@@ -13,6 +13,8 @@ import type {
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { TableControls } from "@/components/workspace/TableControls";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { formatReportMoney, type GeneratedDocument } from "@/lib/print/document";
 import { generateDailyReportDocument } from "@/lib/print/report-daily";
 import { printHtmlDocument } from "@/lib/print/print-window";
@@ -65,31 +67,32 @@ function parsePaisaInput(value: string): number | null {
   return Number.isSafeInteger(paisa) ? paisa : null;
 }
 
-function SummaryTable({ title, headers, children, empty }: {
+function SummaryTable({ title, headers, children, empty, filterColumns }: {
   title: string;
   headers: string[];
   children: React.ReactNode;
   empty: boolean;
+  filterColumns?: { column: string; label?: string }[];
 }) {
   const tableId = `daily-report-table-${title.toLocaleLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
   return (
-    <>
-    {!empty && <TableControls tableId={tableId} ariaLabel={`${title} report`} />}
-    <section className="daily-report-panel card">
-      <div className="daily-report-panel-heading">
-        <h2>{title}</h2>
-        <TableDocumentTools tableId={tableId} title={title} />
-      </div>
-      <div className="table-wrap">
-        <table id={tableId}>
-          <thead><tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr></thead>
-          <tbody>
-            {empty ? <tr><td className="daily-report-empty-cell" colSpan={headers.length}>No records for this business date.</td></tr> : children}
-          </tbody>
-        </table>
-      </div>
-    </section>
-    </>
+    <div className="daily-report-table-item">
+      {!empty && <TableControls tableId={tableId} ariaLabel={`${title} report`} filterColumns={filterColumns} />}
+      <section className="daily-report-panel card">
+        <div className="daily-report-panel-heading">
+          <h2>{title}</h2>
+          <TableDocumentTools tableId={tableId} title={title} />
+        </div>
+        <div className="table-wrap">
+          <table id={tableId}>
+            <thead><tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr></thead>
+            <tbody>
+              {empty ? <tr><td className="daily-report-empty-cell" colSpan={headers.length}>No records for this business date.</td></tr> : children}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -316,14 +319,20 @@ export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
         </div>
       </div>
 
-      <div className="daily-report-toolbar daily-report-no-print">
+      <HorizontalFilterScroller className="daily-report-toolbar daily-report-no-print" ariaLabel="Daily report filters and actions">
         {isHqAdmin && (
-          <label className="toolbar-control">
+          <label className="toolbar-control" style={{ flex: "0 0 220px" }}>
             <span>Branch</span>
-            <select className="toolbar-select" value={branchId || "all"} onChange={(event) => setBranchId(event.target.value)}>
-              <option value="all">All branches</option>
-              {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-            </select>
+            <SearchableFilter
+              value={branchId || "all"}
+              ariaLabel="Filter daily report by branch"
+              placeholder="All branches"
+              options={[
+                { value: "all", label: "All branches" },
+                ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+              ]}
+              onChange={setBranchId}
+            />
           </label>
         )}
         <label className="toolbar-control">
@@ -356,7 +365,7 @@ export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
         >
           <Eye size={14} /> Preview
         </button>
-      </div>
+      </HorizontalFilterScroller>
 
       <div className="live-readonly-note daily-report-no-print">
         <AlertCircle size={16} />
@@ -386,10 +395,10 @@ export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
           </div>
 
           <div className="daily-report-grid">
-            <SummaryTable title="Payments taken" headers={["Method", "Transactions", "Amount"]} empty={!report.payments.length}>
+            <SummaryTable title="Payments taken" headers={["Method", "Transactions", "Amount"]} empty={!report.payments.length} filterColumns={[{ column: "Method" }]}>
               {report.payments.map((payment) => <tr key={payment.method}><td>{labelize(payment.method)}</td><td>{payment.count}</td><td><strong>{formatMoney(payment.amount)}</strong></td></tr>)}
             </SummaryTable>
-            <SummaryTable title="Refunds paid" headers={["Method", "Refunds", "Amount"]} empty={!report.refundsByMethod.length}>
+            <SummaryTable title="Refunds paid" headers={["Method", "Refunds", "Amount"]} empty={!report.refundsByMethod.length} filterColumns={[{ column: "Method" }]}>
               {report.refundsByMethod.map((refund) => <tr key={refund.method}><td>{labelize(refund.method)}</td><td>{refund.count}</td><td><strong>{formatMoney(refund.amount)}</strong></td></tr>)}
             </SummaryTable>
           </div>
@@ -406,7 +415,7 @@ export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
             </div>
           </section>
 
-          <SummaryTable title="Top products" headers={["Product", "SKU", "Quantity", "Revenue"]} empty={!report.topProducts.length}>
+          <SummaryTable title="Top products" headers={["Product", "SKU", "Quantity", "Revenue"]} empty={!report.topProducts.length} filterColumns={[{ column: "Product" }, { column: "SKU" }]}>
             {report.topProducts.map((product, index) => (
               <tr key={`${product.sku || product.product_name}-${index}`}>
                 <td>{product.product_name}</td><td>{product.sku || "—"}</td>
@@ -415,7 +424,7 @@ export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
             ))}
           </SummaryTable>
 
-          <SummaryTable title="Shifts opened" headers={isAdmin ? ["Cashier", "Branch", "Opened", "Status", "Opening float", "Expected", "Counted", "Difference"] : ["Cashier", "Opened", "Status", "Opening float", "Expected", "Counted", "Difference"]} empty={!report.shifts.length}>
+          <SummaryTable title="Shifts opened" headers={isAdmin ? ["Cashier", "Branch", "Opened", "Status", "Opening float", "Expected", "Counted", "Difference"] : ["Cashier", "Opened", "Status", "Opening float", "Expected", "Counted", "Difference"]} empty={!report.shifts.length} filterColumns={isAdmin ? [{ column: "Cashier" }, { column: "Branch" }, { column: "Status" }] : [{ column: "Cashier" }, { column: "Status" }]}>
             {report.shifts.map((shift) => (
               <tr key={shift.id}>
                 <td>{shift.cashier_name}</td>
@@ -431,7 +440,7 @@ export function DailyReportWorkspace({ item }: { item: WorkspaceModule }) {
           </SummaryTable>
 
           {report.dayCloses.length > 0 && !dayClose && (
-            <SummaryTable title="Branch day closes" headers={["Branch", "Closed by", "Closed at", "Expected", "Counted", "Difference"]} empty={false}>
+            <SummaryTable title="Branch day closes" headers={["Branch", "Closed by", "Closed at", "Expected", "Counted", "Difference"]} empty={false} filterColumns={[{ column: "Branch" }, { column: "Closed by" }]}>
               {report.dayCloses.map((close) => (
                 <tr key={close.id}>
                   <td>{close.branch_name}</td><td>{close.closed_by_name}</td><td className="nowrap">{formatDateTime(close.closed_at)}</td>

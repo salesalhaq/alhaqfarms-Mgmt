@@ -20,6 +20,8 @@ import { StockReportsWorkspace } from "@/components/workspace/StockReportsWorksp
 import { StoreOrdersWorkspace } from "@/components/workspace/StoreOrdersWorkspace";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { TableControls } from "@/components/workspace/TableControls";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { TransfersWorkspace } from "@/components/workspace/TransfersWorkspace";
 import { PurchasingWorkspace } from "@/components/workspace/PurchasingWorkspace";
 import { ProductsWorkspace } from "@/components/workspace/ProductsWorkspace";
@@ -473,26 +475,36 @@ function Dashboard({ item }: { item: WorkspaceModule }) {
           <h1>{item.title}</h1>
           <p>{item.description} This page summarizes synchronized sales and returns, plus storefront orders when your role can view them.</p>
         </div>
-        <div className="dashboard-controls">
+        <HorizontalFilterScroller className="overview-dashboard-filterbar" ariaLabel="Dashboard filters">
           {staff?.role === "admin" && !staff.branch_id && (
-            <label className="toolbar-control">
+            <label className="toolbar-control" style={{ flex: "0 0 220px" }}>
               <span>Branch</span>
-              <select className="toolbar-select" value={branchId} onChange={(event) => setBranchId(event.target.value)}>
-                <option value="">All accessible branches</option>
-                {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-              </select>
+              <SearchableFilter
+                value={branchId}
+                ariaLabel="Filter dashboard by branch"
+                placeholder="All accessible branches"
+                options={[
+                  { value: "", label: "All accessible branches" },
+                  ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+                ]}
+                onChange={setBranchId}
+              />
             </label>
           )}
-          <label className="toolbar-control">
+          <label className="toolbar-control" style={{ flex: "0 0 175px" }}>
             <span>Period</span>
-            <select className="toolbar-select" value={period} onChange={(event) => setPeriod(event.target.value)}>
-              <option>Today</option><option>Last 7 days</option><option>Last 30 days</option><option>This month</option>
-            </select>
+            <SearchableFilter
+              value={period}
+              ariaLabel="Filter dashboard by period"
+              placeholder="Select period"
+              options={["Today", "Last 7 days", "Last 30 days", "This month"].map((value) => ({ value, label: value }))}
+              onChange={setPeriod}
+            />
           </label>
           <button className="button secondary" disabled={loading} onClick={() => setReloadKey((value) => value + 1)} type="button">
             {loading ? <LoaderCircle size={15} className="spin" /> : "Refresh"}
           </button>
-        </div>
+        </HorizontalFilterScroller>
       </div>
 
       {error ? (

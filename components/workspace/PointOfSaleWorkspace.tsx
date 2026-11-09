@@ -11,6 +11,8 @@ import { formatMoney, formatQuantity } from "@/lib/format";
 import { DEFAULT_BRANCH_POS_SETTINGS, type BranchPosSettings } from "@/lib/branch-pos-settings";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { ReceiptDocument } from "@/components/workspace/ReceiptDocument";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import {
   buildReceiptQrData,
   receiptPageCss,
@@ -1168,8 +1170,8 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
       </div>
 
       <div className="pos-workspace-grid">
-        <section className="pos-catalog card" aria-label="Branch product catalog">
-          <div className="pos-catalog-toolbar">
+        <div className="pos-catalog-column">
+          <HorizontalFilterScroller className="pos-catalog-toolbar" ariaLabel="Point of sale product filters">
             <label className="search-field">
               {scannerBusy ? <LoaderCircle size={16} className="spin" /> : <Search size={16} />}
               <input
@@ -1189,21 +1191,28 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
                 }}
               />
             </label>
-            <label className="visually-hidden-label">
-              Category
-              <select className="toolbar-select" value={categoryId} onChange={(event) => {
-                setCategoryId(event.target.value);
-                setOffset(0);
-              }}>
-                <option value="">All categories</option>
-                {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-              </select>
+            <label className="toolbar-control">
+              <span>Category</span>
+              <SearchableFilter
+                value={categoryId}
+                ariaLabel="Filter point of sale products by category"
+                placeholder="All categories"
+                options={[
+                  { value: "", label: "All categories" },
+                  ...categories.map((category) => ({ value: category.id, label: category.name })),
+                ]}
+                onChange={(value) => {
+                  setCategoryId(value);
+                  setOffset(0);
+                }}
+              />
             </label>
             <button className="button secondary" disabled={loading} onClick={() => setReloadKey((value) => value + 1)} type="button">
               {loading ? <LoaderCircle size={15} className="spin" /> : "Refresh"}
             </button>
-          </div>
+          </HorizontalFilterScroller>
 
+          <section className="pos-catalog card" aria-label="Branch product catalog">
           {scanNotice && <div className="notice info pos-scan-notice" role="status"><ScanLine size={14} /> {scanNotice}</div>}
           {error && <div className="notice" role="alert">{error}</div>}
           {loading && products.length === 0 && <div className="loading"><LoaderCircle size={18} className="spin" /> Loading branch products…</div>}
@@ -1242,7 +1251,8 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
               </button>
             </div>
           )}
-        </section>
+          </section>
+        </div>
 
         <aside className="pos-basket card" aria-label="Temporary sale basket">
           <div className="pos-basket-header">

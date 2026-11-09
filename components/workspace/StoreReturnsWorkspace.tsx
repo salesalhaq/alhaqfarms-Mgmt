@@ -10,6 +10,8 @@ import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { ReceiptDocument } from "@/components/workspace/ReceiptDocument";
 import { waitForReceiptQr } from "@/lib/print/print-window";
 import { printReceiptElementViaBridge } from "@/lib/print/bridge-print";
@@ -266,7 +268,7 @@ export function StoreReturnsWorkspace({ item }: { item: WorkspaceModule }) {
         <span>Live branch records · read-only. Approve, reject, and release actions remain disabled until the secure workflow is verified.</span>
       </div>
 
-      <section className="returns-history-filters card" aria-label="Store return filters">
+      <HorizontalFilterScroller className="returns-history-filters card" ariaLabel="Store return filters">
         <label className="search-field returns-history-search">
           <Search size={16} />
           <input
@@ -286,17 +288,30 @@ export function StoreReturnsWorkspace({ item }: { item: WorkspaceModule }) {
         </label>
         <label className="returns-history-control">
           <span>Status</span>
-          <select value={status} onChange={(event) => updateFilter(setStatus, event.target.value as (typeof RETURN_STATUSES)[number])}>
-            {RETURN_STATUSES.map((value) => <option key={value} value={value}>{value === "all" ? "All statuses" : labelize(value)}</option>)}
-          </select>
+          <SearchableFilter
+            value={status}
+            ariaLabel="Filter store returns by status"
+            placeholder="All statuses"
+            options={RETURN_STATUSES.map((value) => ({
+              value,
+              label: value === "all" ? "All statuses" : labelize(value),
+            }))}
+            onChange={(value) => updateFilter(setStatus, value as (typeof RETURN_STATUSES)[number])}
+          />
         </label>
         {isAdmin && (
           <label className="returns-history-control">
             <span>Store</span>
-            <select value={branchId} onChange={(event) => updateFilter(setBranchId, event.target.value)}>
-              <option value="all">All stores</option>
-              {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-            </select>
+            <SearchableFilter
+              value={branchId}
+              ariaLabel="Filter store returns by store"
+              placeholder="All stores"
+              options={[
+                { value: "all", label: "All stores" },
+                ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+              ]}
+              onChange={(value) => updateFilter(setBranchId, value)}
+            />
           </label>
         )}
         <div className="returns-history-actions">
@@ -305,7 +320,7 @@ export function StoreReturnsWorkspace({ item }: { item: WorkspaceModule }) {
           </button>
           <button className="button link" onClick={clearFilters} type="button">Clear filters</button>
         </div>
-      </section>
+      </HorizontalFilterScroller>
 
       <div className="workspace-summary-grid">
         <article className="card summary-tile">

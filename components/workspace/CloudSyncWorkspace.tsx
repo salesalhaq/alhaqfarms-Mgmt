@@ -204,12 +204,8 @@ export function CloudSyncWorkspace({ item }: { item: WorkspaceModule }) {
             ))}
           </section>
 
-          <section className="card table-wrap workspace-table" aria-label="Synchronizing devices">
-            <div className="table-document-heading">
-              <strong>Devices · {payload.branchName} · {deviceRows.length} shown</strong>
-              <TableDocumentTools tableId="cloud-sync-devices" title={`${item.title} devices`} disabled={!deviceRows.length} />
-            </div>
-            <HorizontalFilterScroller className="cloud-sync-filter-row" ariaLabel="Device table filters" style={{ margin: "8px 0" }}>
+          <div className="workspace-table-group" role="group" aria-label="Synchronizing devices">
+            <HorizontalFilterScroller className="cloud-sync-filter-row" ariaLabel="Device table filters">
               <label className="search-field" style={{ flex: "1 0 220px", minWidth: 180 }}>
                 <Search size={16} aria-hidden="true" />
                 <input aria-label="Search devices" placeholder="Search devices" value={deviceSearch} onChange={(event) => setDeviceSearch(event.target.value)} />
@@ -234,6 +230,11 @@ export function CloudSyncWorkspace({ item }: { item: WorkspaceModule }) {
               </label>
               <button className="button link" type="button" onClick={clearDeviceFilters}>Clear</button>
             </HorizontalFilterScroller>
+            <section className="card table-wrap workspace-table" aria-label="Synchronizing devices">
+            <div className="table-document-heading">
+              <strong>Devices · {payload.branchName} · {deviceRows.length} shown</strong>
+              <TableDocumentTools tableId="cloud-sync-devices" title={`${item.title} devices`} disabled={!deviceRows.length} />
+            </div>
             <table id="cloud-sync-devices">
               <thead><tr><th>Device</th><th>Branch</th><th>Platform</th><th>Status</th><th>Last seen</th><th>Connection</th></tr></thead>
               <tbody>
@@ -249,15 +250,11 @@ export function CloudSyncWorkspace({ item }: { item: WorkspaceModule }) {
                 )) : <tr><td colSpan={6} className="empty">{payload.rows.length ? "No devices match these filters." : "No devices are registered for this scope."}</td></tr>}
               </tbody>
             </table>
-          </section>
+            </section>
+          </div>
 
-          <section className="card table-wrap workspace-table" aria-label="Recent synchronization events">
-            <div className="table-document-heading">
-              <strong>Recent synchronization events · {eventRows.length} shown</strong>
-              <TableDocumentTools tableId="cloud-sync-events" title={`${item.title} events`} disabled={!eventRows.length} />
-            </div>
-            {payload.eventsError && <p className="error-banner" role="alert">{payload.eventsError}</p>}
-            <HorizontalFilterScroller className="cloud-sync-filter-row" ariaLabel="Synchronization event table filters" style={{ margin: "8px 0" }}>
+          <div className="workspace-table-group" role="group" aria-label="Recent synchronization events">
+            <HorizontalFilterScroller className="cloud-sync-filter-row" ariaLabel="Synchronization event table filters">
               <label className="search-field" style={{ flex: "1 0 220px", minWidth: 180 }}>
                 <Search size={16} aria-hidden="true" />
                 <input aria-label="Search synchronization events" placeholder="Search events" value={eventSearch} onChange={(event) => setEventSearch(event.target.value)} />
@@ -276,6 +273,12 @@ export function CloudSyncWorkspace({ item }: { item: WorkspaceModule }) {
               </label>
               <button className="button link" type="button" onClick={clearEventFilters}>Clear</button>
             </HorizontalFilterScroller>
+            <section className="card table-wrap workspace-table" aria-label="Recent synchronization events">
+            <div className="table-document-heading">
+              <strong>Recent synchronization events · {eventRows.length} shown</strong>
+              <TableDocumentTools tableId="cloud-sync-events" title={`${item.title} events`} disabled={!eventRows.length} />
+            </div>
+            {payload.eventsError && <p className="error-banner" role="alert">{payload.eventsError}</p>}
             <table id="cloud-sync-events">
               <thead><tr><th>When</th><th>Branch</th><th>Action</th><th>Record</th><th>Details</th></tr></thead>
               <tbody>
@@ -290,7 +293,8 @@ export function CloudSyncWorkspace({ item }: { item: WorkspaceModule }) {
                 )) : <tr><td colSpan={5} className="empty">{payload.events.length ? "No events match these filters." : "No synchronization events recorded in the last 7 days."}</td></tr>}
               </tbody>
             </table>
-          </section>
+            </section>
+          </div>
 
           <div className="notice info" role="note">
             <Cloud size={16} />

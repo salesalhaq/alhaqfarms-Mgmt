@@ -4,6 +4,8 @@ import { AlertCircle, LoaderCircle, Pencil, Plus, RefreshCw, Search, Tag } from 
 import { useEffect, useState, type FormEvent } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { WorkspaceDialog, WorkspaceError, WorkspaceField, WorkspaceSuccess } from "@/components/workspace/WorkspaceDialog";
 import { postWorkspaceAction } from "@/lib/workspace/write-client";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
@@ -173,7 +175,7 @@ export function FbrPctCategoriesWorkspace({ item }: { item: WorkspaceModule }) {
         ))}
       </section>
 
-      <div className="workspace-toolbar">
+      <HorizontalFilterScroller className="fbr-pct-filterbar" ariaLabel="FBR PCT category filters">
         <label className="search-field">
           <Search size={16} />
           <input
@@ -183,15 +185,21 @@ export function FbrPctCategoriesWorkspace({ item }: { item: WorkspaceModule }) {
             onChange={(event) => setSearch(event.target.value)}
           />
         </label>
-        <label className="visually-hidden-label">
-          Status
-          <select className="toolbar-select" value={status} onChange={(event) => setStatus(event.target.value)}>
-            <option value="all">All statuses</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
+        <label className="toolbar-control" style={{ flex: "0 0 170px" }}>
+          <span>Status</span>
+          <SearchableFilter
+            value={status}
+            ariaLabel="Filter PCT categories by status"
+            placeholder="All statuses"
+            options={[
+              { value: "all", label: "All statuses" },
+              { value: "active", label: "Active" },
+              { value: "inactive", label: "Inactive" },
+            ]}
+            onChange={setStatus}
+          />
         </label>
-      </div>
+      </HorizontalFilterScroller>
 
       {error && (
         <div className="card panel" role="alert">

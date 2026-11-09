@@ -19,6 +19,8 @@ import {
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { formatDateTime, formatMoney, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
@@ -254,31 +256,41 @@ export function AdminDashboardWorkspace({ item }: { item: WorkspaceModule }) {
           <h1>{item.title}</h1>
           <p>{item.description}</p>
         </div>
-        <div className="dashboard-controls">
+        <HorizontalFilterScroller className="admin-dashboard-filterbar" ariaLabel="Admin dashboard filters">
           {staff?.role === "admin" && !staff.branch_id && (
-            <label className="toolbar-control">
+            <label className="toolbar-control" style={{ flex: "0 0 220px" }}>
               <span>Branch</span>
-              <select className="toolbar-select" value={branchId} onChange={(event) => setBranchId(event.target.value)}>
-                <option value="all">All accessible branches</option>
-                {branches.map((branch) => (
-                  <option key={branch.id} value={branch.id}>{branch.name}</option>
-                ))}
-              </select>
+              <SearchableFilter
+                value={branchId}
+                ariaLabel="Filter admin dashboard by branch"
+                placeholder="All accessible branches"
+                options={[
+                  { value: "all", label: "All accessible branches" },
+                  ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+                ]}
+                onChange={setBranchId}
+              />
             </label>
           )}
-          <label className="toolbar-control">
+          <label className="toolbar-control" style={{ flex: "0 0 175px" }}>
             <span>Period</span>
-            <select className="toolbar-select" value={range} onChange={(event) => setRange(event.target.value as AdminDashboardRange)}>
-              <option value="today">Today</option>
-              <option value="7d">Last 7 days</option>
-              <option value="30d">Last 30 days</option>
-              <option value="month">This month</option>
-            </select>
+            <SearchableFilter
+              value={range}
+              ariaLabel="Filter admin dashboard by period"
+              placeholder="Select period"
+              options={[
+                { value: "today", label: "Today" },
+                { value: "7d", label: "Last 7 days" },
+                { value: "30d", label: "Last 30 days" },
+                { value: "month", label: "This month" },
+              ]}
+              onChange={(value) => setRange(value as AdminDashboardRange)}
+            />
           </label>
           <button className="button secondary" type="button" disabled={loading} onClick={() => setReloadKey((value) => value + 1)}>
             {loading ? <LoaderCircle size={15} className="spin" /> : "Refresh"}
           </button>
-        </div>
+        </HorizontalFilterScroller>
       </div>
 
       <div className="notice info" role="status">

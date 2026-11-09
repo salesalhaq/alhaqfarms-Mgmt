@@ -264,31 +264,41 @@ export function StoreDashboardWorkspace({ item }: { item: WorkspaceModule }) {
           <h1>{item.title}</h1>
           <p>{item.description}</p>
         </div>
-        <div className="dashboard-controls">
+        <HorizontalFilterScroller className="store-dashboard-controls" ariaLabel="Store dashboard filters">
           {staff?.role === "admin" && !staff.branch_id && (
-            <label className="toolbar-control">
+            <label className="toolbar-control" style={{ flex: "0 0 220px" }}>
               <span>Branch</span>
-              <select className="toolbar-select" value={branchId} onChange={(event) => setBranchId(event.target.value)}>
-                <option value="all">All accessible branches</option>
-                {branches.map((branch) => (
-                  <option key={branch.id} value={branch.id}>{branch.name}</option>
-                ))}
-              </select>
+              <SearchableFilter
+                value={branchId}
+                ariaLabel="Filter store dashboard by branch"
+                placeholder="All accessible branches"
+                options={[
+                  { value: "all", label: "All accessible branches" },
+                  ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+                ]}
+                onChange={setBranchId}
+              />
             </label>
           )}
-          <label className="toolbar-control">
+          <label className="toolbar-control" style={{ flex: "0 0 175px" }}>
             <span>Period</span>
-            <select className="toolbar-select" value={range} onChange={(event) => setRange(event.target.value as StoreDashboardRange)}>
-              <option value="today">Today</option>
-              <option value="7d">Last 7 days</option>
-              <option value="30d">Last 30 days</option>
-              <option value="month">This month</option>
-            </select>
+            <SearchableFilter
+              value={range}
+              ariaLabel="Filter store dashboard by period"
+              placeholder="Select period"
+              options={[
+                { value: "today", label: "Today" },
+                { value: "7d", label: "Last 7 days" },
+                { value: "30d", label: "Last 30 days" },
+                { value: "month", label: "This month" },
+              ]}
+              onChange={(value) => setRange(value as StoreDashboardRange)}
+            />
           </label>
           <button className="button secondary" type="button" disabled={loading} onClick={() => setReloadKey((value) => value + 1)}>
             {loading ? <LoaderCircle size={15} className="spin" /> : "Refresh"}
           </button>
-        </div>
+        </HorizontalFilterScroller>
       </div>
 
       {error ? (
@@ -315,16 +325,8 @@ export function StoreDashboardWorkspace({ item }: { item: WorkspaceModule }) {
           </section>
 
           <div className="dashboard-grid">
-            <section className="card table-wrap dashboard-recent-orders" aria-label="Recent sales">
-              <div className="section-heading dashboard-table-heading">
-                <div>
-                  <p className="eyebrow page">Recent sales</p>
-                  <h2>Sales</h2>
-                </div>
-                <TableDocumentTools tableId={`store-dashboard-sales-${branchId}-${range}`} title={`${item.title} recent sales`} disabled={!visibleSales.length} />
-              </div>
-              {data.sales.length ? (
-                <>
+            <div className="workspace-table-group" role="group" aria-label="Recent sales">
+              {data.sales.length > 0 && (
                 <HorizontalFilterScroller className="store-dashboard-table-filters" ariaLabel="Recent sales filters">
                   <label className="search-field store-dashboard-table-search">
                     <Search size={16} aria-hidden="true" />
@@ -335,6 +337,16 @@ export function StoreDashboardWorkspace({ item }: { item: WorkspaceModule }) {
                     <SearchableFilter value={salesStatus} ariaLabel="Filter recent sales by status" placeholder="All statuses" options={salesStatusOptions} onChange={setSalesStatus} />
                   </label>
                 </HorizontalFilterScroller>
+              )}
+              <section className="card table-wrap dashboard-recent-orders" aria-label="Recent sales">
+              <div className="section-heading dashboard-table-heading">
+                <div>
+                  <p className="eyebrow page">Recent sales</p>
+                  <h2>Sales</h2>
+                </div>
+                <TableDocumentTools tableId={`store-dashboard-sales-${branchId}-${range}`} title={`${item.title} recent sales`} disabled={!visibleSales.length} />
+              </div>
+              {data.sales.length ? (
                 <table id={`store-dashboard-sales-${branchId}-${range}`}>
                   <thead>
                     <tr>
@@ -356,22 +368,14 @@ export function StoreDashboardWorkspace({ item }: { item: WorkspaceModule }) {
                     {!visibleSales.length && <tr><td className="dashboard-table-empty" colSpan={4}>No sales match these filters.</td></tr>}
                   </tbody>
                 </table>
-                </>
               ) : (
                 <div className="empty"><ShoppingCart size={23} /><h2>No sales in this range</h2><p>Try another period or branch selection.</p></div>
               )}
-            </section>
+              </section>
+            </div>
 
-            <section className="card table-wrap dashboard-recent-orders" aria-label="Recent returns">
-              <div className="section-heading dashboard-table-heading">
-                <div>
-                  <p className="eyebrow page">Recent returns</p>
-                  <h2>Returns</h2>
-                </div>
-                <TableDocumentTools tableId={`store-dashboard-returns-${branchId}-${range}`} title={`${item.title} recent returns`} disabled={!visibleReturns.length} />
-              </div>
-              {data.returns.length ? (
-                <>
+            <div className="workspace-table-group" role="group" aria-label="Recent returns">
+              {data.returns.length > 0 && (
                 <HorizontalFilterScroller className="store-dashboard-table-filters" ariaLabel="Recent returns filters">
                   <label className="search-field store-dashboard-table-search">
                     <Search size={16} aria-hidden="true" />
@@ -382,6 +386,16 @@ export function StoreDashboardWorkspace({ item }: { item: WorkspaceModule }) {
                     <SearchableFilter value={returnsStatus} ariaLabel="Filter recent returns by status" placeholder="All statuses" options={returnsStatusOptions} onChange={setReturnsStatus} />
                   </label>
                 </HorizontalFilterScroller>
+              )}
+              <section className="card table-wrap dashboard-recent-orders" aria-label="Recent returns">
+              <div className="section-heading dashboard-table-heading">
+                <div>
+                  <p className="eyebrow page">Recent returns</p>
+                  <h2>Returns</h2>
+                </div>
+                <TableDocumentTools tableId={`store-dashboard-returns-${branchId}-${range}`} title={`${item.title} recent returns`} disabled={!visibleReturns.length} />
+              </div>
+              {data.returns.length ? (
                 <table id={`store-dashboard-returns-${branchId}-${range}`}>
                   <thead>
                     <tr>
@@ -403,23 +417,15 @@ export function StoreDashboardWorkspace({ item }: { item: WorkspaceModule }) {
                     {!visibleReturns.length && <tr><td className="dashboard-table-empty" colSpan={4}>No returns match these filters.</td></tr>}
                   </tbody>
                 </table>
-                </>
               ) : (
                 <div className="empty"><RotateCcw size={23} /><h2>No returns in this range</h2><p>No return records were created for this branch and period.</p></div>
               )}
-            </section>
+              </section>
+            </div>
           </div>
 
-          <section className="card table-wrap dashboard-recent-orders" aria-label="Recent online orders">
-            <div className="section-heading dashboard-table-heading">
-              <div>
-                <p className="eyebrow page">Recent orders</p>
-                <h2>Store orders</h2>
-              </div>
-              <TableDocumentTools tableId={`store-dashboard-orders-${branchId}-${range}`} title={`${item.title} recent orders`} disabled={!visibleOrders.length} />
-            </div>
-            {data.orders.length ? (
-              <>
+          <div className="workspace-table-group" role="group" aria-label="Recent online orders">
+            {data.orders.length > 0 && (
               <HorizontalFilterScroller className="store-dashboard-table-filters" ariaLabel="Recent store order filters">
                 <label className="search-field store-dashboard-table-search">
                   <Search size={16} aria-hidden="true" />
@@ -434,6 +440,16 @@ export function StoreDashboardWorkspace({ item }: { item: WorkspaceModule }) {
                   <SearchableFilter value={ordersPaymentStatus} ariaLabel="Filter recent store orders by payment" placeholder="All payments" options={orderPaymentOptions} onChange={setOrdersPaymentStatus} />
                 </label>
               </HorizontalFilterScroller>
+            )}
+            <section className="card table-wrap dashboard-recent-orders" aria-label="Recent online orders">
+            <div className="section-heading dashboard-table-heading">
+              <div>
+                <p className="eyebrow page">Recent orders</p>
+                <h2>Store orders</h2>
+              </div>
+              <TableDocumentTools tableId={`store-dashboard-orders-${branchId}-${range}`} title={`${item.title} recent orders`} disabled={!visibleOrders.length} />
+            </div>
+            {data.orders.length ? (
               <table id={`store-dashboard-orders-${branchId}-${range}`}>
                 <thead>
                   <tr>
@@ -460,11 +476,11 @@ export function StoreDashboardWorkspace({ item }: { item: WorkspaceModule }) {
                   {!visibleOrders.length && <tr><td className="dashboard-table-empty" colSpan={5}>No orders match these filters.</td></tr>}
                   </tbody>
               </table>
-              </>
             ) : (
               <div className="empty"><Store size={23} /><h2>No orders in this range</h2><p>Orders that match the selected branch and period will appear here.</p></div>
             )}
-          </section>
+            </section>
+          </div>
 
           <p className="dashboard-period-note">
             {item.title} · {selectedBranchName} · {new Date(data.from).toLocaleDateString("en-PK", { dateStyle: "medium" })} to {new Date(data.to).toLocaleDateString("en-PK", { dateStyle: "medium" })}

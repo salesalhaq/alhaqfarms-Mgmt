@@ -338,7 +338,15 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
         </label>
         <label className="sales-history-control">
           <span>Customer</span>
-          <input value={customerSearch} placeholder="All customers" onChange={(event) => updateFilter(setCustomerSearch, event.target.value)} />
+          <SearchableFilter
+            value={customerSearch}
+            ariaLabel="Filter by customer"
+            placeholder="All customers"
+            options={[{ value: "", label: "All customers" }]}
+            allowCustom
+            customOptionLabel={(value) => `Use customer: ${value}`}
+            onChange={(value) => updateFilter(setCustomerSearch, value)}
+          />
         </label>
         <label className="sales-history-control">
           <span>From</span>

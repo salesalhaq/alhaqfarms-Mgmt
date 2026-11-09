@@ -14,12 +14,16 @@ export function SearchableFilter({
   options,
   placeholder,
   ariaLabel,
+  allowCustom = false,
+  customOptionLabel,
   onChange,
 }: {
   value: string;
   options: SearchableFilterOption[];
   placeholder: string;
   ariaLabel: string;
+  allowCustom?: boolean;
+  customOptionLabel?: (value: string) => string;
   onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -29,11 +33,21 @@ export function SearchableFilter({
   const searchRef = useRef<HTMLInputElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, width: 180 });
-  const selected = options.find((option) => option.value === value);
-  const filteredOptions = useMemo(
-    () => options.filter((option) => option.label.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())),
-    [options, search],
-  );
+  const availableOptions = useMemo(() => (
+    allowCustom && value && !options.some((option) => option.value === value)
+      ? [...options, { value, label: customOptionLabel?.(value) || value }]
+      : options
+  ), [allowCustom, customOptionLabel, options, value]);
+  const selected = availableOptions.find((option) => option.value === value);
+  const filteredOptions = useMemo(() => {
+    const filtered = availableOptions.filter((option) => option.label.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
+    const customValue = search.trim();
+    if (allowCustom && customValue && !availableOptions.some((option) => option.value.toLocaleLowerCase() === customValue.toLocaleLowerCase())) {
+      filtered.push({ value: customValue, label: customOptionLabel?.(customValue) || customValue });
+    }
+    return filtered;
+  },
+  [allowCustom, availableOptions, customOptionLabel, search]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -99,7 +113,7 @@ export function SearchableFilter({
           setOpen((current) => !current);
         }}
       >
-        <span>{selected?.label || placeholder}</span>
+        <span>{selected?.label || (allowCustom && value ? value : placeholder)}</span>
         <ChevronDown size={14} aria-hidden="true" />
       </button>
       {open && typeof document !== "undefined" && createPortal(

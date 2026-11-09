@@ -21,6 +21,7 @@ import {
 import { waitForReceiptQr } from "@/lib/print/print-window";
 import { printReceiptElementViaBridge } from "@/lib/print/bridge-print";
 import { generateReturnsRefundsDocument } from "@/lib/print/reports";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 
 interface ReturnRow {
   id: string;
@@ -355,17 +356,27 @@ export function ReturnsWorkspace({ item }: { item: WorkspaceModule }) {
         </label>
         <label className="returns-history-control">
           <span>Status</span>
-          <select value={status} onChange={(event) => updateFilter(setStatus, event.target.value as (typeof RETURN_STATUSES)[number])}>
-            {RETURN_STATUSES.map((value) => <option key={value} value={value}>{value === "all" ? "All statuses" : labelize(value)}</option>)}
-          </select>
+          <SearchableFilter
+            value={status}
+            ariaLabel="Filter by return status"
+            placeholder="All statuses"
+            options={RETURN_STATUSES.map((value) => ({ value, label: value === "all" ? "All statuses" : labelize(value) }))}
+            onChange={(value) => updateFilter(setStatus, value as (typeof RETURN_STATUSES)[number])}
+          />
         </label>
         {isAdmin && (
           <label className="returns-history-control">
             <span>Branch</span>
-            <select value={branchId} onChange={(event) => updateFilter(setBranchId, event.target.value)}>
-              <option value="all">All branches</option>
-              {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-            </select>
+            <SearchableFilter
+              value={branchId}
+              ariaLabel="Filter by branch"
+              placeholder="All branches"
+              options={[
+                { value: "all", label: "All branches" },
+                ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+              ]}
+              onChange={(value) => updateFilter(setBranchId, value)}
+            />
           </label>
         )}
         <div className="returns-history-actions">

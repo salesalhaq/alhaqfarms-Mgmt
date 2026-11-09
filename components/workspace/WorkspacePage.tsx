@@ -27,7 +27,6 @@ import { InventoryWorkspace } from "@/components/workspace/InventoryWorkspace";
 import { AdminDashboardWorkspace } from "@/components/workspace/AdminDashboardWorkspace";
 import { AdminFinanceWorkspace } from "@/components/workspace/AdminFinanceWorkspace";
 import { StoreDashboardWorkspace } from "@/components/workspace/StoreDashboardWorkspace";
-import { StoreReturnsWorkspace } from "@/components/workspace/StoreReturnsWorkspace";
 import { StoreReportsWorkspace } from "@/components/workspace/StoreReportsWorkspace";
 import { ReceiveStockWorkspace } from "@/components/workspace/ReceiveStockWorkspace";
 import { ReportCenterWorkspace } from "@/components/workspace/ReportCenterWorkspace";
@@ -756,7 +755,7 @@ export function WorkspacePage({ moduleSlug }: { moduleSlug: string }) {
     return <ProductsWorkspace item={item} />;
   }
   if (item.slug === "store-dashboard") return <StoreDashboardWorkspace item={item} />;
-  if (item.slug === "store-returns") return <StoreReturnsWorkspace item={item} />;
+  if (item.slug === "store-returns") return <ReturnsWorkspace item={item} />;
   if (item.slug === "store-reports") return <StoreReportsWorkspace item={item} />;
   if (item.slug === "receive-stock") return <ReceiveStockWorkspace item={item} />;
   if (item.slug === "report-center") return <ReportCenterWorkspace item={item} />;

@@ -369,6 +369,37 @@ export async function POST(request: Request) {
       );
     }
 
+    if (action === "setPayrollTaxSettings" || action === "setPayrollItemTax") {
+      let payload: Record<string, unknown>;
+      if (action === "setPayrollTaxSettings") {
+        if (identity.staff.role !== "admin") {
+          return authenticationResponse(request, authentication, { error: "Only an administrator can change payroll tax settings." }, 403);
+        }
+        if (typeof body.enabled !== "boolean") throw new ActionValidationError("Choose whether manual payroll withholding is enabled.");
+        payload = { enabled: body.enabled };
+      } else {
+        const itemId = typeof body.itemId === "string" ? body.itemId : "";
+        if (!isUuid(itemId)) throw new ActionValidationError("Choose a valid payslip.");
+        payload = {
+          itemId,
+          taxWithheldPaisa: integer(body.taxWithheldPaisa, "Withholding amount"),
+        };
+      }
+      const { data, error } = await rawClient.rpc("staff_manage_payroll_tax", {
+        p_action: action === "setPayrollTaxSettings" ? "set-settings" : "set-withholding",
+        p_payload: payload,
+      });
+      if (error) {
+        if (error.code === "PGRST202" || /could not find the function|schema cache/i.test(error.message)) {
+          return authenticationResponse(request, authentication, {
+            error: "Payroll tax settings are not installed yet. Apply supabase/migrations/042_payroll_tax_settings.sql and retry.",
+          }, 503);
+        }
+        throw new Error(error.message);
+      }
+      return authenticationResponse(request, authentication, { result: data });
+    }
+
     return authenticationResponse(request, authentication, { error: "Choose a supported HR or payroll action." }, 400);
   } catch (error) {
     console.error("Could not save HR or payroll action.", error);

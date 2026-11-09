@@ -1,9 +1,11 @@
 "use client";
 
-import { AlertCircle, LoaderCircle, RefreshCw } from "lucide-react";
+import { AlertCircle, LoaderCircle, RefreshCw, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { formatMoney, formatQuantity } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
@@ -168,42 +170,6 @@ export function StockReportsWorkspace({ item }: { item: WorkspaceModule }) {
         </div>
       </div>
 
-      <div className="daily-report-toolbar daily-report-no-print">
-        {isAdmin && (
-          <label className="toolbar-control">
-            <span>Branch</span>
-            <select className="toolbar-select" value={branchId} onChange={(event) => setBranchId(event.target.value)}>
-              <option value="all">All branches</option>
-              {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-            </select>
-          </label>
-        )}
-        <label className="toolbar-control">
-          <span>Search products</span>
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name, SKU or barcode" />
-        </label>
-        <label className="toolbar-control">
-          <span>Category</span>
-          <select className="toolbar-select" value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
-            <option value="all">All categories</option>
-            {categories.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-          </select>
-        </label>
-        <label className="toolbar-control">
-          <span>Stock scope</span>
-          <select className="toolbar-select" value={scope} onChange={(event) => setScope(event.target.value as StockScope)}>
-            <option value="all">All active products</option>
-            <option value="low" disabled={!report?.availability.replenishment}>At or below reorder point</option>
-            <option value="out">Out of stock</option>
-            <option value="negative">Negative balance</option>
-          </select>
-        </label>
-        <button className="button secondary" type="button" disabled={loading} onClick={() => setReloadKey((key) => key + 1)}>
-          {loading ? <LoaderCircle size={14} className="spin" /> : <RefreshCw size={14} />}
-          Refresh
-        </button>
-      </div>
-
       <div className="live-readonly-note daily-report-no-print">
         <AlertCircle size={16} />
         <span>Live cloud figures · read-only. Balances use the staff-scoped stock catalog and product costs/thresholds are shown only when RLS permits.</span>
@@ -228,11 +194,6 @@ export function StockReportsWorkspace({ item }: { item: WorkspaceModule }) {
               ].filter(Boolean).join(" ")}
             </div>
           )}
-          {!report.availability.movements && (
-            <div className="notice" role="status">
-              Stock movement history is not exposed through the typed, staff-authorized cloud report API. This page does not infer movement totals from current balances.
-            </div>
-          )}
           {report.availability.activeProductsOnly && (
             <p className="daily-report-empty">This staff-scoped catalog includes active products only; inactive-product balances are not available here.</p>
           )}
@@ -243,6 +204,67 @@ export function StockReportsWorkspace({ item }: { item: WorkspaceModule }) {
             <div className="dashboard-stat card"><span>At or below reorder</span><strong>{totals?.lowStockCount == null ? "Unavailable" : String(totals.lowStockCount)}</strong><small>Uses stored reorder points</small></div>
             <div className="dashboard-stat card"><span>Negative balances</span><strong>{totals ? String(totals.negativeCount) : "Unavailable"}</strong><small>Current ledger balance</small></div>
           </div>
+
+          <HorizontalFilterScroller className="stock-reports-filterbar daily-report-no-print" ariaLabel="Stock report filters">
+            <label className="search-field stock-reports-search">
+              <Search size={16} aria-hidden="true" />
+              <input
+                aria-label="Search stock report products"
+                placeholder="Name, SKU or barcode"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </label>
+            {isAdmin && (
+              <label className="toolbar-control stock-reports-control">
+                <span>Branch</span>
+                <SearchableFilter
+                  value={branchId}
+                  ariaLabel="Filter stock report by branch"
+                  placeholder="All branches"
+                  options={[
+                    { value: "all", label: "All branches" },
+                    ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+                  ]}
+                  onChange={setBranchId}
+                />
+              </label>
+            )}
+            <label className="toolbar-control stock-reports-control">
+              <span>Category</span>
+              <SearchableFilter
+                value={categoryId}
+                ariaLabel="Filter stock report by category"
+                placeholder="All categories"
+                options={[
+                  { value: "all", label: "All categories" },
+                  ...categories.map(([id, name]) => ({ value: id, label: name })),
+                ]}
+                onChange={setCategoryId}
+              />
+            </label>
+            <label className="toolbar-control stock-reports-control">
+              <span>Stock scope</span>
+              <SearchableFilter
+                value={scope}
+                ariaLabel="Filter stock report by stock scope"
+                placeholder="All active products"
+                options={[
+                  { value: "all", label: "All active products" },
+                  ...((report.availability.replenishment || scope === "low")
+                    ? [{ value: "low", label: "At or below reorder point" }]
+                    : []),
+                  { value: "out", label: "Out of stock" },
+                  { value: "negative", label: "Negative balance" },
+                ]}
+                onChange={(value) => setScope(value as StockScope)}
+              />
+            </label>
+            <button className="button secondary stock-reports-refresh" type="button" disabled={loading} onClick={() => setReloadKey((key) => key + 1)}>
+              {loading ? <LoaderCircle size={14} className="spin" /> : <RefreshCw size={14} />}
+              Refresh
+            </button>
+          </HorizontalFilterScroller>
 
           <section className="daily-report-panel card">
             <div className="daily-report-panel-heading">
@@ -318,11 +340,6 @@ export function StockReportsWorkspace({ item }: { item: WorkspaceModule }) {
               <span className="daily-report-empty">Page {page} of {pageCount}</span>
               <button className="button secondary" type="button" disabled={page >= pageCount} onClick={() => setPage((current) => Math.min(pageCount, current + 1))}>Next</button>
             </div>
-          </section>
-
-          <section className="daily-report-panel card">
-            <h2>Stock movements</h2>
-            <p className="daily-report-empty">Movement dates, quantities, and references are not available in the cloud schema exposed to this staff session. A staff-safe, RLS-protected movement report endpoint is required before this section can show live transactions.</p>
           </section>
         </>
       )}

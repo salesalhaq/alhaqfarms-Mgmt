@@ -66,6 +66,7 @@ E:\Alhaqfm Web\supabase\migrations\038_farm_erp_bulk_sales_actions.sql
 E:\Alhaqfm Web\supabase\migrations\039_farm_erp_vendor_actions.sql
 E:\Alhaqfm Web\supabase\migrations\040_farm_erp_customer_account_actions.sql
 E:\Alhaqfm Web\supabase\migrations\041_farm_erp_expense_actions.sql
+E:\Alhaqfm Web\supabase\migrations\042_payroll_tax_settings.sql
 ```
 
 The web migration creates branch-scoped POS and FBR settings and updates checkout/held-sale validation. Apply it before deploying this version of the web app. Configure a separate 32-byte random key (64 hex characters) as `FBR_CONFIG_ENCRYPTION_KEY` in the Cloudflare Worker secret store before administrators save FBR credentials. For local development, use a different key in `.dev.vars`; do not commit real keys. A key rotation requires re-encrypting existing credentials before replacing the old key.
@@ -98,7 +99,7 @@ Until these deployment steps are complete, manual local and cloud backups work, 
 
 Migration `032_stock_transfer_workflow.sql` installs the atomic create/dispatch/receive/cancel RPC and the active branch lookup used by Transfers and Receive Stock. Apply it before deploying these transfer workflows. It does not depend on the optional backup scheduler setup in migration 031. Receipt confirmation is available from either page; only confirmed quantities are added to destination stock.
 
-Migration `033_hr_payroll_web_actions.sql` installs the transactional payroll-run RPC used to generate, pay, and void web payroll runs. Apply it before deploying HR & Payroll actions. Employee, attendance, compensation, advance, and department actions use authenticated branch-scoped APIs; the web payroll calculation follows the desktop attendance and advance-recovery rules, while tax settings remain desktop-managed.
+Migration `033_hr_payroll_web_actions.sql` installs the transactional payroll-run RPC used to generate, pay, and void web payroll runs. Apply it before deploying HR & Payroll actions. Employee, attendance, compensation, advance, and department actions use authenticated branch-scoped APIs; the web payroll calculation follows the desktop attendance and advance-recovery rules. Migration `042_payroll_tax_settings.sql` adds the manual payroll withholding toggle and the atomic per-payslip withholding RPC used by draft payroll runs.
 
 Migration `034_fbr_pct_categories.sql` creates the administrator-managed cloud PCT category list and imports classifications already present in synchronized product metadata. Apply it before managing PCT categories or saving product assignments from the web catalog. The Windows app's separate PCT category list remains local-only; product classification metadata continues to synchronize with products.
 
@@ -113,6 +114,8 @@ Migration `039_farm_erp_vendor_actions.sql` installs administrator-only supplier
 Migration `040_farm_erp_customer_account_actions.sql` installs administrator-only customer account maintenance, invoice recording, and balance-limited payments. Account updates, immutable ledger entries, and audit records are committed atomically. Apply it before enabling Customer Accounts write actions.
 
 Migration `041_farm_erp_expense_actions.sql` installs administrator-only farm expense recording and HQ-only shared expense-category creation. Expense records and audit entries are written atomically; expense records are append-only. Apply it before enabling ERP Expenses write actions.
+
+Migration `042_payroll_tax_settings.sql` creates the payroll tax settings row, RLS, and the atomic toggle/withholding RPC. Apply it before enabling the manual tax controls in HR & Payroll. Withholding is editable only on draft payroll runs and cannot exceed the employee's remaining net pay.
 
 From `E:\ALhaqFM APP\database\supabase`, set the shared gateway secret and deploy these functions:
 

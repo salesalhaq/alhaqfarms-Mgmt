@@ -164,6 +164,7 @@ type PayrollSummaryResponse = {
     totals: Omit<DepartmentCostRow, "departmentId" | "departmentName">;
   };
   payrollRuns?: PayrollRun[];
+  taxSettings?: { enabled: boolean };
   taxReport?: TaxReport;
   readOnly?: boolean;
   warning?: string;
@@ -264,6 +265,7 @@ const emptySummary: PayrollSummaryResponse = {
     },
   },
   payrollRuns: [],
+  taxSettings: { enabled: false },
   taxReport: {
     taxYear: currentTaxYear(),
     periodStart: "",
@@ -287,6 +289,7 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
   const [summary, setSummary] = useState<PayrollSummaryResponse | null>(null);
   const [expandedRunId, setExpandedRunId] = useState("");
   const [selectedPayslip, setSelectedPayslip] = useState<{ item: PayrollItem; run: PayrollRun } | null>(null);
+  const [taxDrafts, setTaxDrafts] = useState<Record<string, string>>({});
   const [actionDialog, setActionDialog] = useState<PayrollActionDialog | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
@@ -465,6 +468,40 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
     }
   };
 
+  const saveWithholding = async (item: PayrollItem) => {
+    setActionBusy(true);
+    setError(null);
+    setActionNotice(null);
+    try {
+      const taxWithheldPaisa = parseMoneyInput(
+        taxDrafts[item.id] ?? formatPaisaInput(item.taxWithheldPaisa),
+        "Withholding amount",
+      );
+      const response = await fetch("/api/workspace/admin-payroll/actions", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "setPayrollItemTax", itemId: item.id, taxWithheldPaisa }),
+      });
+      const result = await response.json() as {
+        error?: string;
+        warning?: string;
+        result?: { taxWithheldPaisa?: number };
+      };
+      if (!response.ok) throw new Error(result.error || "Could not save the withholding amount.");
+      setTaxDrafts((current) => ({
+        ...current,
+        [item.id]: formatPaisaInput(Number(result.result?.taxWithheldPaisa ?? taxWithheldPaisa)),
+      }));
+      setActionNotice(result.warning || `Saved manual withholding for ${item.staffName}.`);
+      setReloadKey((value) => value + 1);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Could not save the withholding amount.");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
   const branchOptions = useMemo(() => {
     if (!staff) return [];
     if (staff.role === "admin") {
@@ -604,9 +641,23 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
             <Plus size={14} /> Add department
           </button>
         )}
-        <button className="secondary-button" type="button" disabled title="Payroll tax settings are still managed in the Windows desktop app.">
-          <ShieldCheck size={14} /> Tax settings
-        </button>
+        {staff?.role === "admin" && (
+          <button
+            className={summary?.taxSettings?.enabled ? "primary-button" : "secondary-button"}
+            type="button"
+            disabled={actionBusy}
+            onClick={() => {
+              const enabled = !(summary?.taxSettings?.enabled);
+              if (window.confirm(enabled
+                ? "Enable manual payroll withholding? Managers can then enter withholding on draft payroll runs."
+                : "Disable manual payroll withholding? Existing withholding amounts stay on saved runs.")) {
+                void runAction("setPayrollTaxSettings", { enabled });
+              }
+            }}
+          >
+            <ShieldCheck size={14} /> {summary?.taxSettings?.enabled ? "Disable manual tax" : "Enable manual tax"}
+          </button>
+        )}
       </div>
 
       {error ? (
@@ -793,7 +844,11 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
                 </tbody>
               </table>
             </div>
-            <p className="page-note">Withholding already recorded in synchronized payroll runs is included. Configure new manual withholding in the Windows desktop app.</p>
+            <p className="page-note">
+              {summary.taxSettings?.enabled
+                ? "Manual withholding can be edited on draft payroll runs. Withholding already recorded in synchronized paid runs is included above."
+                : "Manual payroll withholding is disabled. An administrator can enable it from the tax settings action above."}
+            </p>
           </section>
 
           <section className="card" style={{ padding: "1.25rem" }}>
@@ -963,7 +1018,29 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
                             <td>{payslip.presentDays}P / {payslip.absentDays}A / {payslip.halfDays}H / {payslip.leaveDays}L</td>
                             <td>{formatMoney(payslip.attendanceDeductionPaisa)}</td>
                             <td>{formatMoney(payslip.advanceDeductionPaisa)}</td>
-                            <td>{formatMoney(payslip.taxWithheldPaisa)}</td>
+                            <td>
+                              {summary.taxSettings?.enabled && run.status === "draft" ? (
+                                <div className="payroll-tax-edit">
+                                  <input
+                                    aria-label={`Withholding for ${payslip.staffName}`}
+                                    inputMode="decimal"
+                                    value={taxDrafts[payslip.id] ?? formatPaisaInput(payslip.taxWithheldPaisa)}
+                                    onChange={(event) => setTaxDrafts((current) => ({
+                                      ...current,
+                                      [payslip.id]: event.target.value,
+                                    }))}
+                                  />
+                                  <button
+                                    className="secondary-button"
+                                    type="button"
+                                    disabled={actionBusy}
+                                    onClick={() => void saveWithholding(payslip)}
+                                  >
+                                    Save
+                                  </button>
+                                </div>
+                              ) : formatMoney(payslip.taxWithheldPaisa)}
+                            </td>
                             <td>{formatMoney(payslip.netPaisa)}</td>
                             <td>
                               <button
@@ -1322,7 +1399,7 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
                   <tr><td>Gross after attendance</td><td>{formatMoney(selectedPayslip.item.grossPaisa)}</td></tr>
                   <tr><td>Attendance deduction</td><td>−{formatMoney(selectedPayslip.item.attendanceDeductionPaisa)}</td></tr>
                   <tr><td>Advance recovery</td><td>−{formatMoney(selectedPayslip.item.advanceDeductionPaisa)}</td></tr>
-                  {selectedPayslip.item.taxWithheldPaisa > 0 && (
+                  {(summary?.taxSettings?.enabled || selectedPayslip.item.taxWithheldPaisa > 0) && (
                     <tr><td>Manual withholding</td><td>−{formatMoney(selectedPayslip.item.taxWithheldPaisa)}</td></tr>
                   )}
                 </tbody>

@@ -239,6 +239,25 @@ export async function GET(request: Request) {
   let advances: AdvanceRow[] = [];
   const dataWarnings: string[] = [];
 
+  let taxSettings = { enabled: false };
+  try {
+    const taxSettingsResult = await rawClient
+      .from("payroll_tax_settings")
+      .select("enabled")
+      .maybeSingle();
+    if (taxSettingsResult.error) {
+      if (/does not exist|schema cache/i.test(taxSettingsResult.error.message)) {
+        dataWarnings.push("Payroll tax settings: apply supabase/migrations/042_payroll_tax_settings.sql.");
+      } else {
+        dataWarnings.push(`Payroll tax settings: ${taxSettingsResult.error.message}`);
+      }
+    } else if (taxSettingsResult.data) {
+      taxSettings = { enabled: Boolean(taxSettingsResult.data.enabled) };
+    }
+  } catch (error) {
+    dataWarnings.push(error instanceof Error ? `Payroll tax settings: ${error.message}` : "Payroll tax settings could not be loaded.");
+  }
+
   try {
     const employeesResult = await rawClient
       .from("hr_employees")
@@ -742,6 +761,7 @@ export async function GET(request: Request) {
       totals: departmentCostTotals,
     },
     payrollRuns: payrollRunPayload,
+    taxSettings,
     taxReport: {
       taxYear: currentTaxYear,
       periodStart: taxPeriodStart,
@@ -754,7 +774,7 @@ export async function GET(request: Request) {
     limitations: [
       "Attendance is aggregated from synchronized daily attendance records for the selected dates.",
       "Payroll totals come from payroll runs whose period overlaps the selected dates.",
-      "Manual tax withholding and payroll tax settings are still managed in the Windows desktop app.",
+      "Manual withholding can be edited on draft payroll runs once payroll tax settings are enabled.",
     ],
   };
 

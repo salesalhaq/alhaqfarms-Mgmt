@@ -609,7 +609,6 @@ export function InventoryWorkspace({ item }: { item: WorkspaceModule }) {
               <div className="table-document-heading">
                 <strong>{formatDateTime(detail.created_at)} · {detail.created_by_name} · {detail.branch_name}</strong>
                 <div className="heading-actions">
-                  <button className="button secondary" type="button" disabled title="Recording stocktake counts is a Windows desktop workflow.">Record counts</button>
                   <button className="button secondary" type="button" onClick={() => setDetail(null)}><X size={13} /> Close</button>
                 </div>
               </div>

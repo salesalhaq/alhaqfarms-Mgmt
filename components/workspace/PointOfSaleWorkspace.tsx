@@ -19,6 +19,7 @@ import {
 import { waitForReceiptQr } from "@/lib/print/print-window";
 import { printReceiptElementViaBridge } from "@/lib/print/bridge-print";
 import { newIdempotencyKey, postWorkspaceAction } from "@/lib/workspace/write-client";
+import { BarcodeScannerDialog } from "./BarcodeScannerDialog";
 import { SerialScale } from "./SerialScale";
 
 interface PosProduct {
@@ -212,6 +213,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
   const [error, setError] = useState<string | null>(null);
   const [scanNotice, setScanNotice] = useState("");
   const [scannerBusy, setScannerBusy] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [heldSales, setHeldSales] = useState<HeldSale[]>([]);
   const [heldSalesOpen, setHeldSalesOpen] = useState(false);
@@ -594,7 +596,9 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
 
   const lookupCode = useCallback(async (rawCode: string) => {
     const code = rawCode.trim();
-    if (!code || !branchId || scannerBusy || measuredProduct) return;
+    // A scan while payment, a measured-entry dialog, or a completed sale is on
+    // screen must not change the basket behind the cashier's back.
+    if (!code || !branchId || scannerBusy || measuredProduct || checkoutDialog || completedSale) return;
     setScannerBusy(true);
     setError(null);
     setScanNotice("");
@@ -633,7 +637,12 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
     } finally {
       setScannerBusy(false);
     }
-  }, [addProduct, branchId, measuredProduct, scannerBusy, selectProduct]);
+  }, [addProduct, branchId, checkoutDialog, completedSale, measuredProduct, scannerBusy, selectProduct]);
+
+  const closeScanner = useCallback(() => setScannerOpen(false), []);
+  const handleScannerDetected = useCallback((code: string) => {
+    void lookupCode(code);
+  }, [lookupCode]);
 
   // Keyboard-wedge scanner: rapid printable keystrokes ending in Enter while
   // no form control is focused. Scanners that type into the search box are
@@ -1090,7 +1099,12 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
         </div>
         <span className={`pos-shift-status ${shiftOpen ? "open" : ""}`}>{!branchId ? "Not selected" : shiftOpen ? "Active" : "Closed"}</span>
         <div className="pos-register-actions">
-          <button className="button secondary" disabled title="Camera scanning is not connected in the web client." type="button"><Camera size={14} /> Camera scan</button>
+          <button
+            className="button secondary"
+            disabled={!branchId || scannerBusy || Boolean(measuredProduct) || Boolean(completedSale)}
+            onClick={() => setScannerOpen(true)}
+            type="button"
+          ><Camera size={14} /> Camera scan</button>
           {shiftOpen && <>
             <button className="button secondary" disabled={registerSaving} onClick={() => openRegisterDialog("cash_in")} type="button">Cash in</button>
             <button className="button secondary" disabled={registerSaving} onClick={() => openRegisterDialog("cash_out")} type="button">Cash out</button>
@@ -1785,6 +1799,8 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
           </section>
         </div>
       )}
+
+      <BarcodeScannerDialog open={scannerOpen} onClose={closeScanner} onDetected={handleScannerDetected} />
     </div>
   );
 }

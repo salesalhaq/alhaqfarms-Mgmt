@@ -645,6 +645,13 @@ tbody tr:hover { background: #fcfdfb; }
 .transfers-history-control .searchable-filter-trigger { min-height: 38px; font-size: 10px; }
 .transfers-history-actions { flex: 0 0 auto; align-items: flex-end; }
 .transfers-history-actions .button { min-height: 38px; font-size: 11px; }
+.stock-reports-filterbar { gap: 7px; margin-bottom: 14px; }
+.stock-reports-filterbar .horizontal-filter-content { align-items: flex-end; gap: 8px; }
+.stock-reports-filterbar .stock-reports-search { flex: 1 0 240px; min-width: 220px; }
+.stock-reports-filterbar .stock-reports-search input { box-sizing: border-box; min-height: 38px; }
+.stock-reports-filterbar .stock-reports-control { flex: 0 0 175px; min-width: 0; }
+.stock-reports-filterbar .searchable-filter-trigger { min-height: 38px; font-size: 10px; }
+.stock-reports-filterbar .stock-reports-refresh { flex: 0 0 auto; min-height: 38px; }
 .horizontal-filter-content :is(input:not([type="checkbox"]), select, .searchable-filter-trigger, .button, .primary-button, .secondary-button) {
   box-sizing: border-box;
   height: 40px;
@@ -1441,6 +1448,14 @@ tbody tr:hover { background: #fcfdfb; }
 .pos-measured-presets button { min-height: 31px; border: 1px solid var(--line); border-radius: 8px; padding: 0 10px; color: var(--ink); background: var(--surface); font-size: 10px; cursor: pointer; }
 .pos-measured-presets button:hover { border-color: #b6d2be; }
 .pos-measured-total { border-top: 1px solid var(--line); padding-top: 12px; color: var(--green-dark); font-size: 22px; text-align: right; }
+.pos-scanner-video { width: 100%; max-height: min(56vh, 420px); margin-top: 14px; border: 1px solid var(--line); border-radius: 11px; background: #0b120d; object-fit: cover; }
+.pos-scanner-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-top: 12px; }
+.pos-scanner-controls .field { flex: 1 1 220px; }
+.pos-scanner-controls .secondary-button { min-height: 38px; }
+.pos-scanner-help { margin: 10px 0 0; color: var(--muted); font-size: 10px; }
+.payroll-tax-edit { display: flex; align-items: center; gap: 6px; }
+.payroll-tax-edit input { width: 96px; min-height: 32px; border: 1px solid var(--line); border-radius: 8px; padding: 0 8px; color: var(--ink); background: var(--surface); font-size: 10px; }
+.payroll-tax-edit .secondary-button { min-height: 32px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .modal-actions .primary-button, .modal-actions .secondary-button { min-height: 38px; }
 

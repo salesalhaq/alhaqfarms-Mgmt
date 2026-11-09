@@ -72,3 +72,7 @@ export function useBusinessSettings() {
   if (!context) throw new Error("useBusinessSettings must be used within a BusinessSettingsProvider.");
   return context;
 }
+
+export function useOptionalBusinessSettings() {
+  return useContext(BusinessSettingsContext);
+}

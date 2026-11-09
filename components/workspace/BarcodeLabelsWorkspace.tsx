@@ -13,6 +13,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { DEFAULT_BRAND_NAME } from "@/lib/branding";
 import { formatMoney } from "@/lib/format";
+import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { ean13ForWeight } from "@/lib/scale/weight-barcode";
 import { printLabelsViaBridge } from "@/lib/print/bridge-print";
@@ -174,6 +175,7 @@ function Barcode({
 }
 
 export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
+  const { settings: businessSettings } = useBusinessSettings();
   const { staff } = useStaffAuth();
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState("");
@@ -210,6 +212,10 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
   const [weightCodeError, setWeightCodeError] = useState("");
   const [printNotice, setPrintNotice] = useState("");
   const [weightBusy, setWeightBusy] = useState(false);
+
+  useEffect(() => {
+    setCompanyName(businessSettings.businessName || DEFAULT_BRAND_NAME);
+  }, [businessSettings.businessName]);
 
   useEffect(() => {
     const savedSize = loadPrinterSettings({ branchId: staff?.branch_id ?? null }).labelSizeId;
@@ -378,7 +384,7 @@ export function BarcodeLabelsWorkspace({ item }: { item: WorkspaceModule }) {
         totalPricePaisa: total,
         packedDate,
         expiryDate,
-        companyName: companyName.trim() || DEFAULT_BRAND_NAME,
+        companyName: companyName.trim() || businessSettings.businessName || DEFAULT_BRAND_NAME,
         labelFooter: labelFooter.trim(),
       }));
       setWeightedLabels((current) => [...current, ...items]);

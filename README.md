@@ -67,9 +67,12 @@ E:\Alhaqfm Web\supabase\migrations\039_farm_erp_vendor_actions.sql
 E:\Alhaqfm Web\supabase\migrations\040_farm_erp_customer_account_actions.sql
 E:\Alhaqfm Web\supabase\migrations\041_farm_erp_expense_actions.sql
 E:\Alhaqfm Web\supabase\migrations\042_payroll_tax_settings.sql
+E:\Alhaqfm Web\supabase\migrations\043_shared_business_branding_timestamp.sql
 ```
 
 The web migration creates branch-scoped POS and FBR settings and updates checkout/held-sale validation. Apply it before deploying this version of the web app. Configure a separate 32-byte random key (64 hex characters) as `FBR_CONFIG_ENCRYPTION_KEY` in the Cloudflare Worker secret store before administrators save FBR credentials. For local development, use a different key in `.dev.vars`; do not commit real keys. A key rotation requires re-encrypting existing credentials before replacing the old key.
+
+Migration `043_shared_business_branding_timestamp.sql` ensures that business-brand updates from either app receive a server-generated timestamp before deployment of the Windows app's shared branding sync.
 
 Migration `030_web_cloud_backups.sql` creates a private Storage bucket and owner-scoped backup metadata/preferences. Local backups are JSON business-data downloads and only run while the browser is open; they are not a full database snapshot or a one-click restore. Cloud copies are also operational-data exports, are private to the staff account that created them, and are retained for 90 days.
 

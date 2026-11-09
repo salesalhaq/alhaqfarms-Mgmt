@@ -591,7 +591,7 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
 
   return (
     <>
-      <div className="page-heading">
+      <div className="page-heading payroll-workspace-heading">
         <div>
           <p className="eyebrow page">{item.section}</p>
           <h1>{item.title}</h1>
@@ -612,11 +612,11 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
           )}
           <label className="toolbar-control">
             <span>From</span>
-            <input className="toolbar-input" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+            <input className="workspace-date-input" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
           </label>
           <label className="toolbar-control">
             <span>To</span>
-            <input className="toolbar-input" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
+            <input className="workspace-date-input" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
           </label>
           {staffOptions.length > 0 && (
             <label className="toolbar-control">
@@ -633,38 +633,35 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
           <button className="button secondary" onClick={() => setReloadKey((value) => value + 1)} disabled={loading} type="button">
             {loading ? "Refreshing…" : "Refresh"}
           </button>
+          <button className="primary-button" type="button" onClick={() => openActionDialog("saveEmployee")}>
+            <Plus size={14} /> Add employee
+          </button>
+          <button className="primary-button" type="button" onClick={() => openActionDialog("generatePayrollRun")}>
+            <Plus size={14} /> New payroll run
+          </button>
+          {isHqAdmin && (
+            <button className="secondary-button" type="button" onClick={() => openActionDialog("saveDepartment")}>
+              <Plus size={14} /> Add department
+            </button>
+          )}
+          {staff?.role === "admin" && (
+            <button
+              className={summary?.taxSettings?.enabled ? "primary-button" : "secondary-button"}
+              type="button"
+              disabled={actionBusy}
+              onClick={() => {
+                const enabled = !(summary?.taxSettings?.enabled);
+                if (window.confirm(enabled
+                  ? "Enable manual payroll withholding? Managers can then enter withholding on draft payroll runs."
+                  : "Disable manual payroll withholding? Existing withholding amounts stay on saved runs.")) {
+                  void runAction("setPayrollTaxSettings", { enabled });
+                }
+              }}
+            >
+              <ShieldCheck size={14} /> {summary?.taxSettings?.enabled ? "Disable manual tax" : "Enable manual tax"}
+            </button>
+          )}
         </HorizontalFilterScroller>
-      </div>
-
-      <div className="heading-actions" aria-label="HR and payroll actions">
-        <button className="primary-button" type="button" onClick={() => openActionDialog("saveEmployee")}>
-          <Plus size={14} /> Add employee
-        </button>
-        <button className="primary-button" type="button" onClick={() => openActionDialog("generatePayrollRun")}>
-          <Plus size={14} /> New payroll run
-        </button>
-        {isHqAdmin && (
-          <button className="secondary-button" type="button" onClick={() => openActionDialog("saveDepartment")}>
-            <Plus size={14} /> Add department
-          </button>
-        )}
-        {staff?.role === "admin" && (
-          <button
-            className={summary?.taxSettings?.enabled ? "primary-button" : "secondary-button"}
-            type="button"
-            disabled={actionBusy}
-            onClick={() => {
-              const enabled = !(summary?.taxSettings?.enabled);
-              if (window.confirm(enabled
-                ? "Enable manual payroll withholding? Managers can then enter withholding on draft payroll runs."
-                : "Disable manual payroll withholding? Existing withholding amounts stay on saved runs.")) {
-                void runAction("setPayrollTaxSettings", { enabled });
-              }
-            }}
-          >
-            <ShieldCheck size={14} /> {summary?.taxSettings?.enabled ? "Disable manual tax" : "Enable manual tax"}
-          </button>
-        )}
       </div>
 
       {error ? (
@@ -681,7 +678,7 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
 
       {!loading && summary && (
         <>
-          <section className="dashboard-stats" aria-label="Payroll summary metrics">
+          <section className="dashboard-stats payroll-summary" aria-label="Payroll summary metrics">
             {metrics.map(({ icon: Icon, label, value, note }) => (
               <article className="dashboard-stat card" key={label}>
                 <span>{label}</span>

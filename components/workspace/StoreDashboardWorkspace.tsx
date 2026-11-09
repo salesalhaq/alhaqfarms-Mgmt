@@ -292,7 +292,7 @@ export function StoreDashboardWorkspace({ item }: { item: WorkspaceModule }) {
 
   return (
     <div className="page-shell">
-      <div className="page-heading">
+      <div className="page-heading store-dashboard-heading">
         <div>
           <p className="eyebrow page">{item.section}</p>
           <h1>{item.title}</h1>

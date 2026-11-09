@@ -583,12 +583,6 @@ export function PurchasingWorkspace({ item }: { item: WorkspaceModule }) {
 
       {canView && (
         <>
-          <section className="dashboard-stats" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }} aria-label="Purchasing summary">
-            <article className="dashboard-stat card"><span>Suppliers</span><strong>{suppliers.length}</strong></article>
-            <article className="dashboard-stat card"><span>Purchase orders</span><strong>{orders.length}</strong></article>
-            <article className="dashboard-stat card"><span>Receipts</span><strong>{receipts.length}</strong></article>
-          </section>
-
           <HorizontalFilterScroller className="purchasing-filterbar" ariaLabel="Purchasing filters">
             <label className="search-field purchasing-search">
               <Search size={17} aria-hidden="true" />
@@ -650,21 +644,28 @@ export function PurchasingWorkspace({ item }: { item: WorkspaceModule }) {
                   : null
                 : undefined}
             />
+            {!loading && !error && visibleRows.length > 0 && (
+              <TableControls
+                key={tableId}
+                tableId={tableId}
+                ariaLabel={`Purchasing ${view}`}
+                includeSearch={false}
+                inline
+                filterColumns={view === "suppliers"
+                  ? [{ column: "Status" }]
+                  : view === "orders"
+                    ? [{ column: "Supplier" }, { column: "Status" }]
+                    : [{ column: "Supplier" }, { column: "Received by" }]}
+              />
+            )}
           </HorizontalFilterScroller>
 
-          {!loading && !error && visibleRows.length > 0 && (
-            <TableControls
-              key={tableId}
-              tableId={tableId}
-              ariaLabel={`Purchasing ${view}`}
-              includeSearch={false}
-              filterColumns={view === "suppliers"
-                ? [{ column: "Status" }]
-                : view === "orders"
-                  ? [{ column: "Supplier" }, { column: "Status" }]
-                  : [{ column: "Supplier" }, { column: "Received by" }]}
-            />
-          )}
+          <section className="dashboard-stats purchasing-summary" aria-label="Purchasing summary">
+            <article className="dashboard-stat card"><span>Suppliers</span><strong>{suppliers.length}</strong></article>
+            <article className="dashboard-stat card"><span>Purchase orders</span><strong>{orders.length}</strong></article>
+            <article className="dashboard-stat card"><span>Receipts</span><strong>{receipts.length}</strong></article>
+          </section>
+
           <section className="card">
             <WorkspaceError message={actionError} />
             <WorkspaceSuccess message={actionMessage} />

@@ -18,6 +18,7 @@ export function TableControls({
   filterColumns: requestedFilters,
   searchPlaceholder = "Search this table",
   includeSearch = true,
+  inline = false,
   onFilterChange,
 }: {
   tableId: string;
@@ -25,6 +26,7 @@ export function TableControls({
   filterColumns?: TableColumnFilter[];
   searchPlaceholder?: string;
   includeSearch?: boolean;
+  inline?: boolean;
   onFilterChange?: () => void;
 }) {
   const filterColumns = requestedFilters || EMPTY_COLUMN_FILTERS;
@@ -101,8 +103,8 @@ export function TableControls({
 
   const hasActiveFilters = Boolean(search.trim() || Object.values(filters).some(Boolean));
 
-  return (
-    <HorizontalFilterScroller className="table-controls" ariaLabel={ariaLabel}>
+  const controls = (
+    <>
       {includeSearch && (
         <label className="search-field table-controls-search">
           <Search size={16} aria-hidden="true" />
@@ -139,6 +141,12 @@ export function TableControls({
       <span className="table-controls-count" role="status">
         {hasActiveFilters && visibleCount === 0 ? "No matching rows" : `${visibleCount} rows`}
       </span>
-    </HorizontalFilterScroller>
+    </>
   );
+
+  if (inline) {
+    return <div className="table-controls-inline" role="group" aria-label={ariaLabel}>{controls}</div>;
+  }
+
+  return <HorizontalFilterScroller className="table-controls" ariaLabel={ariaLabel}>{controls}</HorizontalFilterScroller>;
 }

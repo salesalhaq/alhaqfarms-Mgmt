@@ -2,7 +2,7 @@
 
 import {
   AlertCircle, ChevronLeft, ChevronRight, Eye, LoaderCircle, Plus, Printer,
-  RefreshCw, Search, X,
+  Search, X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
@@ -12,6 +12,7 @@ import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
 import { SearchableFilter } from "@/components/workspace/SearchableFilter";
+import { WorkspaceReportActions } from "@/components/workspace/WorkspaceReportActions";
 import { ReceiptDocument } from "@/components/workspace/ReceiptDocument";
 import { waitForReceiptQr } from "@/lib/print/print-window";
 import { printReceiptElementViaBridge } from "@/lib/print/bridge-print";
@@ -268,7 +269,7 @@ export function StoreReturnsWorkspace({ item }: { item: WorkspaceModule }) {
         <span>Live branch records · read-only. Approve, reject, and release actions remain disabled until the secure workflow is verified.</span>
       </div>
 
-      <HorizontalFilterScroller className="returns-history-filters card" ariaLabel="Store return filters">
+      <HorizontalFilterScroller className="returns-history-filters store-returns-filterbar card" ariaLabel="Store return filters">
         <label className="search-field returns-history-search">
           <Search size={16} />
           <input
@@ -280,11 +281,11 @@ export function StoreReturnsWorkspace({ item }: { item: WorkspaceModule }) {
         </label>
         <label className="returns-history-control">
           <span>From</span>
-          <input type="date" aria-label="Returns from date" value={fromDate} max={toDate || undefined} onChange={(event) => updateFilter(setFromDate, event.target.value)} />
+          <input className="workspace-date-input" type="date" aria-label="Returns from date" value={fromDate} max={toDate || undefined} onChange={(event) => updateFilter(setFromDate, event.target.value)} />
         </label>
         <label className="returns-history-control">
           <span>To</span>
-          <input type="date" aria-label="Returns to date" value={toDate} min={fromDate || undefined} onChange={(event) => updateFilter(setToDate, event.target.value)} />
+          <input className="workspace-date-input" type="date" aria-label="Returns to date" value={toDate} min={fromDate || undefined} onChange={(event) => updateFilter(setToDate, event.target.value)} />
         </label>
         <label className="returns-history-control">
           <span>Status</span>
@@ -315,14 +316,48 @@ export function StoreReturnsWorkspace({ item }: { item: WorkspaceModule }) {
           </label>
         )}
         <div className="returns-history-actions">
-          <button className="button secondary" disabled={loading} onClick={() => setReloadKey((value) => value + 1)} type="button">
-            {loading ? <LoaderCircle size={15} className="spin" /> : <RefreshCw size={14} />} Refresh
-          </button>
           <button className="button link" onClick={clearFilters} type="button">Clear filters</button>
         </div>
+        <WorkspaceReportActions
+          title="Store returns"
+          sections={[{
+            title: `Store returns · page ${page}`,
+            columns: ["Return", ...(isAdmin ? ["Store"] : []), "Receipt", "Customer", "Raised", "Reason", "Refund", "Restocked", "Status"],
+            rows: rows.map((row) => [
+              row.return_number,
+              ...(isAdmin ? [row.branch_name || "—"] : []),
+              row.receipt_number || "—",
+              row.customer_name || "—",
+              formatDateTime(row.created_at),
+              row.reason || "—",
+              formatMoney(row.refund_total_paisa),
+              row.restock_total_milli ? formatQuantity(row.restock_total_milli) : "—",
+              labelize(row.status),
+            ]),
+          }]}
+          summary={[
+            ["Returns on page", rows.length],
+            ["Total matching returns", total],
+            ["Refund issued on page", formatMoney(summary.totalRefundPaisa)],
+            ["Pending", summary.pending],
+            ["Approved", summary.approved],
+            ["Completed", summary.completed],
+            ["Rejected", summary.rejected],
+          ]}
+          metadata={{
+            branch: branchId === "all" ? "All stores" : branches.find((branch) => branch.id === branchId)?.name || "Your store",
+            period: `${fromDate} – ${toDate}`,
+            printedBy: staff?.full_name || "Staff",
+            filterSummary: `Status: ${status === "all" ? "All statuses" : labelize(status)}; search: ${search.trim() || "none"}; page ${page} of ${pageCount}.`,
+          }}
+          onRefresh={() => setReloadKey((value) => value + 1)}
+          refreshing={loading}
+          disabled={!rows.length || loading || Boolean(error)}
+          inline
+        />
       </HorizontalFilterScroller>
 
-      <div className="workspace-summary-grid">
+      <div className="workspace-summary-grid store-returns-summary">
         <article className="card summary-tile">
           <span>Refund issued</span>
           <strong>{formatMoney(summary.totalRefundPaisa)}</strong>

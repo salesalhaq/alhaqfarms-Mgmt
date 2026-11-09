@@ -304,13 +304,22 @@ tbody tr:hover { background: #fcfdfb; }
 .list-limit-note { margin: 12px 0 0; color: var(--muted); font-size: 11px; text-align: right; }
 
 .dashboard-controls { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: flex-end; gap: 10px; }
-.store-dashboard-controls { width: min(100%, 530px); justify-content: flex-end; margin-left: auto; }
-.store-dashboard-controls .horizontal-filter-content { justify-content: flex-end; gap: 10px; }
+.store-dashboard-heading { display: grid; justify-items: stretch; gap: 14px; }
+.store-dashboard-heading > div:first-child { width: 100%; }
+.store-dashboard-heading .store-dashboard-controls { width: 100%; justify-content: center; margin-inline: auto; }
+.store-dashboard-controls .horizontal-filter-viewport { flex: 1 1 auto; width: 100%; max-width: 100%; }
+.store-dashboard-controls .horizontal-filter-content { width: max-content; min-width: 0; justify-content: center; gap: 10px; margin-inline: auto; }
 .admin-dashboard-filterbar { width: min(100%, 530px); margin-left: auto; }
 .admin-dashboard-filterbar .horizontal-filter-content { justify-content: flex-end; gap: 10px; }
 .finance-filterbar, .payroll-filterbar { width: min(100%, 720px); margin-left: auto; }
 .finance-filterbar .horizontal-filter-content, .payroll-filterbar .horizontal-filter-content { justify-content: flex-end; gap: 8px; }
 .finance-filterbar .toolbar-control, .payroll-filterbar .toolbar-control { flex: 0 0 155px; }
+.payroll-workspace-heading { display: grid; justify-items: stretch; gap: 14px; }
+.payroll-workspace-heading > div:first-child { width: 100%; }
+.payroll-workspace-heading .payroll-filterbar { width: min(100%, 1500px); margin: 0 auto; justify-content: center; }
+.payroll-workspace-heading .payroll-filterbar .horizontal-filter-viewport { flex: 1 1 auto; width: 100%; max-width: 100%; }
+.payroll-workspace-heading .payroll-filterbar .horizontal-filter-content { width: max-content; min-width: 0; justify-content: center; margin-inline: auto; }
+.payroll-filterbar > .horizontal-filter-arrow { flex: 0 0 auto; }
 .finance-report-heading { display: grid; justify-items: center; gap: 14px; }
 .finance-report-heading > div:first-child { width: 100%; text-align: center; }
 .finance-report-heading > div:first-child > p:last-child { max-width: 900px; margin-right: auto; margin-left: auto; }
@@ -332,6 +341,7 @@ tbody tr:hover { background: #fcfdfb; }
 .workspace-preview-note svg { flex: 0 0 auto; margin-top: 1px; color: var(--green); }
 .workspace-preview-note strong { color: var(--green-dark); }
 .dashboard-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; margin-bottom: 18px; }
+.dashboard-stats.payroll-summary { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .dashboard-stats.finance-summary { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .dashboard-stats.erp-animal-summary { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .cloud-sync-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
@@ -420,17 +430,20 @@ tbody tr:hover { background: #fcfdfb; }
 .report-center-option input { margin-top: 3px; }
 .report-center-option span { display: grid; gap: 4px; }
 .report-center-option small { color: var(--muted); }
-.daily-report-toolbar.report-center-filterbar { justify-content: flex-start; margin-bottom: 14px; }
-.daily-report-toolbar.report-center-filterbar .horizontal-filter-content { justify-content: flex-start; gap: 8px; }
+.daily-report-toolbar.report-center-filterbar { flex-wrap: nowrap; justify-content: center; margin-bottom: 14px; }
+.daily-report-toolbar.report-center-filterbar .horizontal-filter-viewport { flex: 1 1 auto; width: 100%; max-width: 100%; }
+.daily-report-toolbar.report-center-filterbar .horizontal-filter-content { width: max-content; min-width: 0; justify-content: center; gap: 8px; margin-inline: auto; }
 .daily-report-toolbar.report-center-filterbar .toolbar-control { flex: 0 0 190px; }
 .daily-report-toolbar.report-center-filterbar .report-center-date { flex-basis: 160px; }
 .report-center-filterbar .report-center-date input { box-sizing: border-box; width: 100%; min-height: 40px; border: 1px solid var(--line); border-radius: 9px; background: #fff; padding: 0 9px; color: var(--ink); font-size: 11px; }
 .report-center-filterbar .searchable-filter-trigger, .report-center-filterbar .button { min-height: 40px; }
 .report-center-date-presets, .report-center-filter-actions, .report-center-picker-actions { flex: 0 0 auto; flex-wrap: nowrap; align-items: center; gap: 6px; margin-top: 0; }
-.report-center-filter-actions { margin-left: auto; }
+.report-center-filter-actions { margin-left: 0; }
 .report-center-tab-row { align-items: center; margin-top: 10px; }
 .report-center-tab-row .horizontal-filter-content { align-items: center; justify-content: center; gap: 12px; }
-.report-center-picker-scroller { margin-top: 12px; }
+.report-center-picker-scroller { justify-content: center; margin-top: 12px; }
+.report-center-picker-scroller .horizontal-filter-viewport { flex: 1 1 auto; width: 100%; max-width: 100%; }
+.report-center-picker-scroller .horizontal-filter-content { width: max-content; min-width: 0; justify-content: center; margin-inline: auto; }
 .report-center-picker-options { display: flex; width: max-content; gap: 10px; margin: 0; }
 .report-center-picker-options .report-center-option { flex: 0 0 250px; min-height: 64px; }
 .report-center-group-tabs { display: flex; flex: 0 0 auto; min-width: max-content; flex-wrap: nowrap; justify-content: center; gap: 6px; margin-top: 0; }
@@ -595,12 +608,17 @@ tbody tr:hover { background: #fcfdfb; }
 .sales-dialog-actions .button { min-height: 38px; }
 .returns-history-filters { gap: 7px; margin-bottom: 13px; padding: 8px; }
 .returns-history-search { flex: 1 0 220px; min-width: 150px; }
+.store-returns-filterbar { justify-content: center; }
+.store-returns-filterbar .horizontal-filter-viewport { flex: 1 1 auto; width: 100%; max-width: 100%; }
+.store-returns-filterbar .horizontal-filter-content { width: max-content; min-width: 0; justify-content: center; margin-inline: auto; }
+.store-returns-filterbar .returns-history-search { flex: 0 0 240px; min-width: 200px; }
 .returns-history-control { display: grid; min-width: 0; gap: 5px; color: var(--muted); font-size: 10px; font-weight: 700; }
 .returns-history-control { flex: 0 0 clamp(100px, 10vw, 170px); }
-.returns-history-control input, .returns-history-control select { width: 100%; min-width: 0; min-height: 38px; border: 1px solid var(--line); border-radius: 9px; outline: none; background: #fff; padding: 0 9px; color: var(--ink); font-size: 10px; }
+.returns-history-control input:not(.workspace-date-input), .returns-history-control select { width: 100%; min-width: 0; min-height: 38px; border: 1px solid var(--line); border-radius: 9px; outline: none; background: #fff; padding: 0 9px; color: var(--ink); font-size: 10px; }
 .returns-history-control input:focus, .returns-history-control select:focus { border-color: #69a781; box-shadow: 0 0 0 3px rgb(27 119 72 / 10%); }
 .returns-history-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 5px; }
 .returns-history-actions .button { min-height: 38px; font-size: 11px; }
+.store-returns-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; margin-bottom: 16px; }
 .horizontal-filter-scroller { display: flex; min-width: 0; flex-wrap: nowrap; align-items: center; }
 .horizontal-filter-viewport { min-width: 0; flex: 1 1 auto; overflow: hidden; }
 .horizontal-filter-content { display: flex; width: max-content; min-width: 100%; flex-wrap: nowrap; align-items: flex-end; gap: 8px; }
@@ -710,6 +728,10 @@ tbody tr:hover { background: #fcfdfb; }
 .device-filterbar, .audit-filterbar { margin-bottom: 16px; }
 .device-filterbar .horizontal-filter-content, .audit-filterbar .horizontal-filter-content { align-items: flex-end; gap: 8px; }
 .device-filterbar .search-field, .audit-filterbar .audit-search { min-width: 180px; flex: 1 0 220px; }
+.audit-filterbar { justify-content: center; }
+.audit-filterbar .horizontal-filter-viewport { flex: 1 1 auto; width: 100%; max-width: 100%; }
+.audit-filterbar .horizontal-filter-content { width: max-content; min-width: 0; justify-content: center; margin-inline: auto; }
+.audit-filterbar .audit-search { flex: 0 0 320px; }
 .audit-date-filter { flex: 0 0 155px; }
 .product-catalog-filterbar { gap: 7px; margin-bottom: 16px; }
 .product-catalog-filterbar .horizontal-filter-content { align-items: flex-end; gap: 8px; }
@@ -727,11 +749,15 @@ tbody tr:hover { background: #fcfdfb; }
 .inventory-filterbar .searchable-filter-trigger { min-height: 38px; font-size: 10px; }
 .inventory-filterbar .inventory-refresh { flex: 0 0 auto; min-height: 38px; }
 .purchasing-filterbar { gap: 7px; margin-bottom: 14px; }
-.purchasing-filterbar .horizontal-filter-content { align-items: flex-end; gap: 8px; }
+.purchasing-filterbar { justify-content: center; }
+.purchasing-filterbar .horizontal-filter-viewport { flex: 1 1 auto; width: 100%; max-width: 100%; }
+.purchasing-filterbar .horizontal-filter-content { width: max-content; min-width: 0; align-items: flex-end; justify-content: center; gap: 8px; margin-inline: auto; }
 .purchasing-filterbar .purchasing-search { flex: 1 0 280px; min-width: 220px; }
 .purchasing-filterbar .purchasing-search svg { top: 11px; }
 .purchasing-filterbar .purchasing-branch-control { flex: 0 0 170px; min-width: 0; }
 .purchasing-filterbar .searchable-filter-trigger { min-height: 38px; font-size: 10px; }
+.purchasing-filterbar .table-controls-inline { display: flex; flex: 0 0 auto; align-items: flex-end; gap: 8px; }
+.dashboard-stats.purchasing-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .transfers-history-filters { gap: 7px; margin-bottom: 13px; }
 .transfers-history-search { flex: 1 0 220px; min-width: 180px; }
 .transfers-history-control { flex: 0 0 clamp(130px, 11vw, 165px); }
@@ -862,6 +888,9 @@ tbody tr:hover { background: #fcfdfb; }
   .app-shell { grid-template-columns: 72px minmax(0, 1fr); }
   .detail-grid { grid-template-columns: 1fr; }
   .dashboard-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboard-stats.purchasing-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .store-returns-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboard-stats.payroll-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .dashboard-stats.finance-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .dashboard-stats.erp-animal-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .finance-report-heading .finance-filterbar .horizontal-filter-content { justify-content: flex-start; }
@@ -911,6 +940,8 @@ tbody tr:hover { background: #fcfdfb; }
   .store-dashboard-controls, .admin-dashboard-filterbar, .overview-dashboard-filterbar,
   .finance-filterbar, .payroll-filterbar { margin-left: 0; }
   .dashboard-stats, .shortcut-grid { grid-template-columns: 1fr 1fr; }
+  .store-returns-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboard-stats.payroll-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-stats.finance-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-stats.erp-animal-summary { grid-template-columns: 1fr 1fr; }
   .daily-report-metrics { grid-template-columns: 1fr; }

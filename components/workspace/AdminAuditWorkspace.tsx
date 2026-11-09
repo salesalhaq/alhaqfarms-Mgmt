@@ -178,11 +178,11 @@ export function AdminAuditWorkspace({ item }: { item: WorkspaceModule }) {
       <HorizontalFilterScroller className="audit-filterbar" ariaLabel="Audit log filters">
         <label className="toolbar-control audit-date-filter">
           <span>From</span>
-          <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} aria-label="Audit from date" />
+          <input className="workspace-date-input" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} aria-label="Audit from date" />
         </label>
         <label className="toolbar-control audit-date-filter">
           <span>To</span>
-          <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} aria-label="Audit to date" />
+          <input className="workspace-date-input" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} aria-label="Audit to date" />
         </label>
         {canSelectBranch && (
           <label className="toolbar-control" style={{ flex: "0 0 190px" }}>

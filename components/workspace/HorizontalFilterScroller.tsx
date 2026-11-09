@@ -1,15 +1,17 @@
 "use client";
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 export function HorizontalFilterScroller({
   className,
   ariaLabel,
+  style,
   children,
 }: {
   className: string;
   ariaLabel: string;
+  style?: CSSProperties;
   children: ReactNode;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -49,7 +51,7 @@ export function HorizontalFilterScroller({
   };
 
   return (
-    <div className={`${className} horizontal-filter-scroller`} role="group" aria-label={ariaLabel}>
+    <div className={`${className} horizontal-filter-scroller`} role="group" aria-label={ariaLabel} style={style}>
       <button
         className="horizontal-filter-arrow"
         type="button"

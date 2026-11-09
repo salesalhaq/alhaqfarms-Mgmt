@@ -1,9 +1,11 @@
 "use client";
 
-import { AlertCircle, Cloud, LoaderCircle, RefreshCw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { AlertCircle, Cloud, LoaderCircle, RefreshCw, Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { formatDateTime, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 
@@ -56,6 +58,13 @@ export function CloudSyncWorkspace({ item }: { item: WorkspaceModule }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [deviceSearch, setDeviceSearch] = useState("");
+  const [deviceBranch, setDeviceBranch] = useState("");
+  const [deviceStatus, setDeviceStatus] = useState("");
+  const [deviceConnection, setDeviceConnection] = useState("");
+  const [eventSearch, setEventSearch] = useState("");
+  const [eventBranch, setEventBranch] = useState("");
+  const [eventAction, setEventAction] = useState("");
 
   useEffect(() => {
     if (!staff) return;
@@ -95,6 +104,36 @@ export function CloudSyncWorkspace({ item }: { item: WorkspaceModule }) {
   }, [branchId, reloadKey, staff]);
 
   const summary = payload?.summary;
+  const deviceRows = useMemo(() => (payload?.rows || []).filter((device) => {
+    const query = deviceSearch.trim().toLocaleLowerCase();
+    return (!query || [device.name, device.branch_name, device.platform, device.status, device.online ? "online" : "offline"]
+      .some((value) => String(value || "").toLocaleLowerCase().includes(query)))
+      && (!deviceBranch || device.branch_name === deviceBranch)
+      && (!deviceStatus || device.status === deviceStatus)
+      && (!deviceConnection || (device.online ? "online" : "offline") === deviceConnection);
+  }), [deviceBranch, deviceConnection, deviceSearch, deviceStatus, payload?.rows]);
+  const eventRows = useMemo(() => (payload?.events || []).filter((event) => {
+    const query = eventSearch.trim().toLocaleLowerCase();
+    return (!query || [event.occurred_at, event.branch_name, event.action, event.entity_type, event.entity_id, event.details]
+      .some((value) => String(value || "").toLocaleLowerCase().includes(query)))
+      && (!eventBranch || event.branch_name === eventBranch)
+      && (!eventAction || event.action === eventAction);
+  }), [eventAction, eventBranch, eventSearch, payload?.events]);
+  const deviceBranches = [...new Set((payload?.rows || []).map((device) => device.branch_name))].sort();
+  const eventBranches = [...new Set((payload?.events || []).map((event) => event.branch_name))].sort();
+  const deviceStatuses = [...new Set((payload?.rows || []).map((device) => device.status))].sort();
+  const eventActions = [...new Set((payload?.events || []).map((event) => event.action))].sort();
+  const clearDeviceFilters = () => {
+    setDeviceSearch("");
+    setDeviceBranch("");
+    setDeviceStatus("");
+    setDeviceConnection("");
+  };
+  const clearEventFilters = () => {
+    setEventSearch("");
+    setEventBranch("");
+    setEventAction("");
+  };
   const cards = summary ? [
     { label: "Devices", value: summary.devices.toLocaleString(), note: `${summary.online} seen in the last 15 minutes` },
     { label: "Approved", value: summary.approved.toLocaleString(), note: "Trusted terminals" },
@@ -123,17 +162,27 @@ export function CloudSyncWorkspace({ item }: { item: WorkspaceModule }) {
         <span>{payload?.note || "The desktop sync outbox, retries, and connection credentials stay on each Windows terminal."}</span>
       </div>
 
-      <div className="daily-report-toolbar daily-report-no-print">
+      <HorizontalFilterScroller
+        className="cloud-sync-branch-filter"
+        ariaLabel="Cloud Sync branch filter"
+        style={{ justifyContent: "flex-end", marginBottom: "14px" }}
+      >
         {staff?.role === "admin" && (
-          <label className="toolbar-control">
+          <label className="toolbar-control" style={{ flex: "0 0 220px" }}>
             <span>Branch</span>
-            <select className="toolbar-select" value={branchId || "all"} onChange={(event) => setBranchId(event.target.value)}>
-              <option value="all">All accessible branches</option>
-              {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-            </select>
+            <SearchableFilter
+              value={branchId || "all"}
+              ariaLabel="Filter Cloud Sync by branch"
+              placeholder="All accessible branches"
+              options={[
+                { value: "all", label: "All accessible branches" },
+                ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+              ]}
+              onChange={setBranchId}
+            />
           </label>
         )}
-      </div>
+      </HorizontalFilterScroller>
 
       {error && (
         <div className="card panel" role="alert">
@@ -157,13 +206,38 @@ export function CloudSyncWorkspace({ item }: { item: WorkspaceModule }) {
 
           <section className="card table-wrap workspace-table" aria-label="Synchronizing devices">
             <div className="table-document-heading">
-              <strong>Devices · {payload.branchName}</strong>
-              <TableDocumentTools tableId="cloud-sync-devices" title={`${item.title} devices`} disabled={!payload.rows.length} />
+              <strong>Devices · {payload.branchName} · {deviceRows.length} shown</strong>
+              <TableDocumentTools tableId="cloud-sync-devices" title={`${item.title} devices`} disabled={!deviceRows.length} />
             </div>
+            <HorizontalFilterScroller className="cloud-sync-filter-row" ariaLabel="Device table filters" style={{ margin: "8px 0" }}>
+              <label className="search-field" style={{ flex: "1 0 220px", minWidth: 180 }}>
+                <Search size={16} aria-hidden="true" />
+                <input aria-label="Search devices" placeholder="Search devices" value={deviceSearch} onChange={(event) => setDeviceSearch(event.target.value)} />
+              </label>
+              <label className="toolbar-control" style={{ flex: "0 0 155px" }}>
+                <span>Branch</span>
+                <SearchableFilter value={deviceBranch} ariaLabel="Filter devices by branch" placeholder="All branches"
+                  options={[{ value: "", label: "All branches" }, ...deviceBranches.map((branch) => ({ value: branch, label: branch }))]}
+                  onChange={setDeviceBranch} />
+              </label>
+              <label className="toolbar-control" style={{ flex: "0 0 145px" }}>
+                <span>Status</span>
+                <SearchableFilter value={deviceStatus} ariaLabel="Filter devices by status" placeholder="All statuses"
+                  options={[{ value: "", label: "All statuses" }, ...deviceStatuses.map((status) => ({ value: status, label: labelize(status) }))]}
+                  onChange={setDeviceStatus} />
+              </label>
+              <label className="toolbar-control" style={{ flex: "0 0 145px" }}>
+                <span>Connection</span>
+                <SearchableFilter value={deviceConnection} ariaLabel="Filter devices by connection" placeholder="All connections"
+                  options={[{ value: "", label: "All connections" }, { value: "online", label: "Online" }, { value: "offline", label: "Offline" }]}
+                  onChange={setDeviceConnection} />
+              </label>
+              <button className="button link" type="button" onClick={clearDeviceFilters}>Clear</button>
+            </HorizontalFilterScroller>
             <table id="cloud-sync-devices">
               <thead><tr><th>Device</th><th>Branch</th><th>Platform</th><th>Status</th><th>Last seen</th><th>Connection</th></tr></thead>
               <tbody>
-                {payload.rows.length ? payload.rows.map((device) => (
+                {deviceRows.length ? deviceRows.map((device) => (
                   <tr key={device.id}>
                     <td><span className="primary-cell">{device.name}</span></td>
                     <td>{device.branch_name}</td>
@@ -172,21 +246,40 @@ export function CloudSyncWorkspace({ item }: { item: WorkspaceModule }) {
                     <td className="nowrap">{device.last_seen_at ? formatDateTime(device.last_seen_at) : "Never"}</td>
                     <td><span className={`status ${device.online ? "green" : ""}`}>{device.online ? "Online" : "Offline"}</span></td>
                   </tr>
-                )) : <tr><td colSpan={6} className="empty">No devices are registered for this scope.</td></tr>}
+                )) : <tr><td colSpan={6} className="empty">{payload.rows.length ? "No devices match these filters." : "No devices are registered for this scope."}</td></tr>}
               </tbody>
             </table>
           </section>
 
           <section className="card table-wrap workspace-table" aria-label="Recent synchronization events">
             <div className="table-document-heading">
-              <strong>Recent synchronization events · last 7 days</strong>
-              <TableDocumentTools tableId="cloud-sync-events" title={`${item.title} events`} disabled={!payload.events.length} />
+              <strong>Recent synchronization events · {eventRows.length} shown</strong>
+              <TableDocumentTools tableId="cloud-sync-events" title={`${item.title} events`} disabled={!eventRows.length} />
             </div>
             {payload.eventsError && <p className="error-banner" role="alert">{payload.eventsError}</p>}
+            <HorizontalFilterScroller className="cloud-sync-filter-row" ariaLabel="Synchronization event table filters" style={{ margin: "8px 0" }}>
+              <label className="search-field" style={{ flex: "1 0 220px", minWidth: 180 }}>
+                <Search size={16} aria-hidden="true" />
+                <input aria-label="Search synchronization events" placeholder="Search events" value={eventSearch} onChange={(event) => setEventSearch(event.target.value)} />
+              </label>
+              <label className="toolbar-control" style={{ flex: "0 0 155px" }}>
+                <span>Branch</span>
+                <SearchableFilter value={eventBranch} ariaLabel="Filter events by branch" placeholder="All branches"
+                  options={[{ value: "", label: "All branches" }, ...eventBranches.map((branch) => ({ value: branch, label: branch }))]}
+                  onChange={setEventBranch} />
+              </label>
+              <label className="toolbar-control" style={{ flex: "0 0 170px" }}>
+                <span>Action</span>
+                <SearchableFilter value={eventAction} ariaLabel="Filter events by action" placeholder="All actions"
+                  options={[{ value: "", label: "All actions" }, ...eventActions.map((action) => ({ value: action, label: labelize(action) }))]}
+                  onChange={setEventAction} />
+              </label>
+              <button className="button link" type="button" onClick={clearEventFilters}>Clear</button>
+            </HorizontalFilterScroller>
             <table id="cloud-sync-events">
               <thead><tr><th>When</th><th>Branch</th><th>Action</th><th>Record</th><th>Details</th></tr></thead>
               <tbody>
-                {payload.events.length ? payload.events.map((event) => (
+                {eventRows.length ? eventRows.map((event) => (
                   <tr key={event.id}>
                     <td className="nowrap">{formatDateTime(event.occurred_at)}</td>
                     <td>{event.branch_name}</td>
@@ -194,7 +287,7 @@ export function CloudSyncWorkspace({ item }: { item: WorkspaceModule }) {
                     <td>{event.entity_id || event.entity_type}</td>
                     <td>{event.details || "—"}</td>
                   </tr>
-                )) : <tr><td colSpan={5} className="empty">No synchronization events recorded in the last 7 days.</td></tr>}
+                )) : <tr><td colSpan={5} className="empty">{payload.events.length ? "No events match these filters." : "No synchronization events recorded in the last 7 days."}</td></tr>}
               </tbody>
             </table>
           </section>

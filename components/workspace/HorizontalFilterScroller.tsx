@@ -52,31 +52,33 @@ export function HorizontalFilterScroller({
 
   return (
     <div className={`${className} horizontal-filter-scroller`} role="group" aria-label={ariaLabel} style={style}>
-      <button
-        className="horizontal-filter-arrow"
-        type="button"
-        aria-label={`Scroll ${ariaLabel.toLocaleLowerCase()} left`}
-        title="Show filters to the left"
-        disabled={!canScrollLeft}
-        onClick={() => scroll(-1)}
-      >
-        <ChevronLeft size={17} />
-      </button>
+      {canScrollLeft && (
+        <button
+          className="horizontal-filter-arrow"
+          type="button"
+          aria-label={`Scroll ${ariaLabel.toLocaleLowerCase()} left`}
+          title="Show filters to the left"
+          onClick={() => scroll(-1)}
+        >
+          <ChevronLeft size={17} />
+        </button>
+      )}
       <div className="horizontal-filter-viewport" ref={viewportRef}>
         <div className="horizontal-filter-content" ref={contentRef}>
           {children}
         </div>
       </div>
-      <button
-        className="horizontal-filter-arrow"
-        type="button"
-        aria-label={`Scroll ${ariaLabel.toLocaleLowerCase()} right`}
-        title="Show filters to the right"
-        disabled={!canScrollRight}
-        onClick={() => scroll(1)}
-      >
-        <ChevronRight size={17} />
-      </button>
+      {canScrollRight && (
+        <button
+          className="horizontal-filter-arrow"
+          type="button"
+          aria-label={`Scroll ${ariaLabel.toLocaleLowerCase()} right`}
+          title="Show filters to the right"
+          onClick={() => scroll(1)}
+        >
+          <ChevronRight size={17} />
+        </button>
+      )}
     </div>
   );
 }

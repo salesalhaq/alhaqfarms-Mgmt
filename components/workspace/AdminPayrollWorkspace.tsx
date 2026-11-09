@@ -599,7 +599,7 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
         </div>
         <HorizontalFilterScroller className="payroll-filterbar workspace-page-report-filterbar" ariaLabel="HR and payroll filters">
           {staff?.role === "admin" && (
-            <label className="toolbar-control" style={{ flex: "0 0 190px" }}>
+            <label className="toolbar-control">
               <span>Branch</span>
               <SearchableFilter
                 value={branchId}

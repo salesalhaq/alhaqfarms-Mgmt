@@ -394,7 +394,7 @@ export function ReportCenterWorkspace({
           </div>
         </div>
 
-        <HorizontalFilterScroller className="report-center-tab-row" ariaLabel="Report groups">
+        <HorizontalFilterScroller className="report-center-tab-row" ariaLabel="Report groups and picker controls">
           <div className="report-center-group-tabs" role="tablist" aria-label="Report groups">
             {groups.map((group) => (
               <button
@@ -410,23 +410,23 @@ export function ReportCenterWorkspace({
               </button>
             ))}
           </div>
+          <div className="report-center-picker-controls daily-report-no-print">
+            <div className="heading-actions report-center-picker-actions">
+              <button className="button secondary" type="button" onClick={() => setSelected(new Set(catalog.map((report) => report.id)))}>Select all</button>
+              <button className="button secondary" type="button" onClick={() => setSelected(new Set())}>Clear</button>
+            </div>
+            <div className="report-center-print-options">
+              <label className="report-center-check">
+                <input type="checkbox" checked={newPageEach} onChange={(event) => setNewPageEach(event.target.checked)} />
+                New page each
+              </label>
+              <label className="report-center-check">
+                <input type="checkbox" checked={landscape} onChange={(event) => setLandscape(event.target.checked)} />
+                Landscape
+              </label>
+            </div>
+          </div>
         </HorizontalFilterScroller>
-        <div className="report-center-picker-controls daily-report-no-print">
-          <div className="heading-actions report-center-picker-actions">
-            <button className="button secondary" type="button" onClick={() => setSelected(new Set(catalog.map((report) => report.id)))}>Select all</button>
-            <button className="button secondary" type="button" onClick={() => setSelected(new Set())}>Clear</button>
-          </div>
-          <div className="report-center-print-options">
-            <label className="report-center-check">
-              <input type="checkbox" checked={newPageEach} onChange={(event) => setNewPageEach(event.target.checked)} />
-              New page each
-            </label>
-            <label className="report-center-check">
-              <input type="checkbox" checked={landscape} onChange={(event) => setLandscape(event.target.checked)} />
-              Landscape
-            </label>
-          </div>
-        </div>
 
         <HorizontalFilterScroller className="report-center-picker-scroller" ariaLabel="Report picker options">
           <div className="report-center-picker-options">

@@ -138,7 +138,7 @@ export async function buildAdminReportCenter(
   ] = await Promise.all([
     fetchPaged<Row>(() => branchScope(client
       .from("pos_sales")
-      .select("id,receipt_number,branch_id,cashier_id,status,subtotal_paisa,item_discount_paisa,bill_discount_paisa,discount_paisa,tax_paisa,total_paisa,paid_paisa,due_paisa,cost_total_paisa,created_offline,override_by,customer_name,customer_phone,source_type,completed_at,created_at,customer_account_id,notes")
+      .select("id,receipt_number,branch_id,cashier_id,status,subtotal_paisa,item_discount_paisa,bill_discount_paisa,discount_paisa,tax_paisa,rounding_paisa,total_paisa,paid_paisa,due_paisa,cost_total_paisa,created_offline,override_by,customer_name,customer_phone,source_type,completed_at,created_at,customer_account_id,notes")
       .is("deleted_at", null)
       .gte("created_at", fromIso)
       .lt("created_at", toIso)
@@ -263,6 +263,18 @@ export async function buildAdminReportCenter(
   const productName = (id: unknown, fallback?: unknown): string =>
     (typeof id === "string" ? stockById.get(id)?.name : "") || String(fallback || "—");
 
+  // Delivery is not stored separately on pos_sales. For web orders the storefront
+  // adds the delivery charge to the total, so recover it from the sale arithmetic.
+  const saleDelivery = (sale: Row): number =>
+    Math.max(
+      0,
+      asNumber(sale.total_paisa) -
+        asNumber(sale.subtotal_paisa) +
+        asNumber(sale.discount_paisa) -
+        asNumber(sale.tax_paisa) -
+        asNumber(sale.rounding_paisa),
+    );
+
   const activeSales = sales.filter((sale) => !isVoidStatus(sale));
   const completedSales = sales.filter(isCompletedStatus);
   const activeSaleIds = new Set(activeSales.map((sale) => sale.id));
@@ -278,24 +290,26 @@ export async function buildAdminReportCenter(
   };
 
   /* ---------------------------------------------------------------- summary */
-  const channelMap = new Map<string, { channel: string; orders: number; total: number; tax: number }>();
+  const channelMap = new Map<string, { channel: string; orders: number; total: number; tax: number; delivery: number }>();
   for (const sale of activeSales) {
     const channel = sale.source_type === "web_order" ? "Online" : "In-store / POS";
-    const bucket = channelMap.get(channel) || { channel, orders: 0, total: 0, tax: 0 };
+    const bucket = channelMap.get(channel) || { channel, orders: 0, total: 0, tax: 0, delivery: 0 };
     bucket.orders += 1;
     bucket.total += asNumber(sale.total_paisa);
     bucket.tax += asNumber(sale.tax_paisa);
+    bucket.delivery += saleDelivery(sale);
     channelMap.set(channel, bucket);
   }
   const totalSales = activeSales.reduce((total, sale) => total + asNumber(sale.total_paisa), 0);
   const totalTax = activeSales.reduce((total, sale) => total + asNumber(sale.tax_paisa), 0);
+  const totalDelivery = activeSales.reduce((total, sale) => total + saleDelivery(sale), 0);
   const totalReturns = completedReturns.reduce((total, entry) => total + asNumber(entry.refund_total_paisa), 0);
   const cogs = activeItems.reduce(
     (total, item) => total + (asNumber(item.quantity_milli) * asNumber(item.unit_cost_paisa)) / 1000,
     0,
   );
   const totalExpenses = expenses.reduce((total, entry) => total + asNumber(entry.amount_paisa), 0);
-  const netSales = totalSales - totalTax - totalReturns;
+  const netSales = totalSales - totalTax - totalDelivery - totalReturns;
   const grossProfit = netSales - cogs;
   const netResult = grossProfit - totalExpenses;
   const lowStock = stock.rows.filter((row) => row.status === "Low").length;
@@ -334,14 +348,15 @@ export async function buildAdminReportCenter(
         total: bucket.total,
         average: bucket.orders ? bucket.total / bucket.orders : 0,
         tax: bucket.tax,
-        delivery: 0,
+        delivery: bucket.delivery,
       })).sort((left, right) => right.total - left.total), { title: "Sales by channel" }),
       table([
         { key: "item", label: "Item", type: "text" },
         { key: "amount", label: "Amount", type: "money" },
       ], [
-        { item: "Total sales (including tax)", amount: totalSales },
+        { item: "Total sales (including tax and delivery)", amount: totalSales },
         { item: "Less: tax collected", amount: totalTax },
+        { item: "Less: delivery charges", amount: totalDelivery },
         { item: "Less: completed returns", amount: totalReturns },
         { item: "Net sales", amount: netSales },
         { item: "Less: estimated cost of goods", amount: cogs },
@@ -365,20 +380,21 @@ export async function buildAdminReportCenter(
   });
 
   /* ------------------------------------------------------------------ daily */
-  const dayMap = new Map<string, { day: string; orders: number; instore: number; online: number; total: number; tax: number; returns: number }>();
+  const dayMap = new Map<string, { day: string; orders: number; instore: number; online: number; total: number; tax: number; delivery: number; returns: number }>();
   for (const sale of activeSales) {
     const day = pakistanDayKey(sale.created_at);
-    const bucket = dayMap.get(day) || { day, orders: 0, instore: 0, online: 0, total: 0, tax: 0, returns: 0 };
+    const bucket = dayMap.get(day) || { day, orders: 0, instore: 0, online: 0, total: 0, tax: 0, delivery: 0, returns: 0 };
     bucket.orders += 1;
     if (sale.source_type === "web_order") bucket.online += asNumber(sale.total_paisa);
     else bucket.instore += asNumber(sale.total_paisa);
     bucket.total += asNumber(sale.total_paisa);
     bucket.tax += asNumber(sale.tax_paisa);
+    bucket.delivery += saleDelivery(sale);
     dayMap.set(day, bucket);
   }
   for (const entry of completedReturns) {
     const day = pakistanDayKey(entry.created_at);
-    const bucket = dayMap.get(day) || { day, orders: 0, instore: 0, online: 0, total: 0, tax: 0, returns: 0 };
+    const bucket = dayMap.get(day) || { day, orders: 0, instore: 0, online: 0, total: 0, tax: 0, delivery: 0, returns: 0 };
     bucket.returns += asNumber(entry.refund_total_paisa);
     dayMap.set(day, bucket);
   }
@@ -400,7 +416,6 @@ export async function buildAdminReportCenter(
         { key: "net", label: "Net sales", type: "money", sum: true },
       ], [...dayMap.values()].sort((left, right) => left.day.localeCompare(right.day)).map((bucket) => ({
         ...bucket,
-        delivery: 0,
         net: bucket.total - bucket.returns,
       }))),
     ],
@@ -478,7 +493,7 @@ export async function buildAdminReportCenter(
           sales: total,
           average: rows.length ? total / rows.length : 0,
           tax: rows.reduce((sum, sale) => sum + asNumber(sale.tax_paisa), 0),
-          delivery: 0,
+          delivery: rows.reduce((sum, sale) => sum + saleDelivery(sale), 0),
           returns: refunds,
           net: total - refunds,
         };
@@ -660,7 +675,7 @@ export async function buildAdminReportCenter(
         status: sale.status,
         total: asNumber(sale.total_paisa),
         tax: asNumber(sale.tax_paisa),
-        delivery: 0,
+        delivery: saleDelivery(sale),
         __nosum: isVoidStatus(sale),
       }))),
     ],
@@ -738,7 +753,7 @@ export async function buildAdminReportCenter(
         branch: branchName(id),
         orders: rows.length,
         tax: rows.reduce((total, sale) => total + asNumber(sale.tax_paisa), 0),
-        delivery: 0,
+        delivery: rows.reduce((total, sale) => total + saleDelivery(sale), 0),
       })).sort((left, right) => right.tax - left.tax), { title: "Tax and delivery by branch" }),
     ],
   });

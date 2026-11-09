@@ -5,6 +5,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import type { Database } from "@/lib/supabase/database.types";
@@ -346,8 +348,8 @@ export function StoreOrdersWorkspace({ item, initialOrderId }: { item: Workspace
         </div>
       </div>
 
-      <div className="toolbar">
-        <label className="search-field">
+      <HorizontalFilterScroller className="toolbar online-orders-filterbar" ariaLabel="Online order filters">
+        <label className="search-field online-orders-search">
           <Search size={16} />
           <input
             aria-label="Search store orders"
@@ -358,35 +360,40 @@ export function StoreOrdersWorkspace({ item, initialOrderId }: { item: Workspace
         </label>
 
         {isAdmin && (
-          <select
-            aria-label="Filter by branch"
-            className="toolbar-select"
-            value={branchId}
-            onChange={(event) => setBranchId(event.target.value)}
-          >
-            <option value="all">All branches</option>
-            {branches.map((branch) => (
-              <option key={branch.id} value={branch.id}>{branch.name}</option>
-            ))}
-          </select>
+          <label className="toolbar-control online-orders-filter">
+            <span>Branch</span>
+            <SearchableFilter
+              value={branchId}
+              ariaLabel="Filter online orders by branch"
+              placeholder="All branches"
+              options={[
+                { value: "all", label: "All branches" },
+                ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+              ]}
+              onChange={setBranchId}
+            />
+          </label>
         )}
 
-        <select
-          aria-label="Filter by order status"
-          className="toolbar-select"
-          value={status}
-          onChange={(event) => setStatus(event.target.value as (typeof ORDER_STATUS_OPTIONS)[number])}
-        >
-          {ORDER_STATUS_OPTIONS.map((option) => (
-            <option key={option} value={option}>{option === "all" ? "All statuses" : labelize(option)}</option>
-          ))}
-        </select>
+        <label className="toolbar-control online-orders-filter">
+          <span>Status</span>
+          <SearchableFilter
+            value={status}
+            ariaLabel="Filter online orders by status"
+            placeholder="All statuses"
+            options={ORDER_STATUS_OPTIONS.map((option) => ({
+              value: option,
+              label: option === "all" ? "All statuses" : labelize(option),
+            }))}
+            onChange={(value) => setStatus(value as (typeof ORDER_STATUS_OPTIONS)[number])}
+          />
+        </label>
 
-        <label className="toolbar-control">
+        <label className="toolbar-control online-orders-date">
           <span>From</span>
           <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
         </label>
-        <label className="toolbar-control">
+        <label className="toolbar-control online-orders-date">
           <span>To</span>
           <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
         </label>
@@ -395,7 +402,7 @@ export function StoreOrdersWorkspace({ item, initialOrderId }: { item: Workspace
         <button className="button secondary" disabled={loading} onClick={() => setReloadKey((value) => value + 1)} type="button">
           {loading ? <LoaderCircle size={15} className="spin" /> : "Refresh"}
         </button>
-      </div>
+      </HorizontalFilterScroller>
 
       {error ? (
         <div className="notice" role="alert"><AlertCircle size={16} /> {error}</div>

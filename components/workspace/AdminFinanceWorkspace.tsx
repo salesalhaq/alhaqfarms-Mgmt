@@ -4,10 +4,8 @@ import {
   AlertCircle,
   BarChart3,
   Calculator,
-  Download,
   LoaderCircle,
   Percent,
-  RefreshCw,
   TrendingUp,
   Wallet,
 } from "lucide-react";
@@ -15,6 +13,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { TableControls } from "@/components/workspace/TableControls";
+import { WorkspaceReportActions } from "@/components/workspace/WorkspaceReportActions";
 import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
 import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { formatMoney, formatQuantity } from "@/lib/format";
@@ -179,31 +178,6 @@ export function AdminFinanceWorkspace({ item }: { item: WorkspaceModule }) {
     },
   ] : [];
 
-  const exportCsv = () => {
-    if (!report) return;
-    const header = ["Day", "Receipts", "Refunds", "Net sales", "Tax", "Cost", "Gross profit", "Margin %"];
-    const lines = report.byDay.map((row) => [
-      row.day,
-      String(row.receipts),
-      (row.refundPaisa / 100).toFixed(2),
-      (row.netSalesPaisa / 100).toFixed(2),
-      (row.taxPaisa / 100).toFixed(2),
-      (row.costPaisa / 100).toFixed(2),
-      (row.profitPaisa / 100).toFixed(2),
-      (row.marginBps / 100).toFixed(2),
-    ]);
-    const csv = [header, ...lines]
-      .map((line) => line.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(","))
-      .join("\r\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `profit-tax-${report.from}-to-${report.to}.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  };
-
   const chartDays = useMemo(() => (report ? report.byDay.slice(0, 14).reverse() : []), [report]);  const maxProfit = useMemo(
     () => Math.max(1, ...chartDays.map((row) => Math.max(row.profitPaisa, 0))),
     [chartDays],
@@ -245,14 +219,69 @@ export function AdminFinanceWorkspace({ item }: { item: WorkspaceModule }) {
             <span>To</span>
             <input type="date" value={toDate} min={fromDate} onChange={(event) => setToDate(event.target.value)} />
           </label>
-          <button className="button secondary" type="button" onClick={() => setReloadKey((value) => value + 1)} disabled={loading}>
-            {loading ? <><LoaderCircle className="spin" size={14} /> Loading…</> : <><RefreshCw size={14} /> Refresh</>}
-          </button>
-          <button className="button secondary" type="button" onClick={exportCsv} disabled={!report?.byDay.length}>
-            <Download size={14} /> Export CSV
-          </button>
         </HorizontalFilterScroller>
       </div>
+      <WorkspaceReportActions
+        title={item.title}
+        sections={report ? [
+          {
+            title: "Profit and tax by day",
+            columns: ["Day", "Receipts", "Refunds", "Net sales", "Tax", "Cost", "Gross profit", "Margin"],
+            rows: report.byDay.map((row) => [
+              formatDay(row.day),
+              String(row.receipts),
+              formatMoney(row.refundPaisa),
+              formatMoney(row.netSalesPaisa),
+              formatMoney(row.taxPaisa),
+              formatMoney(row.costPaisa),
+              formatMoney(row.profitPaisa),
+              marginText(row.marginBps),
+            ]),
+          },
+          {
+            title: "Tax by rate",
+            columns: ["Rate", "Lines", "Net sales", "Tax"],
+            rows: report.byTaxRate.map((row) => [
+              percentFromBps(row.rate_bps),
+              String(row.lines),
+              formatMoney(row.netSalesPaisa),
+              formatMoney(row.taxPaisa),
+            ]),
+          },
+          {
+            title: "Product profit detail",
+            columns: ["Product", "SKU", "Quantity", "Net sales", "Tax", "Cost", "Gross profit", "Margin"],
+            rows: report.byProduct.slice(0, 10).map((row) => [
+              row.product_name,
+              row.sku || "—",
+              formatQuantity(row.quantity),
+              formatMoney(row.netSalesPaisa),
+              formatMoney(row.taxPaisa),
+              formatMoney(row.costPaisa),
+              formatMoney(row.profitPaisa),
+              marginText(row.marginBps),
+            ]),
+          },
+        ] : []}
+        summary={summary ? [
+          ["Receipts", summary.receipts],
+          ["Net sales", formatMoney(summary.netSalesPaisa)],
+          ["Cost of goods", formatMoney(summary.costPaisa)],
+          ["Gross profit", formatMoney(summary.profitPaisa)],
+          ["Margin", marginText(summary.marginBps)],
+          ["Output tax", formatMoney(summary.taxPaisa)],
+          ["Refunds", `${summary.refunds} · ${formatMoney(summary.refundPaisa)}`],
+        ] : []}
+        metadata={{
+          branch: report?.branchName || "",
+          period: report ? `${report.from} – ${report.to}` : `${fromDate} – ${toDate}`,
+          printedBy: staff?.full_name || "Staff",
+          filterSummary: report?.truncated ? "The selected period is capped; narrow the date range for complete totals." : "",
+        }}
+        onRefresh={() => setReloadKey((key) => key + 1)}
+        refreshing={loading}
+        disabled={!report || loading}
+      />
 
       {error && <div className="notice" role="alert"><AlertCircle size={15} /> {error}</div>}
 

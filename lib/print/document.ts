@@ -43,6 +43,12 @@ export interface TableReportInput {
   orientation?: PrintOrientation;
 }
 
+export interface ReportTableSection {
+  title: string;
+  columns: string[];
+  rows: string[][];
+}
+
 export interface GeneratedDocument {
   html: string;
   orientation: ResolvedOrientation;
@@ -416,6 +422,38 @@ export function generateTableDocument(input: TableReportInput): GeneratedDocumen
       reportTitle: title,
       orientation,
       branding,
+      metadata: input.metadata || {},
+      content,
+    }),
+    orientation,
+    title,
+  };
+}
+
+export function generateCombinedTableDocument(input: {
+  title: string;
+  sections: ReportTableSection[];
+  summary?: [string, string | number][];
+  branding?: ReportBranding;
+  metadata?: ReportMetadata;
+  orientation?: PrintOrientation;
+}): GeneratedDocument {
+  const title = String(input.title || "REPORT").toUpperCase();
+  const columns = input.sections.flatMap((section) => tableColumns(section.columns));
+  const orientation = chooseOrientation(columns, input.orientation || "auto");
+  const content = [
+    input.summary?.length ? summaryMarkup(input.summary) : "",
+    ...input.sections.map((section) => sectionMarkup(
+      section.title,
+      reportTableMarkup(tableColumns(section.columns), section.rows),
+    )),
+  ].join("");
+
+  return {
+    html: baseDocument({
+      reportTitle: title,
+      orientation,
+      branding: input.branding || {},
       metadata: input.metadata || {},
       content,
     }),

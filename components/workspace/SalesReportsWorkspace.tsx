@@ -1,10 +1,11 @@
 "use client";
 
-import { AlertCircle, LoaderCircle, RefreshCw } from "lucide-react";
+import { AlertCircle, LoaderCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { TableControls } from "@/components/workspace/TableControls";
+import { WorkspaceReportActions } from "@/components/workspace/WorkspaceReportActions";
 import { formatMoney, formatQuantity, labelize } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 
@@ -157,10 +158,71 @@ export function SalesReportsWorkspace({ item }: { item: WorkspaceModule }) {
           <span>To</span>
           <input type="date" value={toDate} min={fromDate} onChange={(event) => setToDate(event.target.value)} />
         </label>
-        <button className="button secondary" type="button" onClick={() => setReloadKey((value) => value + 1)} disabled={loading}>
-          {loading ? <><LoaderCircle className="spin" size={14} /> Loading…</> : <><RefreshCw size={14} /> Refresh</>}
-        </button>
       </div>
+      <WorkspaceReportActions
+        title={item.title}
+        sections={report ? [
+          {
+            title: "Sales by day",
+            columns: ["Day", "Receipts", "Gross", "Discount", "Tax"],
+            rows: report.byDay.map((row) => [
+              formatDay(row.day),
+              String(row.receipts),
+              formatMoney(row.total),
+              formatMoney(row.discount),
+              formatMoney(row.tax),
+            ]),
+          },
+          {
+            title: "Sales by cashier",
+            columns: ["Cashier", "Receipts", "Gross", "Discount"],
+            rows: report.byCashier.map((row) => [
+              row.cashier_name,
+              String(row.receipts),
+              formatMoney(row.total),
+              formatMoney(row.discount),
+            ]),
+          },
+          {
+            title: "Sales by product",
+            columns: ["Product", "SKU", "Quantity", "Gross", "Discount"],
+            rows: report.byProduct.map((row) => [
+              row.product_name,
+              row.sku || "—",
+              formatQuantity(row.quantity),
+              formatMoney(row.total),
+              formatMoney(row.discount),
+            ]),
+          },
+          {
+            title: "Sales by payment method",
+            columns: ["Method", "Payments", "Amount"],
+            rows: report.byPayment.map((row) => [
+              labelize(row.method),
+              String(row.receipts),
+              formatMoney(row.amount),
+            ]),
+          },
+        ] : []}
+        summary={report ? [
+          ["Receipts", report.summary.receipts],
+          ["Gross sales", formatMoney(report.summary.grossPaisa)],
+          ["Discounts", formatMoney(report.summary.discountPaisa)],
+          ["Tax collected", formatMoney(report.summary.taxPaisa)],
+          ["Refunds", `${report.returns.count} · ${formatMoney(report.returns.refundPaisa)}`],
+          ["Net sales", formatMoney(report.netPaisa)],
+          ["Outstanding", formatMoney(report.summary.duePaisa)],
+        ] : []}
+        metadata={{
+          branch: report?.branchName || "",
+          period: report ? `${report.from} – ${report.to}` : `${fromDate} – ${toDate}`,
+          printedBy: staff?.full_name || "Staff",
+          filterSummary: report?.truncated ? "The selected period contains more rows than this report can load in one pass." : "",
+        }}
+        onRefresh={() => setReloadKey((value) => value + 1)}
+        refreshing={loading}
+        disabled={!report || loading}
+      />
 
       {error && <div className="notice" role="alert">{error}</div>}
 

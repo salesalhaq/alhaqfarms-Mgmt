@@ -10,6 +10,7 @@ import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { TableControls } from "@/components/workspace/TableControls";
+import { WorkspaceReportActions } from "@/components/workspace/WorkspaceReportActions";
 import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
 import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
@@ -1025,11 +1026,46 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
               </button>
             </>
           )}
-          <button className="secondary-button" type="button" onClick={() => setReloadKey((key) => key + 1)} disabled={loading}>
-            {loading ? <LoaderCircle size={15} className="spin" /> : <RefreshCw size={15} />} {isReports ? "REF" : "Refresh"}
-          </button>
+          {item.slug !== "vendors" && (
+            <button className="secondary-button" type="button" onClick={() => setReloadKey((key) => key + 1)} disabled={loading}>
+              {loading ? <LoaderCircle size={15} className="spin" /> : <RefreshCw size={15} />} {isReports ? "REF" : "Refresh"}
+            </button>
+          )}
         </div>
       </div>
+
+      {item.slug === "vendors" && (
+        <WorkspaceReportActions
+          title={item.title}
+          sections={[{
+            title: "Vendor balances",
+            columns: ["Vendor", "Email", "Contact", "Phone", "Purchases", "Purchase receipts", "Paid", "Balance", "Last purchase", "Status"],
+            rows: visibleRows.map((row) => [
+              row.name || "—",
+              row.email || "—",
+              row.contact_name || "—",
+              row.phone || "—",
+              formatMoney(row.purchases_paisa),
+              formatNumber(row.purchase_count),
+              formatMoney(row.paid_paisa),
+              formatMoney(row.balance_paisa),
+              row.last_purchase_at ? formatDay(row.last_purchase_at) : "—",
+              row.is_active ? "Active" : "Inactive",
+            ]),
+          }]}
+          summary={summary.map((entry) => [entry.label, String(entry.value)])}
+          metadata={{
+            branch: branchId === "all"
+              ? "All branches"
+              : branches.find((branch) => branch.id === branchId)?.name || "Your branch",
+            printedBy: staff?.full_name || "Staff",
+            filterSummary: "Includes current search and status filters.",
+          }}
+          onRefresh={() => setReloadKey((key) => key + 1)}
+          refreshing={loading}
+          disabled={!data || loading || Boolean(error)}
+        />
+      )}
 
       {item.slug === "animals" && animalOptionsError && (
         <div className="notice" role="alert"><AlertCircle size={17} /> {animalOptionsError}</div>

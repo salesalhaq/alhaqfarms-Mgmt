@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  AlertCircle, BarChart3, LoaderCircle, Package, PackageSearch, Plus, RefreshCw,
+  AlertCircle, BarChart3, LoaderCircle, Package, PackageSearch, Plus,
   Save, Search, X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
@@ -10,6 +10,7 @@ import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilte
 import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { TableControls } from "@/components/workspace/TableControls";
+import { WorkspaceReportActions } from "@/components/workspace/WorkspaceReportActions";
 import {
   WorkspaceDialog,
   WorkspaceError,
@@ -383,7 +384,6 @@ export function InventoryWorkspace({ item }: { item: WorkspaceModule }) {
       note: totals.valuationComplete ? "Current product cost · shown products" : "Shown products · search-scoped",
     },
   ] : [];
-
   const movementProductOptions = useMemo(() => payload?.products || [], [payload?.products]);
   const visibleInventoryProducts = useMemo(
     () => (payload?.products || []).filter((product) => (
@@ -391,6 +391,60 @@ export function InventoryWorkspace({ item }: { item: WorkspaceModule }) {
     )),
     [inventoryStatus, payload?.products],
   );
+  const reportSections = payload ? [
+    {
+      title: "Branch inventory",
+      columns: ["Product", "Category", "SKU / barcode", "On hand", "Reorder point", "Unit", "Status"],
+      rows: visibleInventoryProducts.map((product) => [
+        product.name,
+        product.category_name || "Uncategorized",
+        [product.sku, product.barcode].filter(Boolean).join(" / ") || "—",
+        formatQuantity(product.stock_milli),
+        product.reorder_point_milli == null ? "—" : formatQuantity(product.reorder_point_milli),
+        product.unit_code,
+        stockTone(product.stock_milli, product.reorder_point_milli).label,
+      ]),
+    },
+    {
+      title: "Stock movement history",
+      columns: ["Date", ...(isAdmin ? ["Branch"] : []), "Product", "Movement", "Change", "Balance after", "Unit cost", "Reference / reason", "Staff"],
+      rows: payload.movements.map((movement) => [
+        formatDateTime(movement.occurred_at),
+        ...(isAdmin ? [movement.branch_name] : []),
+        movement.product_name,
+        labelize(movement.label),
+        `${signedQuantity(movement.quantity_delta_milli)} ${movement.unit_code}`,
+        movement.balance_milli == null ? "—" : `${formatQuantity(movement.balance_milli)} ${movement.unit_code}`,
+        movement.unit_cost_paisa == null ? "—" : formatMoney(movement.unit_cost_paisa),
+        movement.receipt_number || movement.notes || (movement.reference_type ? labelize(movement.reference_type) : "—"),
+        movement.created_by_name || "—",
+      ]),
+    },
+    ...(payload.canViewStocktakes ? [{
+      title: "Stocktake history",
+      columns: ["Date", ...(isAdmin ? ["Branch"] : []), "Counted by", "Notes", "Products counted", "Adjusted", "Net variance"],
+      rows: payload.stocktakes.map((stocktake) => [
+        formatDateTime(stocktake.created_at),
+        ...(isAdmin ? [stocktake.branch_name] : []),
+        stocktake.created_by_name || "—",
+        stocktake.notes || "—",
+        String(stocktake.item_count),
+        String(stocktake.changed_count),
+        signedQuantity(stocktake.total_variance_milli),
+      ]),
+    }] : []),
+    ...(detail ? [{
+      title: `Stocktake count details · ${formatDateTime(detail.created_at)}`,
+      columns: ["Product", "Unit", "System", "Counted", "Variance"],
+      rows: detail.items.map((line) => [
+        line.product_name,
+        line.unit_code,
+        formatQuantity(line.system_quantity_milli),
+        formatQuantity(line.counted_quantity_milli),
+        signedQuantity(line.variance_milli),
+      ]),
+    }] : []),
+  ] : [];
   const stocktakeColumnCount = isAdmin ? 8 : 7;
   const actionBranchId = branchId === "all" ? targetBranchId : branchId;
   const actionProducts = branchId === "all" ? targetBranchProducts : payload?.products || [];
@@ -480,10 +534,16 @@ export function InventoryWorkspace({ item }: { item: WorkspaceModule }) {
             onChange={setInventoryStatus}
           />
         </label>
-        <button className="button secondary inventory-refresh" type="button" onClick={() => setReloadKey((value) => value + 1)} disabled={loading}>
-          {loading ? <><LoaderCircle className="spin" size={14} /> Loading…</> : <><RefreshCw size={14} /> Refresh</>}
-        </button>
       </HorizontalFilterScroller>
+      <WorkspaceReportActions
+        title={item.title}
+        sections={reportSections}
+        summary={cards.map((card) => [card.label, card.value])}
+        metadata={{ branch: payload?.branchName || "", printedBy: staff?.full_name || "Staff" }}
+        onRefresh={() => setReloadKey((value) => value + 1)}
+        refreshing={loading}
+        disabled={!payload || loading}
+      />
 
       {error && (
         <div className="card panel" role="alert">

@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, LoaderCircle, RefreshCw, Search } from "lucide-react";
+import { AlertCircle, LoaderCircle, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
@@ -9,6 +9,7 @@ import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { formatMoney, formatQuantity } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { WorkspaceReportActions } from "@/components/workspace/WorkspaceReportActions";
 import { generateBranchInventoryDocument } from "@/lib/print/reports";
 
 interface StockReportProduct {
@@ -260,11 +261,56 @@ export function StockReportsWorkspace({ item }: { item: WorkspaceModule }) {
                 onChange={(value) => setScope(value as StockScope)}
               />
             </label>
-            <button className="button secondary stock-reports-refresh" type="button" disabled={loading} onClick={() => setReloadKey((key) => key + 1)}>
-              {loading ? <LoaderCircle size={14} className="spin" /> : <RefreshCw size={14} />}
-              Refresh
-            </button>
           </HorizontalFilterScroller>
+          <WorkspaceReportActions
+            title={item.title}
+            sections={[{
+              title: `On-hand stock · ${report.branchName}`,
+              columns: ["Product", "Category", "SKU / barcode", "On hand", "Reorder point", "Maximum", "Value at cost", "Replenishment"],
+              rows: filteredProducts.map((product) => {
+                const status = stockStatus(product);
+                const value = stockValuePaisa(product);
+                const replenish = product.reorder_point_milli == null
+                  ? "Unavailable"
+                  : product.stock_milli <= product.reorder_point_milli
+                    ? "At or below reorder point"
+                    : product.max_stock_milli != null && product.max_stock_milli > 0
+                      && product.stock_milli < product.max_stock_milli
+                      ? `Top up by ${formatQuantity(product.max_stock_milli - product.stock_milli)}`
+                      : "No reorder indicated";
+                return [
+                  product.name,
+                  product.category_name || "—",
+                  product.sku || product.barcode || "—",
+                  `${formatQuantity(product.stock_milli)} ${product.unit_code}`,
+                  product.reorder_point_milli == null ? "Unavailable" : formatQuantity(product.reorder_point_milli),
+                  product.max_stock_milli == null ? "Unavailable" : product.max_stock_milli > 0 ? formatQuantity(product.max_stock_milli) : "Not set",
+                  value == null ? "Unavailable" : formatMoney(value),
+                  `${status.label} · ${replenish}`,
+                ];
+              }),
+            }]}
+            summary={totals ? [
+              ["Positive units on hand", formatQuantity(totals.positiveUnitsMilli)],
+              ["Products", totals.productCount],
+              ["Stock value", totals.valuePaisa == null ? "Unavailable" : formatMoney(totals.valuePaisa)],
+              ["At or below reorder", totals.lowStockCount == null ? "Unavailable" : totals.lowStockCount],
+              ["Negative balances", totals.negativeCount],
+            ] : []}
+            metadata={{
+              branch: report.branchName,
+              printedBy: staff?.full_name || "Staff",
+              filterSummary: [
+                search.trim() ? `Search: ${search.trim()}` : "",
+                categoryId !== "all" ? `Category: ${categories.find(([id]) => id === categoryId)?.[1] || categoryId}` : "",
+                scope !== "all" ? `Stock scope: ${scope}` : "",
+                report.reportComplete ? "" : "Source report is incomplete due to the safe catalog limit",
+              ].filter(Boolean).join(" · "),
+            }}
+            onRefresh={() => setReloadKey((key) => key + 1)}
+            refreshing={loading}
+            disabled={!report || loading}
+          />
 
           <section className="daily-report-panel card">
             <div className="daily-report-panel-heading">

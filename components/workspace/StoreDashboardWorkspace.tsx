@@ -23,6 +23,7 @@ import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { formatDateTime, formatMoney, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { WorkspaceReportActions } from "@/components/workspace/WorkspaceReportActions";
 
 type StoreDashboardRange = "today" | "7d" | "30d" | "month";
 
@@ -203,6 +204,39 @@ export function StoreDashboardWorkspace({ item }: { item: WorkspaceModule }) {
       && (ordersPaymentStatus === "all" || orderPaymentStatus(order) === ordersPaymentStatus)
       && (!query || order.order_number.toLocaleLowerCase().includes(query)));
   }, [data?.orders, ordersPaymentStatus, ordersSearch, ordersStatus]);
+  const reportSections = data ? [
+    {
+      title: "Recent sales",
+      columns: ["Receipt", "Status", "Total", "Completed"],
+      rows: visibleSales.map((sale) => [
+        sale.receipt_number,
+        labelize(sale.status),
+        formatMoney(sale.total_paisa),
+        formatDateTime(sale.completed_at),
+      ]),
+    },
+    {
+      title: "Recent returns",
+      columns: ["Return", "Status", "Refund", "Created"],
+      rows: visibleReturns.map((returnItem) => [
+        returnItem.return_number,
+        labelize(returnItem.status),
+        formatMoney(returnItem.refund_total_paisa),
+        formatDateTime(returnItem.created_at),
+      ]),
+    },
+    {
+      title: "Recent online orders",
+      columns: ["Order", "Status", "Payment", "Total", "Placed"],
+      rows: visibleOrders.map((order) => [
+        order.order_number,
+        labelize(order.status),
+        labelize(orderPaymentStatus(order)),
+        formatMoney(order.total_paisa),
+        formatDateTime(order.created_at),
+      ]),
+    },
+  ] : [];
   const salesStatusOptions = useMemo(() => [
     { value: "all", label: "All statuses" },
     ...[...new Set((data?.sales || []).map((sale) => sale.status))].sort().map((status) => ({ value: status, label: labelize(status) })),
@@ -295,11 +329,27 @@ export function StoreDashboardWorkspace({ item }: { item: WorkspaceModule }) {
               onChange={(value) => setRange(value as StoreDashboardRange)}
             />
           </label>
-          <button className="button secondary" type="button" disabled={loading} onClick={() => setReloadKey((value) => value + 1)}>
-            {loading ? <LoaderCircle size={15} className="spin" /> : "Refresh"}
-          </button>
         </HorizontalFilterScroller>
       </div>
+      <WorkspaceReportActions
+        title={item.title}
+        sections={reportSections}
+        summary={data ? [
+          ["Sales", `${data.summary.salesCount} · ${formatMoney(data.summary.salesTotalPaisa)}`],
+          ["Refunds", `${data.summary.refundCount} · ${formatMoney(data.summary.refundTotalPaisa)}`],
+          ["Online orders", `${data.summary.orderCount} · ${formatMoney(data.summary.orderTotalPaisa)}`],
+          ["Average ticket", formatMoney(data.summary.averageTicketPaisa)],
+        ] : []}
+        metadata={{
+          branch: data?.branchName || selectedBranchName,
+          period: data ? `${new Date(data.from).toLocaleDateString("en-PK")} – ${new Date(data.to).toLocaleDateString("en-PK")}` : "",
+          printedBy: staff?.full_name || "Staff",
+          filterSummary: "Tables reflect the current status, payment and search filters.",
+        }}
+        onRefresh={() => setReloadKey((value) => value + 1)}
+        refreshing={loading}
+        disabled={!data}
+      />
 
       {error ? (
         <div className="notice" role="alert">{error}</div>

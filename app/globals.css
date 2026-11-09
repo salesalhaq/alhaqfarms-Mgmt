@@ -687,6 +687,17 @@ tbody tr:hover { background: #fcfdfb; }
 .workspace-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-bottom: 16px; }
 .workspace-toolbar .search-field { min-width: 220px; }
 .workspace-toolbar .toolbar-select { min-width: 145px; }
+.workspace-report-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 16px; }
+.workspace-report-actions-inline { flex: 0 0 auto; flex-wrap: nowrap; margin: 0; }
+.daily-report-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; margin: 0 0 18px; }
+.daily-report-metrics .metric-card { display: grid; min-width: 0; gap: 8px; border: 1px solid #cbd8cd; border-radius: 12px; background: #f5f8f5; padding: 14px 16px; }
+.daily-report-metrics .metric-card span { color: #64736a; font-size: 11px; font-weight: 700; }
+.daily-report-metrics .metric-card strong { overflow-wrap: anywhere; color: var(--ink); font-family: "Segoe UI", Arial, sans-serif; font-size: 21px; letter-spacing: -.035em; }
+.daily-report-metrics .metric-card small { color: #7c8e80; font-size: 10px; }
+.daily-report-metrics .metric-card.green { border-color: #b8cbb9; background: #eef5ef; }
+.daily-report-metrics .metric-card.blue { border-color: #bfd1df; background: #eff5f9; }
+.daily-report-metrics .metric-card.purple { border-color: #d0c6df; background: #f5f1f9; }
+.daily-report-metrics .metric-card.amber { border-color: #e2d3b5; background: #faf6ed; }
 .device-filterbar, .audit-filterbar { margin-bottom: 16px; }
 .device-filterbar .horizontal-filter-content, .audit-filterbar .horizontal-filter-content { align-items: flex-end; gap: 8px; }
 .device-filterbar .search-field, .audit-filterbar .audit-search { min-width: 180px; flex: 1 0 220px; }
@@ -819,6 +830,7 @@ tbody tr:hover { background: #fcfdfb; }
   .app-shell { grid-template-columns: 72px minmax(0, 1fr); }
   .detail-grid { grid-template-columns: 1fr; }
   .dashboard-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .daily-report-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .store-reports-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-grid { grid-template-columns: 1fr; }
   .attention-list { grid-template-columns: 1fr; }
@@ -864,6 +876,7 @@ tbody tr:hover { background: #fcfdfb; }
   .store-dashboard-controls, .admin-dashboard-filterbar, .overview-dashboard-filterbar,
   .finance-filterbar, .payroll-filterbar { margin-left: 0; }
   .dashboard-stats, .shortcut-grid { grid-template-columns: 1fr 1fr; }
+  .daily-report-metrics { grid-template-columns: 1fr; }
   .store-reports-metrics { grid-template-columns: 1fr; }
   .overview-action-grid { grid-template-columns: 1fr; }
   .report-center-options { grid-template-columns: 1fr; }

@@ -2,6 +2,7 @@
 
 import { Download, Eye, Printer, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import {
   generateCombinedTableDocument,
@@ -124,7 +125,7 @@ export function WorkspaceReportActions({
         </button>
         {error && <span className="table-document-error" role="alert">{error}</span>}
       </div>
-      {preview && (
+      {preview && typeof document !== "undefined" && createPortal(
         <div
           className="table-document-backdrop"
           onMouseDown={(event) => {
@@ -149,7 +150,8 @@ export function WorkspaceReportActions({
               </button>
             </footer>
           </section>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

@@ -3,6 +3,7 @@
 import { AlertCircle, LoaderCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { TableControls } from "@/components/workspace/TableControls";
 import { WorkspaceReportActions } from "@/components/workspace/WorkspaceReportActions";
@@ -140,7 +141,10 @@ export function SalesReportsWorkspace({ item }: { item: WorkspaceModule }) {
         </div>
       </div>
 
-      <div className="daily-report-toolbar daily-report-no-print">
+      <HorizontalFilterScroller
+        className="daily-report-toolbar sales-reports-toolbar daily-report-no-print"
+        ariaLabel="Sales report filters and actions"
+      >
         {isAdmin && (
           <label className="toolbar-control">
             <span>Branch</span>
@@ -152,14 +156,13 @@ export function SalesReportsWorkspace({ item }: { item: WorkspaceModule }) {
         )}
         <label className="toolbar-control">
           <span>From</span>
-          <input type="date" value={fromDate} max={toDate} onChange={(event) => setFromDate(event.target.value)} />
+          <input className="workspace-date-input" type="date" value={fromDate} max={toDate} onChange={(event) => setFromDate(event.target.value)} />
         </label>
         <label className="toolbar-control">
           <span>To</span>
-          <input type="date" value={toDate} min={fromDate} onChange={(event) => setToDate(event.target.value)} />
+          <input className="workspace-date-input" type="date" value={toDate} min={fromDate} onChange={(event) => setToDate(event.target.value)} />
         </label>
-      </div>
-      <WorkspaceReportActions
+        <WorkspaceReportActions
         title={item.title}
         sections={report ? [
           {
@@ -222,7 +225,9 @@ export function SalesReportsWorkspace({ item }: { item: WorkspaceModule }) {
         onRefresh={() => setReloadKey((value) => value + 1)}
         refreshing={loading}
         disabled={!report || loading}
-      />
+        inline
+        />
+      </HorizontalFilterScroller>
 
       {error && <div className="notice" role="alert">{error}</div>}
 

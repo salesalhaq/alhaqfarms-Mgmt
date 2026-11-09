@@ -329,27 +329,28 @@ export function StoreDashboardWorkspace({ item }: { item: WorkspaceModule }) {
               onChange={(value) => setRange(value as StoreDashboardRange)}
             />
           </label>
+          <WorkspaceReportActions
+            title={item.title}
+            sections={reportSections}
+            summary={data ? [
+              ["Sales", `${data.summary.salesCount} · ${formatMoney(data.summary.salesTotalPaisa)}`],
+              ["Refunds", `${data.summary.refundCount} · ${formatMoney(data.summary.refundTotalPaisa)}`],
+              ["Online orders", `${data.summary.orderCount} · ${formatMoney(data.summary.orderTotalPaisa)}`],
+              ["Average ticket", formatMoney(data.summary.averageTicketPaisa)],
+            ] : []}
+            metadata={{
+              branch: data?.branchName || selectedBranchName,
+              period: data ? `${new Date(data.from).toLocaleDateString("en-PK")} – ${new Date(data.to).toLocaleDateString("en-PK")}` : "",
+              printedBy: staff?.full_name || "Staff",
+              filterSummary: "Tables reflect the current status, payment and search filters.",
+            }}
+            onRefresh={() => setReloadKey((value) => value + 1)}
+            refreshing={loading}
+            disabled={!data || loading}
+            inline
+          />
         </HorizontalFilterScroller>
       </div>
-      <WorkspaceReportActions
-        title={item.title}
-        sections={reportSections}
-        summary={data ? [
-          ["Sales", `${data.summary.salesCount} · ${formatMoney(data.summary.salesTotalPaisa)}`],
-          ["Refunds", `${data.summary.refundCount} · ${formatMoney(data.summary.refundTotalPaisa)}`],
-          ["Online orders", `${data.summary.orderCount} · ${formatMoney(data.summary.orderTotalPaisa)}`],
-          ["Average ticket", formatMoney(data.summary.averageTicketPaisa)],
-        ] : []}
-        metadata={{
-          branch: data?.branchName || selectedBranchName,
-          period: data ? `${new Date(data.from).toLocaleDateString("en-PK")} – ${new Date(data.to).toLocaleDateString("en-PK")}` : "",
-          printedBy: staff?.full_name || "Staff",
-          filterSummary: "Tables reflect the current status, payment and search filters.",
-        }}
-        onRefresh={() => setReloadKey((value) => value + 1)}
-        refreshing={loading}
-        disabled={!data}
-      />
 
       {error ? (
         <div className="notice" role="alert">{error}</div>

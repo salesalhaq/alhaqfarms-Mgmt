@@ -301,12 +301,12 @@ export function AdminExpensesWorkspace({ item }: { item: PageItem }) {
 
         <label className="toolbar-control">
           <span>From</span>
-          <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+          <input className="workspace-date-input" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
         </label>
 
         <label className="toolbar-control">
           <span>To</span>
-          <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
+          <input className="workspace-date-input" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
         </label>
 
         <label className="search-field admin-expenses-search">
@@ -318,43 +318,43 @@ export function AdminExpensesWorkspace({ item }: { item: PageItem }) {
             aria-label="Search expense descriptions"
           />
         </label>
-
+        <WorkspaceReportActions
+          title={item.title}
+          sections={[{
+            title: "Expense details",
+            columns: ["Date", "Branch", "Category", "Description", "Payment", "Reference", "Amount"],
+            rows: rows.map((row) => [
+              formatExpenseDate(row.spent_at),
+              row.branch_name,
+              row.category_name,
+              row.description || "—",
+              row.payment_method || "—",
+              row.reference || row.notes || "—",
+              formatMoney(Number(row.amount_paisa || 0)),
+            ]),
+          }]}
+          summary={[
+            ["Total spend", formatMoney(summary.totalPaisa)],
+            ["Expense entries", summary.records],
+            ["Average expense", formatMoney(summary.avgPaisa)],
+            ["Top category", summary.topCategory?.name || "—"],
+            ["Top category total", summary.topCategory ? formatMoney(summary.topCategory.total) : "—"],
+          ]}
+          metadata={{
+            branch: branchName || selectedBranchLabel,
+            period: `${fromDate} – ${toDate}`,
+            printedBy: staff?.full_name || "Staff",
+            filterSummary: [
+              categoryId !== "all" ? `Category: ${categories.find((category) => category.id === categoryId)?.name || categoryId}` : "",
+              search.trim() ? `Search: ${search.trim()}` : "",
+            ].filter(Boolean).join(" · "),
+          }}
+          onRefresh={() => setReloadKey((value) => value + 1)}
+          refreshing={loading}
+          disabled={loading || Boolean(error)}
+          inline
+        />
       </HorizontalFilterScroller>
-      <WorkspaceReportActions
-        title={item.title}
-        sections={[{
-          title: "Expense details",
-          columns: ["Date", "Branch", "Category", "Description", "Payment", "Reference", "Amount"],
-          rows: rows.map((row) => [
-            formatExpenseDate(row.spent_at),
-            row.branch_name,
-            row.category_name,
-            row.description || "—",
-            row.payment_method || "—",
-            row.reference || row.notes || "—",
-            formatMoney(Number(row.amount_paisa || 0)),
-          ]),
-        }]}
-        summary={[
-          ["Total spend", formatMoney(summary.totalPaisa)],
-          ["Expense entries", summary.records],
-          ["Average expense", formatMoney(summary.avgPaisa)],
-          ["Top category", summary.topCategory?.name || "—"],
-          ["Top category total", summary.topCategory ? formatMoney(summary.topCategory.total) : "—"],
-        ]}
-        metadata={{
-          branch: branchName || selectedBranchLabel,
-          period: `${fromDate} – ${toDate}`,
-          printedBy: staff?.full_name || "Staff",
-          filterSummary: [
-            categoryId !== "all" ? `Category: ${categories.find((category) => category.id === categoryId)?.name || categoryId}` : "",
-            search.trim() ? `Search: ${search.trim()}` : "",
-          ].filter(Boolean).join(" · "),
-        }}
-        onRefresh={() => setReloadKey((value) => value + 1)}
-        refreshing={loading}
-        disabled={loading || Boolean(error)}
-      />
 
       {error && (
         <div className="card panel" role="alert">

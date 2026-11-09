@@ -534,16 +534,17 @@ export function InventoryWorkspace({ item }: { item: WorkspaceModule }) {
             onChange={setInventoryStatus}
           />
         </label>
+        <WorkspaceReportActions
+          title={item.title}
+          sections={reportSections}
+          summary={cards.map((card) => [card.label, card.value])}
+          metadata={{ branch: payload?.branchName || "", printedBy: staff?.full_name || "Staff" }}
+          onRefresh={() => setReloadKey((value) => value + 1)}
+          refreshing={loading}
+          disabled={!payload || loading}
+          inline
+        />
       </HorizontalFilterScroller>
-      <WorkspaceReportActions
-        title={item.title}
-        sections={reportSections}
-        summary={cards.map((card) => [card.label, card.value])}
-        metadata={{ branch: payload?.branchName || "", printedBy: staff?.full_name || "Staff" }}
-        onRefresh={() => setReloadKey((value) => value + 1)}
-        refreshing={loading}
-        disabled={!payload || loading}
-      />
 
       {error && (
         <div className="card panel" role="alert">

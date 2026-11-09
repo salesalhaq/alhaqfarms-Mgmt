@@ -846,6 +846,128 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
     return [];
   }, [item.slug, visibleRows]);
 
+  const hasPageLevelActions = ["erp-dashboard", "erp-expenses", "bulk-sales", "spice", "production"].includes(item.slug);
+  const pageReportSections = useMemo(() => {
+    if (isDashboard && data?.overview) {
+      const overview = data.overview;
+      return [
+        {
+          title: "Wholesale, purchases and expenses · last 14 days",
+          columns: ["Day", "Wholesale", "Purchases", "Expenses"],
+          rows: (data.trend || []).map((day) => [
+            formatDay(day.day),
+            formatMoney(day.wholesalePaisa),
+            formatMoney(day.purchasesPaisa),
+            formatMoney(day.expensesPaisa),
+          ]),
+        },
+        {
+          title: "Farm activity · this month",
+          columns: ["Ledger", "Activity"],
+          rows: [
+            ["Spice batches completed", formatNumber(overview.spice.completedThisMonth)],
+            ["Production runs", formatNumber(overview.production.runs)],
+            ["Wholesale invoices", formatNumber(overview.bulk.invoices)],
+            ["Customer accounts", formatNumber(overview.customers.accounts)],
+            ["Farm expenses", formatNumber(overview.expenses.count)],
+            ["Feed issued", formatMoney(overview.animals.feedCostPaisa)],
+          ],
+        },
+      ];
+    }
+
+    if (!["erp-expenses", "bulk-sales", "spice", "production"].includes(item.slug)) return [];
+
+    if (item.slug === "production") {
+      return [{
+        title: "Production runs",
+        columns: ["Run", ...(showBranchColumn ? ["Branch"] : []), "Output", "Quantity", "Run date", "Input cost", "Total cost", "Process"],
+        rows: visibleRows.map((row) => [
+          row.run_number || "—",
+          ...(showBranchColumn ? [row.branch_name || "—"] : []),
+          row.output_product_name || "—",
+          `${formatQuantity(Number(row.output_quantity_milli || 0))} ${row.output_unit_code || ""}`.trim(),
+          formatDay(row.run_date),
+          formatMoney(row.input_cost_paisa),
+          formatMoney(row.total_cost_paisa),
+          labelize(row.process_type),
+        ]),
+      }];
+    }
+
+    if (item.slug === "spice") {
+      return [{
+        title: "Spice batches",
+        columns: ["Batch", ...(showBranchColumn ? ["Branch"] : []), "Name", "Output", "Grade", "Cost", "Date", "Status"],
+        rows: visibleRows.map((row) => [
+          row.batch_number || "—",
+          ...(showBranchColumn ? [row.branch_name || "—"] : []),
+          row.name || "—",
+          [row.output_product_name, row.output_quantity_milli != null
+            ? `${formatQuantity(Number(row.output_quantity_milli))} ${row.output_unit_code || ""}`.trim()
+            : ""].filter(Boolean).join(" · ") || "—",
+          row.grade ? labelize(row.grade) : "—",
+          formatMoney(row.total_cost_paisa),
+          formatDay(row.batch_date),
+          labelize(row.status),
+        ]),
+      }];
+    }
+
+    if (item.slug === "bulk-sales") {
+      return [{
+        title: "Bulk sales invoices",
+        columns: ["Invoice", ...(showBranchColumn ? ["Branch"] : []), "Customer", "Phone", "Date", "Total", "Paid", "Balance"],
+        rows: visibleRows.map((row) => [
+          row.invoice_number || "—",
+          ...(showBranchColumn ? [row.branch_name || "—"] : []),
+          row.customer_name || "—",
+          row.customer_phone || "—",
+          formatDay(row.sale_date),
+          formatMoney(row.total_paisa),
+          formatMoney(row.paid_paisa),
+          formatMoney(row.due_paisa),
+        ]),
+      }];
+    }
+
+    return [{
+      title: "ERP expenses",
+      columns: ["Date", ...(showBranchColumn ? ["Branch"] : []), "Category", "Description", "Method", "Reference", "Recorded by", "Amount"],
+      rows: visibleRows.map((row) => [
+        formatDay(row.spent_at),
+        ...(showBranchColumn ? [row.branch_name || "—"] : []),
+        row.category_name || "—",
+        row.description || "—",
+        labelize(row.payment_method),
+        row.reference || "—",
+        row.recorded_by_name || "—",
+        formatMoney(row.amount_paisa),
+      ]),
+    }];
+  }, [data, isDashboard, item.slug, showBranchColumn, visibleRows]);
+
+  const pageReportSummary: [string, string | number][] = isDashboard && data?.overview
+    ? [
+      ["Open animal batches", formatNumber(data.overview.animals.openBatches)],
+      ["Production in period", formatNumber(data.overview.production.runs)],
+      ["Wholesale in period", formatMoney(data.overview.bulk.totalPaisa)],
+      ["Wholesale due", formatMoney(data.overview.bulk.duePaisa)],
+      ["Customer receivable", formatMoney(data.overview.customers.receivablePaisa)],
+      ["Vendor payable", formatMoney(data.overview.vendors.duePaisa)],
+      ["Expenses in period", formatMoney(data.overview.expenses.totalPaisa)],
+      ["Farm stores", formatNumber(data.overview.stores)],
+      ["Animal purchases", formatMoney(data.overview.animals.purchaseCostPaisa)],
+      ["Animal feed", formatMoney(data.overview.animals.feedCostPaisa)],
+      ["Spice completed", `${formatNumber(data.overview.spice.completedThisMonth)} batches · ${formatMoney(data.overview.spice.completedCostPaisa)}`],
+      ["Open spice batches", formatNumber(data.overview.spice.openBatches)],
+    ]
+    : summary.map((entry) => [entry.label, String(entry.value)]);
+
+  const reportBranchName = branchId === "all"
+    ? "All branches"
+    : branches.find((branch) => branch.id === branchId)?.name || "Your branch";
+
   const detailTitle = detail
     ? {
       animals: detail.record.name || "Animal batch",
@@ -1026,46 +1148,13 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
               </button>
             </>
           )}
-          {item.slug !== "vendors" && (
+          {item.slug !== "vendors" && !hasPageLevelActions && (
             <button className="secondary-button" type="button" onClick={() => setReloadKey((key) => key + 1)} disabled={loading}>
               {loading ? <LoaderCircle size={15} className="spin" /> : <RefreshCw size={15} />} {isReports ? "REF" : "Refresh"}
             </button>
           )}
         </div>
       </div>
-
-      {item.slug === "vendors" && (
-        <WorkspaceReportActions
-          title={item.title}
-          sections={[{
-            title: "Vendor balances",
-            columns: ["Vendor", "Email", "Contact", "Phone", "Purchases", "Purchase receipts", "Paid", "Balance", "Last purchase", "Status"],
-            rows: visibleRows.map((row) => [
-              row.name || "—",
-              row.email || "—",
-              row.contact_name || "—",
-              row.phone || "—",
-              formatMoney(row.purchases_paisa),
-              formatNumber(row.purchase_count),
-              formatMoney(row.paid_paisa),
-              formatMoney(row.balance_paisa),
-              row.last_purchase_at ? formatDay(row.last_purchase_at) : "—",
-              row.is_active ? "Active" : "Inactive",
-            ]),
-          }]}
-          summary={summary.map((entry) => [entry.label, String(entry.value)])}
-          metadata={{
-            branch: branchId === "all"
-              ? "All branches"
-              : branches.find((branch) => branch.id === branchId)?.name || "Your branch",
-            printedBy: staff?.full_name || "Staff",
-            filterSummary: "Includes current search and status filters.",
-          }}
-          onRefresh={() => setReloadKey((key) => key + 1)}
-          refreshing={loading}
-          disabled={!data || loading || Boolean(error)}
-        />
-      )}
 
       {item.slug === "animals" && animalOptionsError && (
         <div className="notice" role="alert"><AlertCircle size={17} /> {animalOptionsError}</div>
@@ -1169,15 +1258,66 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
             <>
               <label className="toolbar-control" style={{ flex: "0 0 155px" }}>
                 <span>From</span>
-                <input type="date" value={from} max={to} onChange={(event) => setFrom(event.target.value)} />
+                <input className="workspace-date-input" type="date" value={from} max={to} onChange={(event) => setFrom(event.target.value)} />
               </label>
               <label className="toolbar-control" style={{ flex: "0 0 155px" }}>
                 <span>To</span>
-                <input type="date" value={to} min={from} onChange={(event) => setTo(event.target.value)} />
+                <input className="workspace-date-input" type="date" value={to} min={from} onChange={(event) => setTo(event.target.value)} />
               </label>
             </>
           )}
           <button className="button secondary" type="button" onClick={clearFilters}>Clear</button>
+          {item.slug === "vendors" && (
+            <WorkspaceReportActions
+              title={item.title}
+              sections={[{
+                title: "Vendor balances",
+                columns: ["Vendor", "Email", "Contact", "Phone", "Purchases", "Purchase receipts", "Paid", "Balance", "Last purchase", "Status"],
+                rows: visibleRows.map((row) => [
+                  row.name || "—",
+                  row.email || "—",
+                  row.contact_name || "—",
+                  row.phone || "—",
+                  formatMoney(row.purchases_paisa),
+                  formatNumber(row.purchase_count),
+                  formatMoney(row.paid_paisa),
+                  formatMoney(row.balance_paisa),
+                  row.last_purchase_at ? formatDay(row.last_purchase_at) : "—",
+                  row.is_active ? "Active" : "Inactive",
+                ]),
+              }]}
+              summary={summary.map((entry) => [entry.label, String(entry.value)])}
+              metadata={{
+                branch: branchId === "all"
+                  ? "All branches"
+                  : branches.find((branch) => branch.id === branchId)?.name || "Your branch",
+                printedBy: staff?.full_name || "Staff",
+                filterSummary: "Includes current search and status filters.",
+              }}
+              onRefresh={() => setReloadKey((key) => key + 1)}
+              refreshing={loading}
+              disabled={!data || loading || Boolean(error)}
+              inline
+            />
+          )}
+          {hasPageLevelActions && (
+            <WorkspaceReportActions
+              title={item.title}
+              sections={pageReportSections}
+              summary={pageReportSummary}
+              metadata={{
+                branch: reportBranchName,
+                printedBy: staff?.full_name || "Staff",
+                filterSummary: item.slug === "erp-dashboard"
+                  ? `Selected period: ${formatDay(from)} – ${formatDay(to)}. Dashboard trend covers the last 14 days.`
+                  : `Includes current date, branch, search${item.slug === "erp-expenses" ? ", category" : item.slug === "bulk-sales" ? ", and payment" : ""} filters.`,
+              }}
+              onRefresh={() => setReloadKey((key) => key + 1)}
+              refreshing={loading}
+              disabled={!data || loading || Boolean(error)}
+              inline
+            />
+          )}
       </HorizontalFilterScroller>
 
       {error && <div className="notice" role="alert"><AlertCircle size={17} /> {error}</div>}

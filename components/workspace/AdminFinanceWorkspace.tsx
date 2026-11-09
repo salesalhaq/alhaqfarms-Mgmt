@@ -213,76 +213,76 @@ export function AdminFinanceWorkspace({ item }: { item: WorkspaceModule }) {
           )}
           <label className="toolbar-control">
             <span>From</span>
-            <input type="date" value={fromDate} max={toDate} onChange={(event) => setFromDate(event.target.value)} />
+            <input className="workspace-date-input" type="date" value={fromDate} max={toDate} onChange={(event) => setFromDate(event.target.value)} />
           </label>
           <label className="toolbar-control">
             <span>To</span>
-            <input type="date" value={toDate} min={fromDate} onChange={(event) => setToDate(event.target.value)} />
+            <input className="workspace-date-input" type="date" value={toDate} min={fromDate} onChange={(event) => setToDate(event.target.value)} />
           </label>
+          <WorkspaceReportActions
+            title={item.title}
+            sections={report ? [
+              {
+                title: "Profit and tax by day",
+                columns: ["Day", "Receipts", "Refunds", "Net sales", "Tax", "Cost", "Gross profit", "Margin"],
+                rows: report.byDay.map((row) => [
+                  formatDay(row.day),
+                  String(row.receipts),
+                  formatMoney(row.refundPaisa),
+                  formatMoney(row.netSalesPaisa),
+                  formatMoney(row.taxPaisa),
+                  formatMoney(row.costPaisa),
+                  formatMoney(row.profitPaisa),
+                  marginText(row.marginBps),
+                ]),
+              },
+              {
+                title: "Tax by rate",
+                columns: ["Rate", "Lines", "Net sales", "Tax"],
+                rows: report.byTaxRate.map((row) => [
+                  percentFromBps(row.rate_bps),
+                  String(row.lines),
+                  formatMoney(row.netSalesPaisa),
+                  formatMoney(row.taxPaisa),
+                ]),
+              },
+              {
+                title: "Product profit detail",
+                columns: ["Product", "SKU", "Quantity", "Net sales", "Tax", "Cost", "Gross profit", "Margin"],
+                rows: report.byProduct.slice(0, 10).map((row) => [
+                  row.product_name,
+                  row.sku || "—",
+                  formatQuantity(row.quantity),
+                  formatMoney(row.netSalesPaisa),
+                  formatMoney(row.taxPaisa),
+                  formatMoney(row.costPaisa),
+                  formatMoney(row.profitPaisa),
+                  marginText(row.marginBps),
+                ]),
+              },
+            ] : []}
+            summary={summary ? [
+              ["Receipts", summary.receipts],
+              ["Net sales", formatMoney(summary.netSalesPaisa)],
+              ["Cost of goods", formatMoney(summary.costPaisa)],
+              ["Gross profit", formatMoney(summary.profitPaisa)],
+              ["Margin", marginText(summary.marginBps)],
+              ["Output tax", formatMoney(summary.taxPaisa)],
+              ["Refunds", `${summary.refunds} · ${formatMoney(summary.refundPaisa)}`],
+            ] : []}
+            metadata={{
+              branch: report?.branchName || "",
+              period: report ? `${report.from} – ${report.to}` : `${fromDate} – ${toDate}`,
+              printedBy: staff?.full_name || "Staff",
+              filterSummary: report?.truncated ? "The selected period is capped; narrow the date range for complete totals." : "",
+            }}
+            onRefresh={() => setReloadKey((key) => key + 1)}
+            refreshing={loading}
+            disabled={!report || loading}
+            inline
+          />
         </HorizontalFilterScroller>
       </div>
-      <WorkspaceReportActions
-        title={item.title}
-        sections={report ? [
-          {
-            title: "Profit and tax by day",
-            columns: ["Day", "Receipts", "Refunds", "Net sales", "Tax", "Cost", "Gross profit", "Margin"],
-            rows: report.byDay.map((row) => [
-              formatDay(row.day),
-              String(row.receipts),
-              formatMoney(row.refundPaisa),
-              formatMoney(row.netSalesPaisa),
-              formatMoney(row.taxPaisa),
-              formatMoney(row.costPaisa),
-              formatMoney(row.profitPaisa),
-              marginText(row.marginBps),
-            ]),
-          },
-          {
-            title: "Tax by rate",
-            columns: ["Rate", "Lines", "Net sales", "Tax"],
-            rows: report.byTaxRate.map((row) => [
-              percentFromBps(row.rate_bps),
-              String(row.lines),
-              formatMoney(row.netSalesPaisa),
-              formatMoney(row.taxPaisa),
-            ]),
-          },
-          {
-            title: "Product profit detail",
-            columns: ["Product", "SKU", "Quantity", "Net sales", "Tax", "Cost", "Gross profit", "Margin"],
-            rows: report.byProduct.slice(0, 10).map((row) => [
-              row.product_name,
-              row.sku || "—",
-              formatQuantity(row.quantity),
-              formatMoney(row.netSalesPaisa),
-              formatMoney(row.taxPaisa),
-              formatMoney(row.costPaisa),
-              formatMoney(row.profitPaisa),
-              marginText(row.marginBps),
-            ]),
-          },
-        ] : []}
-        summary={summary ? [
-          ["Receipts", summary.receipts],
-          ["Net sales", formatMoney(summary.netSalesPaisa)],
-          ["Cost of goods", formatMoney(summary.costPaisa)],
-          ["Gross profit", formatMoney(summary.profitPaisa)],
-          ["Margin", marginText(summary.marginBps)],
-          ["Output tax", formatMoney(summary.taxPaisa)],
-          ["Refunds", `${summary.refunds} · ${formatMoney(summary.refundPaisa)}`],
-        ] : []}
-        metadata={{
-          branch: report?.branchName || "",
-          period: report ? `${report.from} – ${report.to}` : `${fromDate} – ${toDate}`,
-          printedBy: staff?.full_name || "Staff",
-          filterSummary: report?.truncated ? "The selected period is capped; narrow the date range for complete totals." : "",
-        }}
-        onRefresh={() => setReloadKey((key) => key + 1)}
-        refreshing={loading}
-        disabled={!report || loading}
-      />
-
       {error && <div className="notice" role="alert"><AlertCircle size={15} /> {error}</div>}
 
       {loading && !report && (

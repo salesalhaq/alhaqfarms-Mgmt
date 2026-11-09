@@ -394,7 +394,7 @@ export function ReportCenterWorkspace({
           </div>
         </div>
 
-        <HorizontalFilterScroller className="report-center-tab-row" ariaLabel="Report groups and print options">
+        <HorizontalFilterScroller className="report-center-tab-row" ariaLabel="Report groups">
           <div className="report-center-group-tabs" role="tablist" aria-label="Report groups">
             {groups.map((group) => (
               <button
@@ -410,6 +410,8 @@ export function ReportCenterWorkspace({
               </button>
             ))}
           </div>
+        </HorizontalFilterScroller>
+        <div className="report-center-picker-controls daily-report-no-print">
           <div className="heading-actions report-center-picker-actions">
             <button className="button secondary" type="button" onClick={() => setSelected(new Set(catalog.map((report) => report.id)))}>Select all</button>
             <button className="button secondary" type="button" onClick={() => setSelected(new Set())}>Clear</button>
@@ -424,7 +426,7 @@ export function ReportCenterWorkspace({
               Landscape
             </label>
           </div>
-        </HorizontalFilterScroller>
+        </div>
 
         <HorizontalFilterScroller className="report-center-picker-scroller" ariaLabel="Report picker options">
           <div className="report-center-picker-options">

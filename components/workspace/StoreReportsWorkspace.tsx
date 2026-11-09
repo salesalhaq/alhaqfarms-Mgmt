@@ -189,69 +189,65 @@ export function StoreReportsWorkspace({ item }: { item: PageItem }) {
 
         <label className="toolbar-control store-reports-date">
           <span>From</span>
-          <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+          <input className="workspace-date-input" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
         </label>
 
         <label className="toolbar-control store-reports-date">
           <span>To</span>
-          <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
+          <input className="workspace-date-input" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
         </label>
-
+        <WorkspaceReportActions
+          title={item.title}
+          sections={report ? [
+            {
+              title: "Sales and refunds by day",
+              columns: ["Date", "Receipts", "Gross sales", "Refunds", "Discounts", "Net sales"],
+              rows: report.byDay.map((row) => [
+                formatDateHeading(row.date),
+                String(row.receipts_count),
+                formatMoney(row.gross_sales_paisa),
+                formatMoney(row.refunds_paisa),
+                formatMoney(row.discount_paisa),
+                formatMoney(row.net_sales_paisa),
+              ]),
+            },
+            {
+              title: "Payment mix",
+              columns: ["Method", "Amount", "Share"],
+              rows: report.payments.map((row) => [row.method, formatMoney(row.amount_paisa), `${row.share}%`]),
+            },
+            {
+              title: "Top products",
+              columns: ["Product", "SKU", "Units", "Sales", "Refunds"],
+              rows: report.products.map((row) => [
+                row.product,
+                row.sku || "—",
+                (row.units_milli / 1000).toFixed(3),
+                formatMoney(row.total_paisa),
+                formatMoney(row.refunds_paisa),
+              ]),
+            },
+          ] : []}
+          summary={report ? [
+            ["Gross sales", formatMoney(report.summary.grossSalesPaisa)],
+            ["Refunds", formatMoney(report.summary.refundsPaisa)],
+            ["Net sales", formatMoney(report.summary.netSalesPaisa)],
+            ["Receipts", report.summary.receiptCount],
+            ["Discounts", formatMoney(report.summary.discountPaisa)],
+            ["Average ticket", formatMoney(report.summary.averageTicketPaisa)],
+          ] : []}
+          metadata={{
+            branch: report?.branchName || selectedBranchName,
+            period: `${fromDate} – ${toDate}`,
+            printedBy: staff?.full_name || "Staff",
+            filterSummary: report?.truncated ? "The report reached the per-period record limit." : "",
+          }}
+          onRefresh={() => setReloadKey((value) => value + 1)}
+          refreshing={loading}
+          disabled={!report || loading}
+          inline
+        />
       </HorizontalFilterScroller>
-      <WorkspaceReportActions
-        title={item.title}
-        sections={report ? [
-          {
-            title: "Sales and refunds by day",
-            columns: ["Date", "Receipts", "Gross sales", "Refunds", "Discounts", "Net sales"],
-            rows: report.byDay.map((row) => [
-              formatDateHeading(row.date),
-              String(row.receipts_count),
-              formatMoney(row.gross_sales_paisa),
-              formatMoney(row.refunds_paisa),
-              formatMoney(row.discount_paisa),
-              formatMoney(row.net_sales_paisa),
-            ]),
-          },
-          {
-            title: "Payment mix",
-            columns: ["Method", "Amount", "Share"],
-            rows: report.payments.map((row) => [
-              row.method,
-              formatMoney(row.amount_paisa),
-              `${row.share}%`,
-            ]),
-          },
-          {
-            title: "Top products",
-            columns: ["Product", "SKU", "Units", "Sales", "Refunds"],
-            rows: report.products.map((row) => [
-              row.product,
-              row.sku || "—",
-              (row.units_milli / 1000).toFixed(3),
-              formatMoney(row.total_paisa),
-              formatMoney(row.refunds_paisa),
-            ]),
-          },
-        ] : []}
-        summary={report ? [
-          ["Gross sales", formatMoney(report.summary.grossSalesPaisa)],
-          ["Refunds", formatMoney(report.summary.refundsPaisa)],
-          ["Net sales", formatMoney(report.summary.netSalesPaisa)],
-          ["Receipts", report.summary.receiptCount],
-          ["Discounts", formatMoney(report.summary.discountPaisa)],
-          ["Average ticket", formatMoney(report.summary.averageTicketPaisa)],
-        ] : []}
-        metadata={{
-          branch: report?.branchName || selectedBranchName,
-          period: `${fromDate} – ${toDate}`,
-          printedBy: staff?.full_name || "Staff",
-          filterSummary: report?.truncated ? "The report reached the per-period record limit." : "",
-        }}
-        onRefresh={() => setReloadKey((value) => value + 1)}
-        refreshing={loading}
-        disabled={!report || loading}
-      />
 
       {error && (
         <div className="card panel" role="alert">

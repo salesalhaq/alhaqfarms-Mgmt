@@ -5,6 +5,8 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { WorkspaceDialog, WorkspaceError, WorkspaceField, WorkspaceSuccess } from "@/components/workspace/WorkspaceDialog";
 import { formatDateTime, formatQuantity, labelize } from "@/lib/format";
@@ -438,8 +440,8 @@ export function TransfersWorkspace({ item }: { item: WorkspaceModule }) {
         <div className="dashboard-stat card"><span>Branches</span><strong>{branches.filter((branch) => branch.is_active).length}</strong><small>Active destinations</small></div>
       </div>
 
-      <section className="returns-history-filters card" aria-label="Transfer filters">
-        <label className="search-field returns-history-search">
+      <HorizontalFilterScroller className="transfers-history-filters" ariaLabel="Transfer filters">
+        <label className="search-field transfers-history-search">
           <Search size={16} />
           <input
             aria-label="Search transfer number"
@@ -448,42 +450,62 @@ export function TransfersWorkspace({ item }: { item: WorkspaceModule }) {
             onChange={(event) => updateFilter(setSearch, event.target.value)}
           />
         </label>
-        <label className="returns-history-control">
+        <label className="returns-history-control transfers-history-control">
           <span>From</span>
           <input type="date" aria-label="Transfers from date" value={fromDate} max={toDate || undefined} onChange={(event) => updateFilter(setFromDate, event.target.value)} />
         </label>
-        <label className="returns-history-control">
+        <label className="returns-history-control transfers-history-control">
           <span>To</span>
           <input type="date" aria-label="Transfers to date" value={toDate} min={fromDate || undefined} onChange={(event) => updateFilter(setToDate, event.target.value)} />
         </label>
-        <label className="returns-history-control">
+        <label className="returns-history-control transfers-history-control">
           <span>Status</span>
-          <select value={status} onChange={(event) => updateFilter(setStatus, event.target.value as (typeof TRANSFER_STATUSES)[number])}>
-            {TRANSFER_STATUSES.map((value) => <option key={value} value={value}>{value === "all" ? "All statuses" : labelize(value)}</option>)}
-          </select>
+          <SearchableFilter
+            value={status}
+            ariaLabel="Filter transfers by status"
+            placeholder="All statuses"
+            options={TRANSFER_STATUSES.map((value) => ({
+              value,
+              label: value === "all" ? "All statuses" : labelize(value),
+            }))}
+            onChange={(value) => updateFilter(setStatus, value as (typeof TRANSFER_STATUSES)[number])}
+          />
         </label>
-        <label className="returns-history-control">
+        <label className="returns-history-control transfers-history-control">
           <span>Direction</span>
-          <select value={direction} onChange={(event) => updateFilter(setDirection, event.target.value as (typeof DIRECTIONS)[number])}>
-            {DIRECTIONS.map((value) => <option key={value} value={value}>{value === "all" ? "All transfers" : labelize(value)}</option>)}
-          </select>
+          <SearchableFilter
+            value={direction}
+            ariaLabel="Filter transfers by direction"
+            placeholder="All transfers"
+            options={DIRECTIONS.map((value) => ({
+              value,
+              label: value === "all" ? "All transfers" : labelize(value),
+            }))}
+            onChange={(value) => updateFilter(setDirection, value as (typeof DIRECTIONS)[number])}
+          />
         </label>
         {isAdmin && (
-          <label className="returns-history-control">
+          <label className="returns-history-control transfers-history-control">
             <span>Branch</span>
-            <select value={branchId} onChange={(event) => updateFilter(setBranchId, event.target.value)}>
-              {isHqAdmin && <option value="all">All branches</option>}
-              {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-            </select>
+            <SearchableFilter
+              value={branchId}
+              ariaLabel="Filter transfers by branch"
+              placeholder={isHqAdmin ? "All branches" : "Select branch"}
+              options={[
+                ...(isHqAdmin ? [{ value: "all", label: "All branches" }] : []),
+                ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+              ]}
+              onChange={(value) => updateFilter(setBranchId, value)}
+            />
           </label>
         )}
-        <div className="returns-history-actions">
+        <div className="returns-history-actions transfers-history-actions">
           <button className="button secondary" disabled={loading} onClick={() => setReloadKey((value) => value + 1)} type="button">
             {loading ? <LoaderCircle size={15} className="spin" /> : <RefreshCw size={14} />} Refresh
           </button>
           <button className="button link" onClick={clearFilters} type="button">Clear filters</button>
         </div>
-      </section>
+      </HorizontalFilterScroller>
 
       {error && <div className="notice" role="alert">{error}</div>}
       <section className="card table-wrap workspace-table returns-history-table" aria-label="Transfers history">

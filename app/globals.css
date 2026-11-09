@@ -639,6 +639,12 @@ tbody tr:hover { background: #fcfdfb; }
 .purchasing-filterbar .purchasing-search svg { top: 11px; }
 .purchasing-filterbar .purchasing-branch-control { flex: 0 0 170px; min-width: 0; }
 .purchasing-filterbar .searchable-filter-trigger { min-height: 38px; font-size: 10px; }
+.transfers-history-filters { gap: 7px; margin-bottom: 13px; }
+.transfers-history-search { flex: 1 0 220px; min-width: 180px; }
+.transfers-history-control { flex: 0 0 clamp(130px, 11vw, 165px); }
+.transfers-history-control .searchable-filter-trigger { min-height: 38px; font-size: 10px; }
+.transfers-history-actions { flex: 0 0 auto; align-items: flex-end; }
+.transfers-history-actions .button { min-height: 38px; font-size: 11px; }
 .horizontal-filter-content :is(input:not([type="checkbox"]), select, .searchable-filter-trigger, .button, .primary-button, .secondary-button) {
   box-sizing: border-box;
   height: 40px;

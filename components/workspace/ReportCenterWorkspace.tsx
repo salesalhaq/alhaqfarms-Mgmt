@@ -4,6 +4,8 @@ import { Download, LoaderCircle, Printer, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import {
   formatReportValue,
   reportCatalog,
@@ -348,30 +350,39 @@ export function ReportCenterWorkspace({
         </div>
       </div>
 
-      <div className="daily-report-toolbar daily-report-no-print">
+      <HorizontalFilterScroller
+        className="daily-report-toolbar report-center-filterbar daily-report-no-print"
+        ariaLabel="Report center filters and date ranges"
+      >
         {staff?.role === "admin" && (
           <label className="toolbar-control">
             <span>Branch</span>
-            <select className="toolbar-select" value={branchId || "all"} onChange={(event) => setBranchId(event.target.value)}>
-              <option value="all">All accessible branches</option>
-              {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-            </select>
+            <SearchableFilter
+              value={branchId || "all"}
+              ariaLabel="Filter reports by branch"
+              placeholder="All accessible branches"
+              options={[
+                { value: "all", label: "All accessible branches" },
+                ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+              ]}
+              onChange={setBranchId}
+            />
           </label>
         )}
-        <label className="toolbar-control">
+        <label className="toolbar-control report-center-date">
           <span>From</span>
           <input type="date" value={fromDate} max={toDate} onChange={(event) => setFromDate(event.target.value)} />
         </label>
-        <label className="toolbar-control">
+        <label className="toolbar-control report-center-date">
           <span>To</span>
           <input type="date" value={toDate} min={fromDate} onChange={(event) => setToDate(event.target.value)} />
         </label>
-        <div className="heading-actions" role="group" aria-label="Quick date ranges">
+        <div className="heading-actions report-center-date-presets" role="group" aria-label="Quick date ranges">
           <button className="button secondary" type="button" onClick={() => applyPreset(7)}>7 days</button>
           <button className="button secondary" type="button" onClick={() => applyPreset(30)}>30 days</button>
           <button className="button secondary" type="button" onClick={() => applyPreset("month")}>This month</button>
         </div>
-      </div>
+      </HorizontalFilterScroller>
 
       {error && <div className="notice" role="alert">{error}</div>}
 
@@ -387,53 +398,56 @@ export function ReportCenterWorkspace({
           </div>
         </div>
 
-        <div className="report-center-group-tabs" role="tablist" aria-label="Report groups">
-          {groups.map((group) => (
-            <button
-              key={group.name}
-              type="button"
-              role="tab"
-              aria-selected={activeGroup === group.name}
-              className={`button secondary${activeGroup === group.name ? " is-active" : ""}`}
-              onClick={() => setActiveGroup(group.name)}
-            >
-              {group.name}
-              <small>{group.items.filter((report) => selected.has(report.id)).length}/{group.items.length}</small>
-            </button>
-          ))}
-        </div>
+        <HorizontalFilterScroller className="report-center-tab-row" ariaLabel="Report groups and print options">
+          <div className="report-center-group-tabs" role="tablist" aria-label="Report groups">
+            {groups.map((group) => (
+              <button
+                key={group.name}
+                type="button"
+                role="tab"
+                aria-selected={activeGroup === group.name}
+                className={`button secondary${activeGroup === group.name ? " is-active" : ""}`}
+                onClick={() => setActiveGroup(group.name)}
+              >
+                {group.name}
+                <small>{group.items.filter((report) => selected.has(report.id)).length}/{group.items.length}</small>
+              </button>
+            ))}
+          </div>
+          <div className="report-center-print-options">
+            <label className="report-center-check">
+              <input type="checkbox" checked={newPageEach} onChange={(event) => setNewPageEach(event.target.checked)} />
+              New page each
+            </label>
+            <label className="report-center-check">
+              <input type="checkbox" checked={landscape} onChange={(event) => setLandscape(event.target.checked)} />
+              Landscape
+            </label>
+          </div>
+        </HorizontalFilterScroller>
 
-        <div className="report-center-picker-options">
-          <label className="report-center-option card">
-            <input
-              type="checkbox"
-              checked={Boolean(currentGroup) && groupSelected === currentGroup.items.length}
-              onChange={() => currentGroup && toggleGroup(currentGroup.name)}
-            />
-            <span><strong>All {currentGroup?.name}</strong><small>Select or clear every report in this group.</small></span>
-          </label>
-          {currentGroup?.items.map((report) => (
-            <label className="report-center-option card" key={report.id}>
+        <HorizontalFilterScroller className="report-center-picker-scroller" ariaLabel="Report picker options">
+          <div className="report-center-picker-options">
+            <label className="report-center-option card">
               <input
                 type="checkbox"
-                checked={selected.has(report.id)}
-                onChange={() => toggleReport(report.id)}
+                checked={Boolean(currentGroup) && groupSelected === currentGroup.items.length}
+                onChange={() => currentGroup && toggleGroup(currentGroup.name)}
               />
-              <span><strong>{report.icon} {report.title}</strong><small>{report.group}</small></span>
+              <span><strong>All {currentGroup?.name}</strong><small>Select or clear every report in this group.</small></span>
             </label>
-          ))}
-        </div>
-
-        <div className="report-center-print-options">
-          <label className="report-center-check">
-            <input type="checkbox" checked={newPageEach} onChange={(event) => setNewPageEach(event.target.checked)} />
-            New page each
-          </label>
-          <label className="report-center-check">
-            <input type="checkbox" checked={landscape} onChange={(event) => setLandscape(event.target.checked)} />
-            Landscape
-          </label>
-        </div>
+            {currentGroup?.items.map((report) => (
+              <label className="report-center-option card" key={report.id}>
+                <input
+                  type="checkbox"
+                  checked={selected.has(report.id)}
+                  onChange={() => toggleReport(report.id)}
+                />
+                <span><strong>{report.icon} {report.title}</strong><small>{report.group}</small></span>
+              </label>
+            ))}
+          </div>
+        </HorizontalFilterScroller>
       </section>
 
       {loading && !payload && <div className="card loading"><LoaderCircle size={18} className="spin" /> Loading reports…</div>}

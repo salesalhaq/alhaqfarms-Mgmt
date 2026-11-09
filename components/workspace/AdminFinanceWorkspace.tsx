@@ -186,7 +186,7 @@ export function AdminFinanceWorkspace({ item }: { item: WorkspaceModule }) {
 
   return (
     <>
-      <div className="page-heading">
+      <div className="page-heading finance-report-heading">
         <div>
           <p className="eyebrow page">{item.section}</p>
           <h1>{item.title}</h1>
@@ -291,7 +291,7 @@ export function AdminFinanceWorkspace({ item }: { item: WorkspaceModule }) {
 
       {report && summary && (
         <>
-          <section className="dashboard-stats" aria-label="Profit and tax summary">
+          <section className="dashboard-stats finance-summary" aria-label="Profit and tax summary">
             {metrics.map(({ icon: Icon, label, value, note }) => (
               <article className="dashboard-stat card" key={label}>
                 <span>{label}</span>

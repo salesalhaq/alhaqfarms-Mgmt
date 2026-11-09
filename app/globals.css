@@ -439,15 +439,16 @@ tbody tr:hover { background: #fcfdfb; }
 .report-center-filterbar .searchable-filter-trigger, .report-center-filterbar .button { min-height: 40px; }
 .report-center-date-presets, .report-center-filter-actions, .report-center-picker-actions { flex: 0 0 auto; flex-wrap: nowrap; align-items: center; gap: 6px; margin-top: 0; }
 .report-center-filter-actions { margin-left: 0; }
-.report-center-tab-row { align-items: center; margin-top: 10px; }
-.report-center-tab-row .horizontal-filter-content { align-items: center; justify-content: center; gap: 12px; }
+.report-center-tab-row { align-items: center; justify-content: center; margin-top: 10px; }
+.report-center-tab-row .horizontal-filter-viewport { display: flex; justify-content: center; }
+.report-center-tab-row .horizontal-filter-content { flex: 0 0 auto; align-items: center; justify-content: center; gap: 12px; margin-inline: auto; }
 .report-center-picker-scroller { justify-content: center; margin-top: 12px; }
 .report-center-picker-scroller .horizontal-filter-viewport { flex: 1 1 auto; width: 100%; max-width: 100%; }
 .report-center-picker-scroller .horizontal-filter-content { width: max-content; min-width: 0; justify-content: center; margin-inline: auto; }
 .report-center-picker-options { display: flex; width: max-content; gap: 10px; margin: 0; }
 .report-center-picker-options .report-center-option { flex: 0 0 250px; min-height: 64px; }
 .report-center-group-tabs { display: flex; flex: 0 0 auto; min-width: max-content; flex-wrap: nowrap; justify-content: center; gap: 6px; margin-top: 0; }
-.report-center-group-tabs .button { display: inline-flex; align-items: center; gap: 6px; }
+.report-center-group-tabs .button { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 6px; white-space: nowrap; }
 .report-center-group-tabs .button small { color: var(--muted); font-size: 9px; font-weight: 600; }
 .report-center-group-tabs .button.is-active { border-color: #8ab89a; background: var(--green-soft); color: var(--green-dark); }
 .report-center-picker-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 14px; margin-top: 10px; }

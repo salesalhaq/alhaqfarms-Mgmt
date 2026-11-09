@@ -21,6 +21,7 @@ import { waitForReceiptQr } from "@/lib/print/print-window";
 import { printReceiptElementViaBridge } from "@/lib/print/bridge-print";
 import { generateSalesHistoryDocument } from "@/lib/print/reports";
 import { SearchableFilter, type SearchableFilterOption } from "@/components/workspace/SearchableFilter";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
 
 interface SaleBase {
   id: string;
@@ -326,7 +327,7 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
         <span>Live cloud records · read-only. Receipt details and printing do not change sales, inventory, payments, or returns.</span>
       </div>
 
-      <section className="sales-history-filters card" aria-label="Sales history filters">
+      <HorizontalFilterScroller className="sales-history-filters card" ariaLabel="Sales history filters">
         <label className="search-field sales-history-search">
           <Search size={16} />
           <input
@@ -434,7 +435,7 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
           </button>
           <button className="button link" onClick={clearFilters} type="button">Clear filters</button>
         </div>
-      </section>
+      </HorizontalFilterScroller>
 
       {error && <div className="notice" role="alert">{error}</div>}
       <section className="card table-wrap workspace-table sales-history-table" aria-label="Sales history data">

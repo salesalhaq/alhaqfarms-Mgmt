@@ -22,6 +22,7 @@ import { waitForReceiptQr } from "@/lib/print/print-window";
 import { printReceiptElementViaBridge } from "@/lib/print/bridge-print";
 import { generateReturnsRefundsDocument } from "@/lib/print/reports";
 import { SearchableFilter } from "@/components/workspace/SearchableFilter";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
 
 interface ReturnRow {
   id: string;
@@ -336,7 +337,7 @@ export function ReturnsWorkspace({ item }: { item: WorkspaceModule }) {
         </button>
       </div>
 
-      <section className="returns-history-filters card" aria-label="Returns history filters">
+      <HorizontalFilterScroller className="returns-history-filters card" ariaLabel="Returns history filters">
         <label className="search-field returns-history-search">
           <Search size={16} />
           <input
@@ -385,7 +386,7 @@ export function ReturnsWorkspace({ item }: { item: WorkspaceModule }) {
           </button>
           <button className="button link" onClick={clearFilters} type="button">Clear filters</button>
         </div>
-      </section>
+      </HorizontalFilterScroller>
 
       {error && <div className="notice" role="alert">{error}</div>}
       <section className="card table-wrap workspace-table returns-history-table" aria-label="Returns history data">

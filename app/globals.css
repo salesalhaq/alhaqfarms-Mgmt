@@ -448,8 +448,8 @@ tbody tr:hover { background: #fcfdfb; }
 .pos-held-sale .button { min-height: 34px; padding: 0 10px; font-size: 10px; }
 .pos-shortcut-note { margin: 0; border-top: 1px solid var(--line); padding: 9px 14px; color: var(--muted); font-size: 9px; }
 .pos-shortcut-note kbd { border: 1px solid var(--line); border-radius: 4px; padding: 2px 5px; color: var(--ink); background: var(--surface-soft); font-size: 9px; }
-.sales-history-filters { display: flex; flex-wrap: nowrap; align-items: flex-end; gap: 8px; margin-bottom: 13px; overflow-x: auto; padding: 14px; }
-.sales-history-search { flex: 1 1 220px; min-width: 150px; }
+.sales-history-filters { gap: 7px; margin-bottom: 13px; padding: 8px; }
+.sales-history-search { flex: 1 0 220px; min-width: 150px; }
 .sales-history-control { display: grid; min-width: 0; gap: 5px; color: var(--muted); font-size: 10px; font-weight: 700; }
 .sales-history-control { flex: 0 0 clamp(92px, 8vw, 145px); }
 .sales-history-control input, .sales-history-control select, .searchable-filter-trigger { width: 100%; min-width: 0; min-height: 38px; border: 1px solid var(--line); border-radius: 9px; outline: none; background: #fff; padding: 0 9px; color: var(--ink); font-size: 10px; }
@@ -509,14 +509,20 @@ tbody tr:hover { background: #fcfdfb; }
 .sales-return-history > div { display: flex; justify-content: space-between; gap: 10px; border-top: 1px solid #edf1ed; padding: 9px 0; font-size: 10px; }
 .sales-dialog-actions { display: flex; justify-content: flex-end; margin-top: 14px; }
 .sales-dialog-actions .button { min-height: 38px; }
-.returns-history-filters { display: flex; flex-wrap: nowrap; align-items: flex-end; gap: 8px; margin-bottom: 13px; overflow-x: auto; padding: 14px; }
-.returns-history-search { flex: 1 1 220px; min-width: 150px; }
+.returns-history-filters { gap: 7px; margin-bottom: 13px; padding: 8px; }
+.returns-history-search { flex: 1 0 220px; min-width: 150px; }
 .returns-history-control { display: grid; min-width: 0; gap: 5px; color: var(--muted); font-size: 10px; font-weight: 700; }
 .returns-history-control { flex: 0 0 clamp(100px, 10vw, 170px); }
 .returns-history-control input, .returns-history-control select { width: 100%; min-width: 0; min-height: 38px; border: 1px solid var(--line); border-radius: 9px; outline: none; background: #fff; padding: 0 9px; color: var(--ink); font-size: 10px; }
 .returns-history-control input:focus, .returns-history-control select:focus { border-color: #69a781; box-shadow: 0 0 0 3px rgb(27 119 72 / 10%); }
 .returns-history-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 5px; }
 .returns-history-actions .button { min-height: 38px; font-size: 11px; }
+.horizontal-filter-scroller { display: flex; min-width: 0; align-items: center; }
+.horizontal-filter-viewport { min-width: 0; flex: 1 1 auto; overflow: hidden; }
+.horizontal-filter-content { display: flex; width: max-content; min-width: 100%; flex-wrap: nowrap; align-items: flex-end; gap: 8px; }
+.horizontal-filter-arrow { display: grid; width: 30px; height: 34px; flex: 0 0 30px; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft); color: var(--ink); cursor: pointer; }
+.horizontal-filter-arrow:disabled { opacity: .38; cursor: default; }
+.horizontal-filter-arrow:not(:disabled):hover { border-color: #9cbea4; background: var(--green-soft); color: var(--green-dark); }
 .returns-history-table table { min-width: 1050px; }
 .returns-number { color: var(--green-dark); }
 .returns-view-button { min-height: 31px; padding: 0 9px; font-size: 10px; }

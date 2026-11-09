@@ -1,10 +1,11 @@
 "use client";
 
-import { AlertCircle, LoaderCircle, RefreshCw, Search } from "lucide-react";
+import { AlertCircle, LoaderCircle, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { TableControls } from "@/components/workspace/TableControls";
+import { WorkspaceReportActions } from "@/components/workspace/WorkspaceReportActions";
 import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
 import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
@@ -146,7 +147,7 @@ export function ReturnReportsWorkspace({ item }: { item: WorkspaceModule }) {
         </div>
       </div>
 
-      <HorizontalFilterScroller className="daily-report-toolbar daily-report-no-print" ariaLabel="Return report filters">
+      <HorizontalFilterScroller className="daily-report-toolbar daily-report-no-print workspace-page-report-filterbar" ariaLabel="Return report filters">
         {isAdmin && (
           <label className="toolbar-control" style={{ flex: "0 0 220px" }}>
             <span>Branch</span>
@@ -192,9 +193,52 @@ export function ReturnReportsWorkspace({ item }: { item: WorkspaceModule }) {
             onChange={(event) => setSearch(event.target.value)}
           />
         </label>
-        <button className="button secondary" type="button" onClick={() => setReloadKey((value) => value + 1)} disabled={loading}>
-          {loading ? <><LoaderCircle className="spin" size={14} /> Loading…</> : <><RefreshCw size={14} /> Refresh</>}
-        </button>
+        <WorkspaceReportActions
+          title={item.title}
+          sections={report ? [
+            {
+              title: "Returns by reason",
+              columns: ["Reason", "Returns", "Refunded", "Restocked"],
+              rows: report.reasons.map((row) => [
+                row.reason,
+                String(row.count),
+                formatMoney(row.refundPaisa),
+                formatQuantity(row.restockMilli),
+              ]),
+            },
+            {
+              title: "Return ledger",
+              columns: ["Return", "Branch", "Receipt", "Customer", "Reason", "Status", "Refund", "Restocked", "Created"],
+              rows: report.rows.map((row) => [
+                row.return_number,
+                row.branch_name,
+                row.receipt_number,
+                row.customer_name,
+                row.reason || "—",
+                labelize(row.status),
+                formatMoney(row.refund_total_paisa),
+                formatQuantity(row.restock_total_milli),
+                formatDateTime(row.created_at),
+              ]),
+            },
+          ] : []}
+          summary={report ? [
+            ["Returns", report.totals.returns],
+            ["Pending", report.totals.pending],
+            ["Completed", report.totals.completed],
+            ["Refunded", formatMoney(report.totals.refundPaisa)],
+            ["Restocked", formatQuantity(report.totals.restockMilli)],
+          ] : []}
+          metadata={{
+            branch: report?.branchName || "Selected branch",
+            printedBy: staff?.full_name || "Staff",
+            filterSummary: `${fromDate} – ${toDate}${status !== "all" ? ` · ${labelize(status)}` : ""}${search ? ` · Search: ${search}` : ""}`,
+          }}
+          onRefresh={() => setReloadKey((value) => value + 1)}
+          refreshing={loading}
+          disabled={!report || loading || Boolean(error)}
+          inline
+        />
       </HorizontalFilterScroller>
 
       {error && (

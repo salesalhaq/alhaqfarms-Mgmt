@@ -1,12 +1,14 @@
 "use client";
 
-import { AlertCircle, LoaderCircle, Pencil, Plus, RefreshCw, Search, Tag } from "lucide-react";
+import { AlertCircle, LoaderCircle, Pencil, Plus, Search, Tag } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { WorkspaceReportActions } from "@/components/workspace/WorkspaceReportActions";
 import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
 import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { WorkspaceDialog, WorkspaceError, WorkspaceField, WorkspaceSuccess } from "@/components/workspace/WorkspaceDialog";
+import { labelize } from "@/lib/format";
 import { postWorkspaceAction } from "@/lib/workspace/write-client";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 
@@ -153,9 +155,6 @@ export function FbrPctCategoriesWorkspace({ item }: { item: WorkspaceModule }) {
               <Plus size={14} /> New PCT category
             </button>
           )}
-          <button className="button secondary" type="button" onClick={() => setReloadKey((value) => value + 1)} disabled={loading}>
-            {loading ? <><LoaderCircle className="spin" size={15} /> Loading…</> : <><RefreshCw size={15} /> Refresh</>}
-          </button>
         </div>
       </div>
 
@@ -165,17 +164,7 @@ export function FbrPctCategoriesWorkspace({ item }: { item: WorkspaceModule }) {
       </div>
       <WorkspaceSuccess message={success} />
 
-      <section className="dashboard-stats" aria-label="FBR PCT category summary">
-        {cards.map((card) => (
-          <article className="dashboard-stat card" key={card.label}>
-            <span>{card.label}</span>
-            <strong>{card.value}</strong>
-            <small>{card.note}</small>
-          </article>
-        ))}
-      </section>
-
-      <HorizontalFilterScroller className="fbr-pct-filterbar" ariaLabel="FBR PCT category filters">
+      <HorizontalFilterScroller className="fbr-pct-filterbar workspace-page-report-filterbar" ariaLabel="FBR PCT category filters">
         <label className="search-field">
           <Search size={16} />
           <input
@@ -199,7 +188,46 @@ export function FbrPctCategoriesWorkspace({ item }: { item: WorkspaceModule }) {
             onChange={setStatus}
           />
         </label>
+        <WorkspaceReportActions
+          title={item.title}
+          sections={[{
+            title: "FBR PCT categories",
+            columns: ["Category", "PCT code", "Description", "Linked products", "Active products", "Status"],
+            rows: rows.map((row) => [
+              row.name,
+              row.pct_code,
+              row.description || "—",
+              String(row.product_count),
+              String(row.active_count),
+              labelize(row.status),
+            ]),
+          }]}
+          summary={[
+            ["Categories", summary.categories],
+            ["Linked products", summary.linkedProducts],
+            ["Active categories", summary.activeCategories],
+            ["Unclassified products", summary.unclassifiedProducts],
+          ]}
+          metadata={{
+            printedBy: staff?.full_name || "Staff",
+            filterSummary: `Includes current search and status filters.`,
+          }}
+          onRefresh={() => setReloadKey((value) => value + 1)}
+          refreshing={loading}
+          disabled={loading || Boolean(error) || !rows.length}
+          inline
+        />
       </HorizontalFilterScroller>
+
+      <section className="dashboard-stats" aria-label="FBR PCT category summary">
+        {cards.map((card) => (
+          <article className="dashboard-stat card" key={card.label}>
+            <span>{card.label}</span>
+            <strong>{card.value}</strong>
+            <small>{card.note}</small>
+          </article>
+        ))}
+      </section>
 
       {error && (
         <div className="card panel" role="alert">

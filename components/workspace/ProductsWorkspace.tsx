@@ -1,12 +1,13 @@
 "use client";
 
-import { AlertCircle, LoaderCircle, Pencil, Plus, RefreshCw, Save, Search, Tags, Trash2, X } from "lucide-react";
+import { AlertCircle, LoaderCircle, Pencil, Plus, Save, Search, Tags, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
 import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { WorkspaceReportActions } from "@/components/workspace/WorkspaceReportActions";
 import {
   WorkspaceCheckbox,
   WorkspaceDialog,
@@ -558,9 +559,6 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
           <button className="primary-button" type="button" disabled={!isHqAdmin} onClick={() => openProductEditor()} title={isHqAdmin ? "Add a product to the cloud catalog." : "Only an HQ administrator can manage products."}>
             <Plus size={15} /> Add product
           </button>
-          <button className="secondary-button" type="button" onClick={() => setReloadKey((key) => key + 1)} disabled={loading}>
-            {loading ? <LoaderCircle size={14} className="spin" /> : <RefreshCw size={14} />} Refresh
-          </button>
         </div>
       </div>
 
@@ -569,7 +567,7 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
         <span>Product changes are saved to the shared cloud catalog. Assign weight-barcode product codes from Barcode Labels.</span>
       </div>
 
-      <HorizontalFilterScroller className="product-catalog-filterbar" ariaLabel="Product catalog filters">
+      <HorizontalFilterScroller className="product-catalog-filterbar workspace-page-report-filterbar" ariaLabel="Product catalog filters">
         <label className="search-field product-catalog-search">
           <Search size={16} />
           <input
@@ -632,6 +630,41 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
         </label>
         <span className="result-count product-catalog-result-count">{visibleProducts.length} products</span>
         <button className="secondary-button product-catalog-clear" type="button" onClick={clearFilters}>Clear</button>
+        <WorkspaceReportActions
+          title={item.title}
+          sections={[{
+            title: "Product catalog",
+            columns: ["Product", "Category", "FBR PCT code", "FBR PCT category", "SKU", "Barcode", "Unit", "Cost", "Price", "Sale price", "Branch stock", "Status"],
+            rows: visibleProducts.map((product) => [
+              product.name,
+              product.category_name || "—",
+              product.fbr_pct_code || "—",
+              product.fbr_pct_category_name || "—",
+              product.sku || "—",
+              product.barcode || "—",
+              product.unit_code,
+              formatMoney(product.cost_price_paisa),
+              formatMoney(product.price_paisa),
+              product.on_sale && product.discounted_price_paisa != null ? formatMoney(product.discounted_price_paisa) : "—",
+              formatQuantity(product.stock_milli),
+              product.is_active ? "Active" : "Inactive",
+            ]),
+          }]}
+          summary={[
+            ["Products shown", visibleProducts.length],
+            ["Active products", visibleProducts.filter((product) => product.is_active).length],
+            ["Branch", branchName],
+          ]}
+          metadata={{
+            branch: branchName,
+            printedBy: staff?.full_name || "Staff",
+            filterSummary: `Includes current search, category, FBR PCT, and status filters.`,
+          }}
+          onRefresh={() => setReloadKey((key) => key + 1)}
+          refreshing={loading}
+          disabled={loading || Boolean(error) || !visibleProducts.length}
+          inline
+        />
       </HorizontalFilterScroller>
 
       {error && <div className="notice" role="alert">{error}</div>}

@@ -1,10 +1,13 @@
 "use client";
 
-import { AlertCircle, Eye, LoaderCircle, PackageCheck, RefreshCw, Truck, X } from "lucide-react";
+import { AlertCircle, Eye, LoaderCircle, PackageCheck, Truck, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { TableControls } from "@/components/workspace/TableControls";
+import { WorkspaceReportActions } from "@/components/workspace/WorkspaceReportActions";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
 import { postWorkspaceAction } from "@/lib/workspace/write-client";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
@@ -195,9 +198,6 @@ export function ReceiveStockWorkspace({ item }: { item: WorkspaceModule }) {
           <h1>{item.title}</h1>
           <p>{item.description} Confirm what actually arrived from another branch.</p>
         </div>
-        <button className="button secondary" type="button" onClick={() => setReloadKey((value) => value + 1)} disabled={loading}>
-          {loading ? <><LoaderCircle className="spin" size={15} /> Loading…</> : <><RefreshCw size={15} /> Refresh</>}
-        </button>
       </div>
 
       <div className="notice info" role="note">
@@ -206,24 +206,70 @@ export function ReceiveStockWorkspace({ item }: { item: WorkspaceModule }) {
       </div>
       {actionMessage && <div className="notice info" role="status">{actionMessage}</div>}
 
-      <div className="daily-report-toolbar daily-report-no-print">
+      <HorizontalFilterScroller className="workspace-page-report-filterbar" ariaLabel="Receive stock page controls">
         {staff?.role === "admin" && (
           <label className="toolbar-control">
             <span>Branch</span>
-            <select
-              className="toolbar-select"
+            <SearchableFilter
               value={branchId || "all"}
-              onChange={(event) => {
+              ariaLabel="Filter received stock by branch"
+              placeholder="All accessible branches"
+              options={[
+                { value: "all", label: "All accessible branches" },
+                ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+              ]}
+              onChange={(value) => {
                 setDetail(null);
-                setBranchId(event.target.value);
+                setBranchId(value);
               }}
-            >
-              <option value="all">All accessible branches</option>
-              {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-            </select>
+            />
           </label>
         )}
-      </div>
+        <WorkspaceReportActions
+          title={item.title}
+          sections={[
+            {
+              title: "Incoming transfers",
+              columns: ["Transfer", "From", "To", "Dispatched", "Lines", "Units", "Status"],
+              rows: (payload?.incoming || []).map((transfer) => [
+                transfer.transfer_number,
+                transfer.from_branch_name,
+                transfer.to_branch_name,
+                transfer.dispatched_at ? formatDateTime(transfer.dispatched_at) : "—",
+                String(transfer.item_count),
+                formatQuantity(transfer.quantity_milli),
+                labelize(transfer.status),
+              ]),
+            },
+            {
+              title: "Recently received transfers",
+              columns: ["Transfer", "From", "To", "Received", "Lines", "Units", "Status"],
+              rows: (payload?.received || []).map((transfer) => [
+                transfer.transfer_number,
+                transfer.from_branch_name,
+                transfer.to_branch_name,
+                transfer.received_at ? formatDateTime(transfer.received_at) : "—",
+                String(transfer.item_count),
+                formatQuantity(transfer.quantity_milli),
+                labelize(transfer.status),
+              ]),
+            },
+          ]}
+          summary={[
+            ["Incoming transfers", summary?.arriving ?? 0],
+            ["Units in transit", formatQuantity(summary?.unitsInTransit ?? 0)],
+            ["Recently received", summary?.receivedRecently ?? 0],
+          ]}
+          metadata={{
+            branch: summary?.branchName || "Your branch",
+            printedBy: staff?.full_name || "Staff",
+          }}
+          onRefresh={() => setReloadKey((value) => value + 1)}
+          refreshing={loading}
+          disabled={!payload || loading || Boolean(error)}
+          inline
+        />
+      </HorizontalFilterScroller>
 
       {error && (
         <div className="card panel" role="alert">

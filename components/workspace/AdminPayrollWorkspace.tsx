@@ -11,7 +11,6 @@ import {
   Plus,
   Printer,
   Receipt,
-  RefreshCcw,
   ShieldCheck,
   Users,
   Wallet,
@@ -23,6 +22,7 @@ import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilte
 import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { TableControls } from "@/components/workspace/TableControls";
+import { WorkspaceReportActions } from "@/components/workspace/WorkspaceReportActions";
 import { formatDateTime, formatMoney, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { printCurrentPage } from "@/lib/print/print-window";
@@ -597,7 +597,7 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
           <h1>{item.title}</h1>
           <p>{item.description} Attendance, compensation, and payroll actions are recorded to the shared branch ledger.</p>
         </div>
-        <HorizontalFilterScroller className="payroll-filterbar" ariaLabel="HR and payroll filters">
+        <HorizontalFilterScroller className="payroll-filterbar workspace-page-report-filterbar" ariaLabel="HR and payroll filters">
           {staff?.role === "admin" && (
             <label className="toolbar-control" style={{ flex: "0 0 190px" }}>
               <span>Branch</span>
@@ -630,9 +630,6 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
               />
             </label>
           )}
-          <button className="button secondary" onClick={() => setReloadKey((value) => value + 1)} disabled={loading} type="button">
-            {loading ? "Refreshing…" : "Refresh"}
-          </button>
           <button className="primary-button" type="button" onClick={() => openActionDialog("saveEmployee")}>
             <Plus size={14} /> Add employee
           </button>
@@ -661,6 +658,108 @@ export function AdminPayrollWorkspace({ item }: { item: WorkspaceModule }) {
               <ShieldCheck size={14} /> {summary?.taxSettings?.enabled ? "Disable manual tax" : "Enable manual tax"}
             </button>
           )}
+          <WorkspaceReportActions
+            title={item.title}
+            sections={summary ? [
+              {
+                title: "Employees and attendance",
+                columns: ["Employee", "Branch", "Department", "Role", "Active", "Base salary", "Allowances", "Monthly salary", "Advance balance", "Present", "Absent", "Half days", "Leave", "Gross", "Deductions", "Net"],
+                rows: summary.rows.map((row) => [
+                  row.staffName,
+                  row.branchName,
+                  row.departmentName,
+                  row.role,
+                  row.isActive ? "Active" : "Inactive",
+                  formatMoney(row.baseSalaryPaisa),
+                  formatMoney(row.allowancesPaisa),
+                  formatMoney(row.monthlyPaisa),
+                  formatMoney(row.advancePaisa),
+                  String(row.presentDays),
+                  String(row.absentDays),
+                  String(row.halfDays),
+                  String(row.leaveDays),
+                  formatMoney(row.grossPaisa),
+                  formatMoney(row.deductionsPaisa),
+                  formatMoney(row.netPaisa),
+                ]),
+              },
+              {
+                title: "Departments",
+                columns: ["Department", "Description", "Staff", "Status"],
+                rows: (summary.departments || []).map((department) => [
+                  department.name,
+                  department.description || "—",
+                  String(department.staffCount),
+                  department.isActive ? "Active" : "Inactive",
+                ]),
+              },
+              {
+                title: "Department payroll cost",
+                columns: ["Department", "Staff", "Monthly salary", "Paid runs", "Paid staff", "Gross", "Attendance deductions", "Advance deductions", "Tax withheld", "Net"],
+                rows: (summary.departmentCost?.departments || []).map((department) => [
+                  department.departmentName,
+                  String(department.staffCount),
+                  formatMoney(department.monthlySalaryPaisa),
+                  String(department.paidRunCount),
+                  String(department.paidStaffCount),
+                  formatMoney(department.grossPaisa),
+                  formatMoney(department.attendanceDeductionPaisa),
+                  formatMoney(department.advanceDeductionPaisa),
+                  formatMoney(department.taxWithheldPaisa),
+                  formatMoney(department.netPaisa),
+                ]),
+              },
+              {
+                title: "Payroll runs",
+                columns: ["Branch", "Period start", "Period end", "Status", "Working days", "Staff", "Gross", "Attendance deductions", "Advance deductions", "Net", "Created", "Paid"],
+                rows: (summary.payrollRuns || []).map((run) => [
+                  run.branchName,
+                  formatDate(run.periodStart),
+                  formatDate(run.periodEnd),
+                  labelize(run.status),
+                  String(run.workingDays),
+                  String(run.staffCount),
+                  formatMoney(run.grossPaisa),
+                  formatMoney(run.attendanceDeductionPaisa),
+                  formatMoney(run.advanceDeductionPaisa),
+                  formatMoney(run.netPaisa),
+                  formatDateTime(run.createdAt),
+                  run.paidAt ? formatDateTime(run.paidAt) : "—",
+                ]),
+              },
+              {
+                title: `Withholding · tax year ${taxYear}`,
+                columns: ["Employee", "Department", "Paid runs", "Tax withheld"],
+                rows: (summary.taxReport?.rows || []).map((row) => [
+                  row.staffName,
+                  row.departmentName,
+                  String(row.paidRuns),
+                  formatMoney(row.taxWithheldPaisa),
+                ]),
+              },
+            ] : []}
+            summary={summary ? [
+              ["Employees", summary.attendance.totalStaff],
+              ["Present", summary.attendance.presentCount],
+              ["Attendance rate", formatPercent(summary.attendance.attendanceRatePct)],
+              ["Gross payroll", formatMoney(summary.payroll.grossPaisa)],
+              ["Deductions", formatMoney(summary.payroll.deductionsPaisa)],
+              ["Net payroll", formatMoney(summary.payroll.netPaisa)],
+              ["Final payout", formatMoney(summary.payroll.finalPayoutPaisa)],
+              ["Outstanding advances", formatMoney(summary.advancesOutstandingPaisa || 0)],
+              ["Tax withheld", formatMoney(summary.taxReport?.totalWithheldPaisa || 0)],
+            ] : []}
+            metadata={{
+              branch: summary?.branchName || "Selected branch",
+              period: `${fromDate} – ${toDate}`,
+              printedBy: staff?.full_name || "Staff",
+              filterSummary: `Tax year ${taxYear}${staffId !== "all" ? " · selected staff" : ""}`,
+            }}
+            onRefresh={() => setReloadKey((value) => value + 1)}
+            refreshing={loading}
+            disabled={!summary || loading || Boolean(error)}
+            inline
+          />
         </HorizontalFilterScroller>
       </div>
 

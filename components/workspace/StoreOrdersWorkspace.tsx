@@ -1,10 +1,11 @@
 "use client";
 
-import { AlertCircle, CheckCircle2, CreditCard, Eye, LoaderCircle, Package, RefreshCw, Search, Truck, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, CreditCard, Eye, LoaderCircle, Package, Search, Truck, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { WorkspaceReportActions } from "@/components/workspace/WorkspaceReportActions";
 import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
 import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
@@ -344,14 +345,6 @@ export function StoreOrdersWorkspace({ item, initialOrderId }: { item: Workspace
           <h1>{item.title}</h1>
           <p>{item.description}</p>
         </div>
-        <button
-          className="secondary-button"
-          onClick={() => setReloadKey((value) => value + 1)}
-          disabled={loading}
-          type="button"
-        >
-          {loading ? <LoaderCircle size={14} className="spin" /> : <RefreshCw size={14} />} Refresh
-        </button>
       </div>
 
       <div className="live-readonly-note">
@@ -359,18 +352,7 @@ export function StoreOrdersWorkspace({ item, initialOrderId }: { item: Workspace
         <span>Order actions follow your branch permissions and update payment, stock, sales, and order history together.</span>
       </div>
 
-      <div className="order-summary-row">
-        <div className="summary-card">
-          <span>Orders loaded</span>
-          <strong>{loading ? "…" : orders.length}</strong>
-        </div>
-        <div className="summary-card">
-          <span>Awaiting payment review</span>
-          <strong className={awaitingReview ? "highlight" : ""}>{loading ? "…" : awaitingReview}</strong>
-        </div>
-      </div>
-
-      <HorizontalFilterScroller className="toolbar online-orders-filterbar" ariaLabel="Online order filters">
+      <HorizontalFilterScroller className="toolbar online-orders-filterbar workspace-page-report-filterbar" ariaLabel="Online order filters">
         <label className="search-field online-orders-search">
           <Search size={16} />
           <input
@@ -449,10 +431,51 @@ export function StoreOrdersWorkspace({ item, initialOrderId }: { item: Workspace
         </label>
 
         <button className="button secondary" onClick={clearFilters} type="button">Clear</button>
-        <button className="button secondary" disabled={loading} onClick={() => setReloadKey((value) => value + 1)} type="button">
-          {loading ? <LoaderCircle size={15} className="spin" /> : "Refresh"}
-        </button>
+        <WorkspaceReportActions
+          title={item.title}
+          sections={[{
+            title: "Online orders",
+            columns: ["Order", "Branch", "Customer", "Phone", "Placed", "Fulfillment", "Payment method", "Payment status", "Order status", "Total"],
+            rows: visibleOrders.map((order) => [
+              order.order_number,
+              order.branch_name || reportBranchName,
+              order.customer_name || "Walk-in customer",
+              order.customer_phone || "—",
+              formatDateTime(order.created_at),
+              labelize(order.fulfillment_type),
+              labelize(order.payment_method),
+              labelize(order.payment_review_status === "none" ? order.payment_status : order.payment_review_status),
+              labelize(order.status),
+              formatMoney(order.total_paisa),
+            ]),
+          }]}
+          summary={[
+            ["Orders shown", visibleOrders.length],
+            ["Awaiting payment review", visibleOrders.filter((order) => order.payment_review_status === "awaiting_review").length],
+            ["Order value", formatMoney(visibleOrders.reduce((sum, order) => sum + order.total_paisa, 0))],
+          ]}
+          metadata={{
+            branch: reportBranchName,
+            printedBy: staff?.full_name || "Staff",
+            filterSummary: `${formatReportDate(fromDate)} – ${formatReportDate(toDate)}${status !== "all" ? ` · ${labelize(status)}` : ""}${customerFilter ? ` · Customer: ${customerFilter}` : ""}${paymentFilter ? ` · Payment: ${labelize(paymentFilter)}` : ""}${search ? ` · Search: ${search}` : ""}`,
+          }}
+          onRefresh={() => setReloadKey((value) => value + 1)}
+          refreshing={loading}
+          disabled={loading || Boolean(error) || !visibleOrders.length}
+          inline
+        />
       </HorizontalFilterScroller>
+
+      <div className="order-summary-row">
+        <div className="summary-card">
+          <span>Orders loaded</span>
+          <strong>{loading ? "…" : orders.length}</strong>
+        </div>
+        <div className="summary-card">
+          <span>Awaiting payment review</span>
+          <strong className={awaitingReview ? "highlight" : ""}>{loading ? "…" : awaitingReview}</strong>
+        </div>
+      </div>
 
       {error ? (
         <div className="notice" role="alert"><AlertCircle size={16} /> {error}</div>

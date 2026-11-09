@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Eye, LoaderCircle, Plus, RefreshCw, Save, Search, Truck, X } from "lucide-react";
+import { AlertCircle, Eye, LoaderCircle, Plus, Save, Search, Truck, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
@@ -9,6 +9,7 @@ import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilte
 import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { TableControls } from "@/components/workspace/TableControls";
+import { WorkspaceReportActions } from "@/components/workspace/WorkspaceReportActions";
 import { WorkspaceDialog, WorkspaceError, WorkspaceField, WorkspaceSuccess } from "@/components/workspace/WorkspaceDialog";
 import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
 import { postWorkspaceAction } from "@/lib/workspace/write-client";
@@ -212,6 +213,54 @@ export function PurchasingWorkspace({ item }: { item: WorkspaceModule }) {
   const reportBranchName = branchId === "all"
     ? "All branches"
     : branches.find((branch) => branch.id === branchId)?.name || "Your branch";
+  const reportSections = view === "orders"
+    ? [{
+      title: "Purchase orders",
+      columns: ["Order", "Branch", "Supplier", "Ordered", "Expected", "Products", "Received quantity", "Remaining quantity", "Total", "Status"],
+      rows: orders.map((order) => [
+        order.order_number,
+        order.branch_name,
+        order.supplier_name,
+        formatDateTime(order.ordered_at),
+        order.expected_at ? formatDateTime(order.expected_at) : "—",
+        String(order.product_count ?? 0),
+        formatQuantity(order.received_quantity_milli ?? 0),
+        formatQuantity(order.remaining_quantity_milli ?? 0),
+        formatMoney(order.ordered_total_paisa),
+        labelize(order.status),
+      ]),
+    }]
+    : view === "receipts"
+      ? [{
+        title: "Purchase receipts",
+        columns: ["Supplier", "Branch", "Invoice", "Received", "Products", "Subtotal", "Paid", "Due", "Returned", "Received by"],
+        rows: receipts.map((receipt) => [
+          receipt.supplier_name,
+          receipt.branch_name,
+          receipt.supplier_invoice_number || "—",
+          formatDateTime(receipt.received_at),
+          String(receipt.product_count ?? 0),
+          formatMoney(receipt.subtotal_paisa),
+          formatMoney(receipt.paid_paisa ?? 0),
+          formatMoney(receipt.due_paisa ?? 0),
+          formatMoney(receipt.returned_paisa ?? 0),
+          receipt.received_by_name || "—",
+        ]),
+      }]
+      : [{
+        title: "Suppliers",
+        columns: ["Supplier", "Contact", "Phone", "Email", "Purchases", "Status"],
+        rows: suppliers.map((supplier) => [
+          supplier.name,
+          supplier.contact_name || "—",
+          supplier.phone || "—",
+          supplier.email || "—",
+          formatMoney(receipts
+            .filter((receipt) => receipt.supplier_name === supplier.name)
+            .reduce((total, receipt) => total + Number(receipt.subtotal_paisa || 0), 0)),
+          supplier.is_active ? "Active" : "Inactive",
+        ]),
+      }];
   const supplierPurchases = new Map<string, number>();
   for (const receipt of receipts) {
     supplierPurchases.set(
@@ -569,9 +618,6 @@ export function PurchasingWorkspace({ item }: { item: WorkspaceModule }) {
               <Plus size={14} /> Create purchase order
             </button>
           )}
-          <button className="secondary-button" type="button" onClick={() => setReloadKey((key) => key + 1)} disabled={loading}>
-            <RefreshCw size={16} /> Refresh
-          </button>
         </div>
       </div>
 
@@ -583,7 +629,7 @@ export function PurchasingWorkspace({ item }: { item: WorkspaceModule }) {
 
       {canView && (
         <>
-          <HorizontalFilterScroller className="purchasing-filterbar" ariaLabel="Purchasing filters">
+          <HorizontalFilterScroller className="purchasing-filterbar workspace-page-report-filterbar" ariaLabel="Purchasing filters">
             <label className="search-field purchasing-search">
               <Search size={17} aria-hidden="true" />
               <input
@@ -614,6 +660,25 @@ export function PurchasingWorkspace({ item }: { item: WorkspaceModule }) {
                 />
               </label>
             )}
+            <WorkspaceReportActions
+              title={`${item.title} · ${view}`}
+              sections={reportSections}
+              summary={[
+                ["Suppliers", suppliers.length],
+                ["Purchase orders", orders.length],
+                ["Receipts", receipts.length],
+                ["Branch", reportBranchName],
+              ]}
+              metadata={{
+                branch: reportBranchName,
+                printedBy: staff?.full_name || "Staff",
+                filterSummary: `Current view: ${view}. Includes current search filters.`,
+              }}
+              onRefresh={() => setReloadKey((key) => key + 1)}
+              refreshing={loading}
+              disabled={!data || loading || Boolean(error) || !visibleRows.length}
+              inline
+            />
             <TableDocumentTools
               tableId={tableId}
               title={`Purchasing · ${view}`}

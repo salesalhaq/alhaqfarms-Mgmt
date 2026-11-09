@@ -1,9 +1,10 @@
 "use client";
 
-import { AlertCircle, Ban, CheckCircle2, LoaderCircle, MonitorSmartphone, Plus, RefreshCw, Search } from "lucide-react";
+import { AlertCircle, Ban, CheckCircle2, LoaderCircle, MonitorSmartphone, Plus, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { WorkspaceReportActions } from "@/components/workspace/WorkspaceReportActions";
 import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
 import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { formatDateTime, labelize, statusTone } from "@/lib/format";
@@ -38,7 +39,7 @@ interface DevicesResponse {
 }
 
 export function DevicesWorkspace({ item }: { item: WorkspaceModule }) {
-  const { branches } = useStaffAuth();
+  const { staff, branches } = useStaffAuth();
   const [branchId, setBranchId] = useState("all");
   const [status, setStatus] = useState("all");
   const [search, setSearch] = useState("");
@@ -173,9 +174,6 @@ export function DevicesWorkspace({ item }: { item: WorkspaceModule }) {
           <button className="primary-button" type="button" disabled={!deviceFingerprint || !branches.length} onClick={() => setDialogOpen(true)}>
             <Plus size={14} /> Register this computer
           </button>
-          <button className="button secondary" type="button" onClick={() => setReloadKey((value) => value + 1)} disabled={loading}>
-            {loading ? <><LoaderCircle className="spin" size={15} /> Loading…</> : <><RefreshCw size={15} /> Refresh</>}
-          </button>
         </div>
       </div>
 
@@ -184,17 +182,7 @@ export function DevicesWorkspace({ item }: { item: WorkspaceModule }) {
         <span>Browser registration creates a separate web-device identity. It does not replace the fingerprint used by a Windows POS terminal.</span>
       </div>
 
-      <section className="dashboard-stats" aria-label="Device summary">
-        {cards.map((card) => (
-          <article className="dashboard-stat card" key={card.label}>
-            <span>{card.label}</span>
-            <strong>{card.value}</strong>
-            <small>{card.note}</small>
-          </article>
-        ))}
-      </section>
-
-      <HorizontalFilterScroller className="device-filterbar" ariaLabel="Device filters">
+      <HorizontalFilterScroller className="device-filterbar workspace-page-report-filterbar" ariaLabel="Device filters">
         <label className="search-field">
           <Search size={16} />
           <input
@@ -233,7 +221,51 @@ export function DevicesWorkspace({ item }: { item: WorkspaceModule }) {
           />
         </label>
         <button className="button link" type="button" onClick={clearFilters}>Clear</button>
+        <WorkspaceReportActions
+          title={item.title}
+          sections={[{
+            title: "Registered devices",
+            columns: ["Device", "Platform", "Fingerprint", "Branch", "Status", "Last seen", "Registered", "Approved by", "Notes"],
+            rows: rows.map((row) => [
+              row.name,
+              row.platform || "—",
+              row.fingerprint,
+              row.branch_name,
+              labelize(row.status),
+              row.last_seen_at ? formatDateTime(row.last_seen_at) : "Never",
+              formatDateTime(row.created_at),
+              row.approved_by_name || "—",
+              row.notes || "—",
+            ]),
+          }]}
+          summary={[
+            ["Registered", summary.total],
+            ["Approved", summary.approved],
+            ["Pending", summary.pending],
+            ["Revoked", summary.revoked],
+            ["Recently seen", summary.recentlySeen],
+          ]}
+          metadata={{
+            branch: branchId === "all" ? "All accessible branches" : branches.find((branch) => branch.id === branchId)?.name || "Selected branch",
+            printedBy: staff?.full_name || "Staff",
+            filterSummary: `Includes current search and status filters.`,
+          }}
+          onRefresh={() => setReloadKey((value) => value + 1)}
+          refreshing={loading}
+          disabled={loading || Boolean(error) || !rows.length}
+          inline
+        />
       </HorizontalFilterScroller>
+
+      <section className="dashboard-stats" aria-label="Device summary">
+        {cards.map((card) => (
+          <article className="dashboard-stat card" key={card.label}>
+            <span>{card.label}</span>
+            <strong>{card.value}</strong>
+            <small>{card.note}</small>
+          </article>
+        ))}
+      </section>
 
       {error && (
         <div className="card panel" role="alert">

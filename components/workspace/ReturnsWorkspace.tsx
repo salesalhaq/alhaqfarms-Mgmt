@@ -2,7 +2,7 @@
 
 import {
   ChevronLeft, ChevronRight, Eye, LoaderCircle, Plus,
-  Printer, RefreshCw, Search, X,
+  Printer, Search, X,
 } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
@@ -10,6 +10,7 @@ import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import { formatDateTime, formatMoney, formatQuantity, labelize } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { WorkspaceReportActions } from "@/components/workspace/WorkspaceReportActions";
 import { ReceiptDocument } from "@/components/workspace/ReceiptDocument";
 import { postWorkspaceAction, newIdempotencyKey } from "@/lib/workspace/write-client";
 import { formatReportDate, formatReportMoney, formatReportQuantity } from "@/lib/print/document";
@@ -185,6 +186,7 @@ export function ReturnsWorkspace({ item }: { item: WorkspaceModule }) {
   const isAdmin = staff?.role === "admin";
   const canApprove = staff?.role === "admin" || staff?.role === "manager";
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pageRefundTotal = rows.reduce((sum, row) => sum + row.refund_total_paisa, 0);
 
   const printReceipt = async () => {
     await waitForReceiptQr();
@@ -337,7 +339,7 @@ export function ReturnsWorkspace({ item }: { item: WorkspaceModule }) {
         </button>
       </div>
 
-      <HorizontalFilterScroller className="returns-history-filters card" ariaLabel="Returns history filters">
+      <HorizontalFilterScroller className="returns-history-filters card workspace-page-report-filterbar" ariaLabel="Returns history filters">
         <label className="search-field returns-history-search">
           <Search size={16} />
           <input
@@ -381,9 +383,38 @@ export function ReturnsWorkspace({ item }: { item: WorkspaceModule }) {
           </label>
         )}
         <div className="returns-history-actions">
-          <button className="button secondary" disabled={loading} onClick={() => setReloadKey((value) => value + 1)} type="button">
-            {loading ? <LoaderCircle size={15} className="spin" /> : <RefreshCw size={14} />} Refresh
-          </button>
+          <WorkspaceReportActions
+            title={item.title}
+            sections={[{
+              title: "Returns history",
+              columns: ["Return", "Branch", "Receipt", "Customer", "Raised", "Reason", "Refund", "Restocked", "Status"],
+              rows: rows.map((row) => [
+                row.return_number,
+                row.branch_name,
+                row.receipt_number,
+                row.customer_name,
+                formatDateTime(row.created_at),
+                row.reason,
+                formatMoney(row.refund_total_paisa),
+                row.restock_total_milli ? formatQuantity(row.restock_total_milli) : "—",
+                labelize(row.status),
+              ]),
+            }]}
+            summary={[
+              ["Matching returns", total],
+              ["Rows on this page", rows.length],
+              ["Refunds on this page", formatMoney(pageRefundTotal)],
+            ]}
+            metadata={{
+              branch: reportBranchName,
+              printedBy: staff?.full_name || "Staff",
+              filterSummary: `${formatReportDate(fromDate)} – ${formatReportDate(toDate)}${status !== "all" ? ` · ${labelize(status)}` : ""}${search ? ` · ${search}` : ""}`,
+            }}
+            onRefresh={() => setReloadKey((value) => value + 1)}
+            refreshing={loading}
+            disabled={loading || Boolean(error) || !rows.length}
+            inline
+          />
           <button className="button link" onClick={clearFilters} type="button">Clear filters</button>
         </div>
       </HorizontalFilterScroller>

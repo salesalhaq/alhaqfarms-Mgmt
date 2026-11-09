@@ -1,15 +1,17 @@
 "use client";
 
 import {
-  ArrowRight, ChevronLeft, ChevronRight, Eye, LoaderCircle, Plus, RefreshCw, Search, Trash2, X,
+  ArrowRight, ChevronLeft, ChevronRight, Eye, LoaderCircle, Plus, Search, Trash2, X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
 import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
+import { WorkspaceReportActions } from "@/components/workspace/WorkspaceReportActions";
 import { WorkspaceDialog, WorkspaceError, WorkspaceField, WorkspaceSuccess } from "@/components/workspace/WorkspaceDialog";
 import { formatDateTime, formatQuantity, labelize } from "@/lib/format";
+import { formatReportDate } from "@/lib/print/document";
 import { postWorkspaceAction } from "@/lib/workspace/write-client";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 
@@ -433,14 +435,7 @@ export function TransfersWorkspace({ item }: { item: WorkspaceModule }) {
       {actionMessage && <WorkspaceSuccess message={actionMessage} />}
       {actionError && !createOpen && !selectedTransferId && <WorkspaceError message={actionError} />}
 
-      <div className="dashboard-stats" aria-label="Transfer summary">
-        <div className="dashboard-stat card"><span>Drafts</span><strong>{rows.filter((row) => row.status === "draft").length}</strong><small>Not dispatched yet</small></div>
-        <div className="dashboard-stat card"><span>In transit</span><strong>{rows.filter((row) => row.status === "dispatched").length}</strong><small>Waiting at destination</small></div>
-        <div className="dashboard-stat card"><span>Received</span><strong>{rows.filter((row) => row.status === "received").length}</strong><small>In these results</small></div>
-        <div className="dashboard-stat card"><span>Branches</span><strong>{branches.filter((branch) => branch.is_active).length}</strong><small>Active destinations</small></div>
-      </div>
-
-      <HorizontalFilterScroller className="transfers-history-filters" ariaLabel="Transfer filters">
+      <HorizontalFilterScroller className="transfers-history-filters workspace-page-report-filterbar" ariaLabel="Transfer filters">
         <label className="search-field transfers-history-search">
           <Search size={16} />
           <input
@@ -500,12 +495,46 @@ export function TransfersWorkspace({ item }: { item: WorkspaceModule }) {
           </label>
         )}
         <div className="returns-history-actions transfers-history-actions">
-          <button className="button secondary" disabled={loading} onClick={() => setReloadKey((value) => value + 1)} type="button">
-            {loading ? <LoaderCircle size={15} className="spin" /> : <RefreshCw size={14} />} Refresh
-          </button>
+          <WorkspaceReportActions
+            title={item.title}
+            sections={[{
+              title: "Stock transfers",
+              columns: ["Transfer", "From branch", "To branch", "Items", "Quantity", "Created", "Status"],
+              rows: rows.map((row) => [
+                row.transfer_number,
+                row.from_branch_name,
+                row.to_branch_name,
+                String(row.item_count),
+                formatQuantity(row.quantity_milli),
+                formatDateTime(row.created_at),
+                labelize(row.status),
+              ]),
+            }]}
+            summary={[
+              ["Transfers on this page", rows.length],
+              ["Matching transfers", total],
+              ["Quantity on this page", formatQuantity(rows.reduce((sum, row) => sum + row.quantity_milli, 0))],
+            ]}
+            metadata={{
+              branch: branchId === "all" ? "All branches" : branches.find((branch) => branch.id === branchId)?.name || "Your branch",
+              printedBy: staff?.full_name || "Staff",
+              filterSummary: `${formatReportDate(fromDate)} – ${formatReportDate(toDate)} · ${status === "all" ? "All statuses" : labelize(status)} · ${direction === "all" ? "All directions" : labelize(direction)}`,
+            }}
+            onRefresh={() => setReloadKey((value) => value + 1)}
+            refreshing={loading}
+            disabled={loading || Boolean(error) || !rows.length}
+            inline
+          />
           <button className="button link" onClick={clearFilters} type="button">Clear filters</button>
         </div>
       </HorizontalFilterScroller>
+
+      <div className="dashboard-stats" aria-label="Transfer summary">
+        <div className="dashboard-stat card"><span>Drafts</span><strong>{rows.filter((row) => row.status === "draft").length}</strong><small>Not dispatched yet</small></div>
+        <div className="dashboard-stat card"><span>In transit</span><strong>{rows.filter((row) => row.status === "dispatched").length}</strong><small>Waiting at destination</small></div>
+        <div className="dashboard-stat card"><span>Received</span><strong>{rows.filter((row) => row.status === "received").length}</strong><small>In these results</small></div>
+        <div className="dashboard-stat card"><span>Branches</span><strong>{branches.filter((branch) => branch.is_active).length}</strong><small>Active destinations</small></div>
+      </div>
 
       {error && <div className="notice" role="alert">{error}</div>}
       <section className="card table-wrap workspace-table returns-history-table" aria-label="Transfers history">

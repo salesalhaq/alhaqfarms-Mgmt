@@ -846,7 +846,7 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
     return [];
   }, [item.slug, visibleRows]);
 
-  const hasPageLevelActions = ["erp-dashboard", "erp-expenses", "bulk-sales", "spice", "production", "animals"].includes(item.slug);
+  const hasPageLevelActions = ["erp-dashboard", "erp-expenses", "bulk-sales", "spice", "production", "animals", "farm-stores"].includes(item.slug);
   const pageReportSections = useMemo(() => {
     if (isDashboard && data?.overview) {
       const overview = data.overview;
@@ -874,6 +874,28 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
           ],
         },
       ];
+    }
+
+    if (item.slug === "farm-stores") {
+      return [{
+        title: "Farm stores",
+        columns: ["Store", "Code", "Address", "Phone", "Receipt prefix", "Active staff", "Products", "Stock value", "Sales today", "Receipts", "Last close", "Close difference", "Status"],
+        rows: visibleRows.map((row) => [
+          row.name || "—",
+          row.code || "—",
+          row.address || "—",
+          row.phone || "—",
+          row.receipt_prefix || "—",
+          formatNumber(row.active_staff),
+          row.products == null ? "—" : formatNumber(row.products),
+          row.stock_value_available ? formatMoney(row.stock_value_paisa) : "Unavailable",
+          formatMoney(row.sales_paisa),
+          formatNumber(row.sales_receipts),
+          row.last_close ? formatDay(row.last_close.business_date) : "—",
+          row.last_close ? formatMoney(row.last_close.difference_paisa) : "—",
+          row.is_active ? "Active" : "Inactive",
+        ]),
+      }];
     }
 
     if (item.slug === "animals") {
@@ -1179,7 +1201,7 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
         <div className="notice" role="alert"><AlertCircle size={17} /> {animalOptionsError}</div>
       )}
 
-      <HorizontalFilterScroller className="erp-filterbar" ariaLabel={`${item.title} filters`}>
+      <HorizontalFilterScroller className={`erp-filterbar${item.slug === "farm-stores" ? " workspace-page-report-filterbar" : ""}`} ariaLabel={`${item.title} filters`}>
           {!isDashboard && !isReports && (
             <label className="search-field erp-search">
               <Search size={17} aria-hidden="true" />

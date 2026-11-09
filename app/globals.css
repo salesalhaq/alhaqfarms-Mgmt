@@ -716,6 +716,9 @@ tbody tr:hover { background: #fcfdfb; }
 .workspace-report-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 16px; }
 .workspace-report-actions-inline { flex: 0 0 auto; flex-wrap: nowrap; margin: 0; }
 .workspace-report-actions-inline .button { flex: 0 0 auto; white-space: nowrap; }
+.workspace-page-report-filterbar { width: 100%; justify-content: center; margin-bottom: 16px; }
+.workspace-page-report-filterbar .horizontal-filter-viewport { flex: 1 1 auto; width: 100%; max-width: 100%; }
+.workspace-page-report-filterbar .horizontal-filter-content { width: max-content; min-width: 0; align-items: flex-end; justify-content: center; margin-inline: auto; }
 .daily-report-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; margin: 0 0 18px; }
 .daily-report-metrics .metric-card { display: grid; min-width: 0; gap: 8px; border: 1px solid #cbd8cd; border-radius: 12px; background: #f5f8f5; padding: 14px 16px; }
 .daily-report-metrics .metric-card span { color: #64736a; font-size: 11px; font-weight: 700; }

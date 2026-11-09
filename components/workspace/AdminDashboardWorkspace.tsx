@@ -25,6 +25,7 @@ import { formatDateTime, formatMoney, labelize, statusTone } from "@/lib/format"
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { TableControls } from "@/components/workspace/TableControls";
+import { WorkspaceReportActions } from "@/components/workspace/WorkspaceReportActions";
 
 type AdminDashboardRange = "today" | "7d" | "30d" | "month";
 
@@ -256,7 +257,8 @@ export function AdminDashboardWorkspace({ item }: { item: WorkspaceModule }) {
           <h1>{item.title}</h1>
           <p>{item.description}</p>
         </div>
-        <HorizontalFilterScroller className="admin-dashboard-filterbar" ariaLabel="Admin dashboard filters">
+      </div>
+      <HorizontalFilterScroller className="admin-dashboard-filterbar workspace-page-report-filterbar" ariaLabel="Admin dashboard filters">
           {staff?.role === "admin" && !staff.branch_id && (
             <label className="toolbar-control" style={{ flex: "0 0 220px" }}>
               <span>Branch</span>
@@ -287,11 +289,76 @@ export function AdminDashboardWorkspace({ item }: { item: WorkspaceModule }) {
               onChange={(value) => setRange(value as AdminDashboardRange)}
             />
           </label>
-          <button className="button secondary" type="button" disabled={loading} onClick={() => setReloadKey((value) => value + 1)}>
-            {loading ? <LoaderCircle size={15} className="spin" /> : "Refresh"}
-          </button>
+          <WorkspaceReportActions
+            title={item.title}
+            sections={data ? [
+              {
+                title: "Sales",
+                columns: ["Receipt", "Customer", "Status", "Total", "Completed"],
+                rows: data.sales.map((sale) => [
+                  sale.receipt_number,
+                  buildCustomerName(sale.customer_name),
+                  labelize(sale.status),
+                  formatMoney(sale.total_paisa),
+                  formatDateTime(sale.completed_at),
+                ]),
+              },
+              {
+                title: "Customers",
+                columns: ["Customer", "Phone", "Transactions", "Value", "Last seen"],
+                rows: data.customers.map((customer) => [
+                  customer.customer_name,
+                  customer.customer_phone || "—",
+                  String(customer.transaction_count),
+                  formatMoney(customer.total_paisa),
+                  formatDateTime(customer.last_seen),
+                ]),
+              },
+              {
+                title: "Online orders",
+                columns: ["Order", "Customer", "Status", "Payment", "Total", "Created"],
+                rows: data.orders.map((order) => [
+                  order.order_number,
+                  buildCustomerName(order.customer_name),
+                  labelize(order.status),
+                  labelize(order.payment_review_status || order.payment_status || "unknown"),
+                  formatMoney(order.total_paisa),
+                  formatDateTime(order.created_at),
+                ]),
+              },
+              {
+                title: "Returns",
+                columns: ["Return", "Source sale", "Status", "Refund", "Created"],
+                rows: data.returns.map((returnRow) => [
+                  returnRow.return_number,
+                  returnRow.sale_id || "—",
+                  labelize(returnRow.status),
+                  formatMoney(returnRow.refund_total_paisa),
+                  formatDateTime(returnRow.created_at),
+                ]),
+              },
+            ] : []}
+            summary={data ? [
+              ["Sales", data.summary.salesCount],
+              ["Sales value", formatMoney(data.summary.salesTotalPaisa)],
+              ["Customers", data.summary.customerCount],
+              ["Online orders", data.summary.orderCount],
+              ["Order value", formatMoney(data.summary.orderTotalPaisa)],
+              ["Payment reviews", data.summary.pendingReviewCount],
+              ["Open returns", data.summary.openReturnCount],
+              ["Refunds", formatMoney(data.summary.refundTotalPaisa)],
+            ] : []}
+            metadata={{
+              branch: selectedBranchName,
+              printedBy: staff?.full_name || "Staff",
+              filterSummary: `Period: ${range}`,
+            }}
+            onRefresh={() => setReloadKey((value) => value + 1)}
+            refreshing={loading}
+            disabled={!data || loading || Boolean(error)}
+            inline
+          />
         </HorizontalFilterScroller>
-      </div>
 
       <div className="notice info" role="status">
         <AlertTriangle size={16} aria-hidden="true" />

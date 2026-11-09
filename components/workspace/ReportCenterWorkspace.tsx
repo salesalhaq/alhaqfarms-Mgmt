@@ -335,19 +335,6 @@ export function ReportCenterWorkspace({
             {item.description} Pick the reports you need, set the dates and branch, then print them together or one by one, or download each as CSV.
           </p>
         </div>
-        <div className="heading-actions">
-          <button
-            className="button"
-            type="button"
-            onClick={() => printSections(selectedSections, `${reportKind === "erp" ? "ERP" : "Admin"} report center`)}
-            disabled={!selectedSections.length || loading}
-          >
-            <Printer size={15} /> Print selected reports
-          </button>
-          <button className="button secondary" type="button" onClick={() => setReloadKey((value) => value + 1)} disabled={loading}>
-            {loading ? <><LoaderCircle className="spin" size={15} /> Loading…</> : <><RefreshCw size={15} /> Refresh</>}
-          </button>
-        </div>
       </div>
 
       <HorizontalFilterScroller
@@ -382,6 +369,19 @@ export function ReportCenterWorkspace({
           <button className="button secondary" type="button" onClick={() => applyPreset(30)}>30 days</button>
           <button className="button secondary" type="button" onClick={() => applyPreset("month")}>This month</button>
         </div>
+        <div className="heading-actions report-center-filter-actions">
+          <button
+            className="button"
+            type="button"
+            onClick={() => printSections(selectedSections, `${reportKind === "erp" ? "ERP" : "Admin"} report center`)}
+            disabled={!selectedSections.length || loading}
+          >
+            <Printer size={15} /> Print selected reports
+          </button>
+          <button className="button secondary" type="button" onClick={() => setReloadKey((value) => value + 1)} disabled={loading}>
+            {loading ? <><LoaderCircle className="spin" size={15} /> Loading…</> : <><RefreshCw size={15} /> Refresh</>}
+          </button>
+        </div>
       </HorizontalFilterScroller>
 
       {error && <div className="notice" role="alert">{error}</div>}
@@ -391,10 +391,6 @@ export function ReportCenterWorkspace({
           <div>
             <p className="eyebrow page">Report picker</p>
             <h2>{selected.size}/{catalog.length} selected</h2>
-          </div>
-          <div className="heading-actions">
-            <button className="button secondary" type="button" onClick={() => setSelected(new Set(catalog.map((report) => report.id)))}>Select all</button>
-            <button className="button secondary" type="button" onClick={() => setSelected(new Set())}>Clear</button>
           </div>
         </div>
 
@@ -413,6 +409,10 @@ export function ReportCenterWorkspace({
                 <small>{group.items.filter((report) => selected.has(report.id)).length}/{group.items.length}</small>
               </button>
             ))}
+          </div>
+          <div className="heading-actions report-center-picker-actions">
+            <button className="button secondary" type="button" onClick={() => setSelected(new Set(catalog.map((report) => report.id)))}>Select all</button>
+            <button className="button secondary" type="button" onClick={() => setSelected(new Set())}>Clear</button>
           </div>
           <div className="report-center-print-options">
             <label className="report-center-check">

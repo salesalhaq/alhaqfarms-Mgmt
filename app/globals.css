@@ -419,7 +419,8 @@ tbody tr:hover { background: #fcfdfb; }
 .daily-report-toolbar.report-center-filterbar .report-center-date { flex-basis: 160px; }
 .report-center-filterbar .report-center-date input { box-sizing: border-box; width: 100%; min-height: 40px; border: 1px solid var(--line); border-radius: 9px; background: #fff; padding: 0 9px; color: var(--ink); font-size: 11px; }
 .report-center-filterbar .searchable-filter-trigger, .report-center-filterbar .button { min-height: 40px; }
-.report-center-date-presets { flex: 0 0 auto; gap: 6px; }
+.report-center-date-presets, .report-center-filter-actions, .report-center-picker-actions { flex: 0 0 auto; flex-wrap: nowrap; align-items: center; gap: 6px; margin-top: 0; }
+.report-center-filter-actions { margin-left: auto; }
 .report-center-tab-row { align-items: center; margin-top: 10px; }
 .report-center-tab-row .horizontal-filter-content { align-items: center; gap: 12px; }
 .report-center-picker-scroller { margin-top: 12px; }

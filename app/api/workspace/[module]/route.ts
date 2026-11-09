@@ -502,6 +502,14 @@ export async function GET(request: Request, context: RouteContext) {
       if (!["all", "completed", "void", "refunded", "partially_refunded"].includes(status)) {
         return authenticationResponse(request, authentication, { error: "Choose a supported sales status filter." }, 400);
       }
+      const paymentMethod = parameters.get("paymentMethod") || "";
+      if (paymentMethod && !["cash", "card", "jazzcash", "easypaisa", "other", "credit"].includes(paymentMethod)) {
+        return authenticationResponse(request, authentication, { error: "Choose a supported payment method." }, 400);
+      }
+      const channel = parameters.get("channel") || "";
+      if (channel && !["pos", "web_order"].includes(channel)) {
+        return authenticationResponse(request, authentication, { error: "Choose a supported sales channel." }, 400);
+      }
 
       const pageValue = parameters.get("page") || "1";
       const pageSizeValue = parameters.get("pageSize") || "25";
@@ -525,13 +533,18 @@ export async function GET(request: Request, context: RouteContext) {
         return authenticationResponse(request, authentication, { error: "This account is not linked to a staff profile." }, 403);
       }
 
-      let query = authentication.client
+      const salesClient = authentication.client as unknown as { from(table: string): any };
+      let query: any = salesClient
         .from("pos_sales")
-        .select("id,receipt_number,branch_id,cashier_id,customer_name,customer_phone,source_type,status,tax_mode,subtotal_paisa,item_discount_paisa,bill_discount_paisa,discount_paisa,tax_paisa,rounding_paisa,total_paisa,paid_paisa,due_paisa,change_paisa,loyalty_earned,loyalty_redeemed,loyalty_discount_paisa,completed_at", { count: "exact" })
+        .select(`id,receipt_number,branch_id,cashier_id,customer_name,customer_phone,source_type,status,tax_mode,subtotal_paisa,item_discount_paisa,bill_discount_paisa,discount_paisa,tax_paisa,rounding_paisa,total_paisa,paid_paisa,due_paisa,change_paisa,loyalty_earned,loyalty_redeemed,loyalty_discount_paisa,completed_at${paymentMethod ? ",pos_sale_payments!inner(method,deleted_at)" : ""}`, { count: "exact" })
         .is("deleted_at", null)
         .order("completed_at", { ascending: false })
         .order("id", { ascending: false });
+      if (paymentMethod) {
+        query = query.eq("pos_sale_payments.method", paymentMethod).is("pos_sale_payments.deleted_at", null);
+      }
       if (branchId) query = query.eq("branch_id", branchId);
+      if (channel) query = query.eq("source_type", channel);
       if (search) {
         const pattern = quotedFilterValue(`%${search}%`);
         query = query.or(`receipt_number.ilike.${pattern},customer_phone.ilike.${pattern}`);
@@ -546,7 +559,12 @@ export async function GET(request: Request, context: RouteContext) {
 
       const { data, count, error } = await query.range((page - 1) * pageSize, page * pageSize - 1);
       if (error) throw new Error(error.message);
-      const sales = data || [];
+      const sales = (data || []) as Array<{
+        id: string;
+        branch_id: string;
+        cashier_id: string;
+        [key: string]: unknown;
+      }>;
       const saleIds = sales.map((sale) => sale.id);
       let unitCounts = new Map<string, number>();
       let paymentMethods = new Map<string, Set<string>>();

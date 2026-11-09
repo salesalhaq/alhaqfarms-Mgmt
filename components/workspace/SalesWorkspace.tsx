@@ -20,6 +20,7 @@ import {
 import { waitForReceiptQr } from "@/lib/print/print-window";
 import { printReceiptElementViaBridge } from "@/lib/print/bridge-print";
 import { generateSalesHistoryDocument } from "@/lib/print/reports";
+import { SearchableFilter, type SearchableFilterOption } from "@/components/workspace/SearchableFilter";
 
 interface SaleBase {
   id: string;
@@ -107,6 +108,20 @@ interface SaleDetails {
 
 const PAGE_SIZE = 25;
 const SALES_STATUSES = ["all", "completed", "void", "refunded", "partially_refunded"] as const;
+const PAYMENT_METHODS: SearchableFilterOption[] = [
+  { value: "", label: "All payments" },
+  { value: "cash", label: "Cash" },
+  { value: "card", label: "Card" },
+  { value: "jazzcash", label: "JazzCash" },
+  { value: "easypaisa", label: "Easypaisa" },
+  { value: "other", label: "Other" },
+  { value: "credit", label: "Credit" },
+];
+const SALES_CHANNELS: SearchableFilterOption[] = [
+  { value: "", label: "All channels" },
+  { value: "pos", label: "POS" },
+  { value: "web_order", label: "Web" },
+];
 
 function localDateInput(date: Date): string {
   const year = date.getFullYear();
@@ -139,6 +154,8 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
   const [branchId, setBranchId] = useState(isHqAdmin ? "all" : staff?.branch_id || "");
   const [cashierId, setCashierId] = useState("");
   const [status, setStatus] = useState<(typeof SALES_STATUSES)[number]>("all");
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [channel, setChannel] = useState("");
   const [search, setSearch] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -203,6 +220,8 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
     });
     if (branchId) parameters.set("branchId", branchId);
     if (cashierId) parameters.set("cashierId", cashierId);
+    if (paymentMethod) parameters.set("paymentMethod", paymentMethod);
+    if (channel) parameters.set("channel", channel);
     if (debouncedSearch) parameters.set("search", debouncedSearch);
     if (debouncedCustomer) parameters.set("customer", debouncedCustomer);
 
@@ -227,7 +246,7 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
     })();
 
     return () => { active = false; };
-  }, [branchId, cashierId, debouncedCustomer, debouncedSearch, fromDate, page, reloadKey, staff, status, toDate]);
+  }, [branchId, cashierId, channel, debouncedCustomer, debouncedSearch, fromDate, page, paymentMethod, reloadKey, staff, status, toDate]);
 
   useEffect(() => {
     if (!selectedSaleId) return undefined;
@@ -280,6 +299,8 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
     setBranchId(isHqAdmin ? "all" : staff?.branch_id || "");
     setCashierId("");
     setStatus("all");
+    setPaymentMethod("");
+    setChannel("");
     setSearch("");
     setCustomerSearch("");
     setPage(1);
@@ -329,35 +350,74 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
         </label>
         <label className="sales-history-control">
           <span>Status</span>
-          <select value={status} onChange={(event) => updateFilter(setStatus, event.target.value as (typeof SALES_STATUSES)[number])}>
-            {SALES_STATUSES.map((value) => <option key={value} value={value}>{value === "all" ? "All statuses" : labelize(value)}</option>)}
-          </select>
+          <SearchableFilter
+            value={status}
+            ariaLabel="Filter by status"
+            placeholder="All statuses"
+            options={SALES_STATUSES.map((value) => ({ value, label: value === "all" ? "All statuses" : labelize(value) }))}
+            onChange={(value) => updateFilter(setStatus, value as (typeof SALES_STATUSES)[number])}
+          />
+        </label>
+        <label className="sales-history-control">
+          <span>Payment</span>
+          <SearchableFilter
+            value={paymentMethod}
+            ariaLabel="Filter by payment method"
+            placeholder="All payments"
+            options={PAYMENT_METHODS}
+            onChange={(value) => updateFilter(setPaymentMethod, value)}
+          />
+        </label>
+        <label className="sales-history-control">
+          <span>Channel</span>
+          <SearchableFilter
+            value={channel}
+            ariaLabel="Filter by sales channel"
+            placeholder="All channels"
+            options={SALES_CHANNELS}
+            onChange={(value) => updateFilter(setChannel, value)}
+          />
         </label>
         {canFilterCashiers && (
           <label className="sales-history-control">
             <span>Cashier</span>
-            <select value={cashierId} onChange={(event) => updateFilter(setCashierId, event.target.value)}>
-              <option value="">All cashiers</option>
-              {cashiers.map((cashier) => <option key={cashier.id} value={cashier.id}>{cashier.name}</option>)}
-            </select>
+            <SearchableFilter
+              value={cashierId}
+              ariaLabel="Filter by cashier"
+              placeholder="All cashiers"
+              options={[
+                { value: "", label: "All cashiers" },
+                ...cashiers.map((cashier) => ({ value: cashier.id, label: cashier.name })),
+              ]}
+              onChange={(value) => updateFilter(setCashierId, value)}
+            />
           </label>
         )}
         {staff?.role === "cashier" && (
           <label className="sales-history-control">
             <span>Cashier</span>
-            <select value={cashierId} onChange={(event) => updateFilter(setCashierId, event.target.value)}>
-              <option value="">All cashiers</option>
-              <option value="self">My sales</option>
-            </select>
+            <SearchableFilter
+              value={cashierId}
+              ariaLabel="Filter by cashier"
+              placeholder="All cashiers"
+              options={[{ value: "", label: "All cashiers" }, { value: "self", label: "My sales" }]}
+              onChange={(value) => updateFilter(setCashierId, value)}
+            />
           </label>
         )}
         {isHqAdmin && (
           <label className="sales-history-control">
             <span>Branch</span>
-            <select value={branchId} onChange={(event) => updateFilter(setBranchId, event.target.value)}>
-              <option value="all">All branches</option>
-              {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-            </select>
+            <SearchableFilter
+              value={branchId}
+              ariaLabel="Filter by branch"
+              placeholder="All branches"
+              options={[
+                { value: "all", label: "All branches" },
+                ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+              ]}
+              onChange={(value) => updateFilter(setBranchId, value)}
+            />
           </label>
         )}
         <div className="sales-history-filter-actions">
@@ -383,6 +443,8 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
                   period: `${formatReportDate(fromDate)} - ${formatReportDate(toDate)}`,
                   filterSummary: [
                     status !== "all" ? `Status: ${labelize(status)}` : "",
+                    paymentMethod ? `Payment: ${labelize(paymentMethod)}` : "",
+                    channel ? `Channel: ${channel === "web_order" ? "Web" : "POS"}` : "",
                     search ? `Search: ${search}` : "",
                     customerSearch ? `Customer: ${customerSearch}` : "",
                   ].filter(Boolean).join(" · "),

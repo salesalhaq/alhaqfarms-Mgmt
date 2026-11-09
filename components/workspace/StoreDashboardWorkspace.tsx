@@ -11,12 +11,15 @@ import {
   Receipt,
   ReceiptText,
   RotateCcw,
+  Search,
   ShoppingCart,
   Store,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { formatDateTime, formatMoney, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
@@ -104,10 +107,21 @@ function safeBranchName(branches: { id: string; name: string }[], branchId: stri
   return branches.find((branch) => branch.id === branchId)?.name || "Selected branch";
 }
 
+function orderPaymentStatus(order: StoreOrder): string {
+  return order.payment_review_status === "none" ? order.payment_status : order.payment_review_status;
+}
+
 export function StoreDashboardWorkspace({ item }: { item: WorkspaceModule }) {
   const { staff, branches } = useStaffAuth();
   const [branchId, setBranchId] = useState<string>(staff?.branch_id || "all");
   const [range, setRange] = useState<StoreDashboardRange>("7d");
+  const [salesSearch, setSalesSearch] = useState("");
+  const [salesStatus, setSalesStatus] = useState("all");
+  const [returnsSearch, setReturnsSearch] = useState("");
+  const [returnsStatus, setReturnsStatus] = useState("all");
+  const [ordersSearch, setOrdersSearch] = useState("");
+  const [ordersStatus, setOrdersStatus] = useState("all");
+  const [ordersPaymentStatus, setOrdersPaymentStatus] = useState("all");
   const [data, setData] = useState<StoreDashboardResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -118,6 +132,16 @@ export function StoreDashboardWorkspace({ item }: { item: WorkspaceModule }) {
     if (staff.branch_id) setBranchId(staff.branch_id);
     else if (staff.role === "admin") setBranchId("all");
   }, [staff?.branch_id, staff?.role]);
+
+  useEffect(() => {
+    setSalesSearch("");
+    setSalesStatus("all");
+    setReturnsSearch("");
+    setReturnsStatus("all");
+    setOrdersSearch("");
+    setOrdersStatus("all");
+    setOrdersPaymentStatus("all");
+  }, [branchId, range]);
 
   useEffect(() => {
     if (!staff) return;
@@ -159,6 +183,42 @@ export function StoreDashboardWorkspace({ item }: { item: WorkspaceModule }) {
     () => safeBranchName(branches, branchId),
     [branchId, branches],
   );
+
+  const visibleSales = useMemo(() => {
+    const query = salesSearch.trim().toLocaleLowerCase();
+    return (data?.sales || []).filter((sale) =>
+      (salesStatus === "all" || sale.status === salesStatus)
+      && (!query || sale.receipt_number.toLocaleLowerCase().includes(query)));
+  }, [data?.sales, salesSearch, salesStatus]);
+  const visibleReturns = useMemo(() => {
+    const query = returnsSearch.trim().toLocaleLowerCase();
+    return (data?.returns || []).filter((returnItem) =>
+      (returnsStatus === "all" || returnItem.status === returnsStatus)
+      && (!query || returnItem.return_number.toLocaleLowerCase().includes(query)));
+  }, [data?.returns, returnsSearch, returnsStatus]);
+  const visibleOrders = useMemo(() => {
+    const query = ordersSearch.trim().toLocaleLowerCase();
+    return (data?.orders || []).filter((order) =>
+      (ordersStatus === "all" || order.status === ordersStatus)
+      && (ordersPaymentStatus === "all" || orderPaymentStatus(order) === ordersPaymentStatus)
+      && (!query || order.order_number.toLocaleLowerCase().includes(query)));
+  }, [data?.orders, ordersPaymentStatus, ordersSearch, ordersStatus]);
+  const salesStatusOptions = useMemo(() => [
+    { value: "all", label: "All statuses" },
+    ...[...new Set((data?.sales || []).map((sale) => sale.status))].sort().map((status) => ({ value: status, label: labelize(status) })),
+  ], [data?.sales]);
+  const returnsStatusOptions = useMemo(() => [
+    { value: "all", label: "All statuses" },
+    ...[...new Set((data?.returns || []).map((returnItem) => returnItem.status))].sort().map((status) => ({ value: status, label: labelize(status) })),
+  ], [data?.returns]);
+  const orderStatusOptions = useMemo(() => [
+    { value: "all", label: "All statuses" },
+    ...[...new Set((data?.orders || []).map((order) => order.status))].sort().map((status) => ({ value: status, label: labelize(status) })),
+  ], [data?.orders]);
+  const orderPaymentOptions = useMemo(() => [
+    { value: "all", label: "All payments" },
+    ...[...new Set((data?.orders || []).map(orderPaymentStatus))].sort().map((status) => ({ value: status, label: labelize(status) })),
+  ], [data?.orders]);
 
   const cards = data ? [
     {
@@ -261,9 +321,20 @@ export function StoreDashboardWorkspace({ item }: { item: WorkspaceModule }) {
                   <p className="eyebrow page">Recent sales</p>
                   <h2>Sales</h2>
                 </div>
-                <TableDocumentTools tableId={`store-dashboard-sales-${branchId}-${range}`} title={`${item.title} recent sales`} disabled={!data.sales.length} />
+                <TableDocumentTools tableId={`store-dashboard-sales-${branchId}-${range}`} title={`${item.title} recent sales`} disabled={!visibleSales.length} />
               </div>
               {data.sales.length ? (
+                <>
+                <HorizontalFilterScroller className="store-dashboard-table-filters" ariaLabel="Recent sales filters">
+                  <label className="search-field store-dashboard-table-search">
+                    <Search size={16} aria-hidden="true" />
+                    <input aria-label="Search recent sales" placeholder="Search receipt number" value={salesSearch} onChange={(event) => setSalesSearch(event.target.value)} />
+                  </label>
+                  <label className="toolbar-control store-dashboard-table-filter">
+                    <span>Status</span>
+                    <SearchableFilter value={salesStatus} ariaLabel="Filter recent sales by status" placeholder="All statuses" options={salesStatusOptions} onChange={setSalesStatus} />
+                  </label>
+                </HorizontalFilterScroller>
                 <table id={`store-dashboard-sales-${branchId}-${range}`}>
                   <thead>
                     <tr>
@@ -274,7 +345,7 @@ export function StoreDashboardWorkspace({ item }: { item: WorkspaceModule }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.sales.slice(0, 6).map((sale) => (
+                    {visibleSales.map((sale) => (
                       <tr key={sale.id}>
                         <td><span className="primary-cell">{sale.receipt_number}</span></td>
                         <td><span className={`status ${statusTone(sale.status)}`}>{labelize(sale.status)}</span></td>
@@ -282,8 +353,10 @@ export function StoreDashboardWorkspace({ item }: { item: WorkspaceModule }) {
                         <td className="nowrap">{formatDateTime(sale.completed_at)}</td>
                       </tr>
                     ))}
+                    {!visibleSales.length && <tr><td className="dashboard-table-empty" colSpan={4}>No sales match these filters.</td></tr>}
                   </tbody>
                 </table>
+                </>
               ) : (
                 <div className="empty"><ShoppingCart size={23} /><h2>No sales in this range</h2><p>Try another period or branch selection.</p></div>
               )}
@@ -295,9 +368,20 @@ export function StoreDashboardWorkspace({ item }: { item: WorkspaceModule }) {
                   <p className="eyebrow page">Recent returns</p>
                   <h2>Returns</h2>
                 </div>
-                <TableDocumentTools tableId={`store-dashboard-returns-${branchId}-${range}`} title={`${item.title} recent returns`} disabled={!data.returns.length} />
+                <TableDocumentTools tableId={`store-dashboard-returns-${branchId}-${range}`} title={`${item.title} recent returns`} disabled={!visibleReturns.length} />
               </div>
               {data.returns.length ? (
+                <>
+                <HorizontalFilterScroller className="store-dashboard-table-filters" ariaLabel="Recent returns filters">
+                  <label className="search-field store-dashboard-table-search">
+                    <Search size={16} aria-hidden="true" />
+                    <input aria-label="Search recent returns" placeholder="Search return number" value={returnsSearch} onChange={(event) => setReturnsSearch(event.target.value)} />
+                  </label>
+                  <label className="toolbar-control store-dashboard-table-filter">
+                    <span>Status</span>
+                    <SearchableFilter value={returnsStatus} ariaLabel="Filter recent returns by status" placeholder="All statuses" options={returnsStatusOptions} onChange={setReturnsStatus} />
+                  </label>
+                </HorizontalFilterScroller>
                 <table id={`store-dashboard-returns-${branchId}-${range}`}>
                   <thead>
                     <tr>
@@ -308,7 +392,7 @@ export function StoreDashboardWorkspace({ item }: { item: WorkspaceModule }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.returns.slice(0, 6).map((returnItem) => (
+                    {visibleReturns.map((returnItem) => (
                       <tr key={returnItem.id}>
                         <td><span className="primary-cell">{returnItem.return_number}</span></td>
                         <td><span className={`status ${statusTone(returnItem.status)}`}>{labelize(returnItem.status)}</span></td>
@@ -316,8 +400,10 @@ export function StoreDashboardWorkspace({ item }: { item: WorkspaceModule }) {
                         <td className="nowrap">{formatDateTime(returnItem.created_at)}</td>
                       </tr>
                     ))}
+                    {!visibleReturns.length && <tr><td className="dashboard-table-empty" colSpan={4}>No returns match these filters.</td></tr>}
                   </tbody>
                 </table>
+                </>
               ) : (
                 <div className="empty"><RotateCcw size={23} /><h2>No returns in this range</h2><p>No return records were created for this branch and period.</p></div>
               )}
@@ -330,9 +416,24 @@ export function StoreDashboardWorkspace({ item }: { item: WorkspaceModule }) {
                 <p className="eyebrow page">Recent orders</p>
                 <h2>Store orders</h2>
               </div>
-              <TableDocumentTools tableId={`store-dashboard-orders-${branchId}-${range}`} title={`${item.title} recent orders`} disabled={!data.orders.length} />
+              <TableDocumentTools tableId={`store-dashboard-orders-${branchId}-${range}`} title={`${item.title} recent orders`} disabled={!visibleOrders.length} />
             </div>
             {data.orders.length ? (
+              <>
+              <HorizontalFilterScroller className="store-dashboard-table-filters" ariaLabel="Recent store order filters">
+                <label className="search-field store-dashboard-table-search">
+                  <Search size={16} aria-hidden="true" />
+                  <input aria-label="Search recent store orders" placeholder="Search order number" value={ordersSearch} onChange={(event) => setOrdersSearch(event.target.value)} />
+                </label>
+                <label className="toolbar-control store-dashboard-table-filter">
+                  <span>Status</span>
+                  <SearchableFilter value={ordersStatus} ariaLabel="Filter recent store orders by status" placeholder="All statuses" options={orderStatusOptions} onChange={setOrdersStatus} />
+                </label>
+                <label className="toolbar-control store-dashboard-table-filter">
+                  <span>Payment</span>
+                  <SearchableFilter value={ordersPaymentStatus} ariaLabel="Filter recent store orders by payment" placeholder="All payments" options={orderPaymentOptions} onChange={setOrdersPaymentStatus} />
+                </label>
+              </HorizontalFilterScroller>
               <table id={`store-dashboard-orders-${branchId}-${range}`}>
                 <thead>
                   <tr>
@@ -344,8 +445,8 @@ export function StoreDashboardWorkspace({ item }: { item: WorkspaceModule }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.orders.slice(0, 6).map((order) => {
-                    const paymentStatus = order.payment_review_status === "none" ? order.payment_status : order.payment_review_status;
+                  {visibleOrders.map((order) => {
+                    const paymentStatus = orderPaymentStatus(order);
                     return (
                       <tr key={order.id}>
                         <td><span className="primary-cell">{order.order_number}</span></td>
@@ -356,8 +457,10 @@ export function StoreDashboardWorkspace({ item }: { item: WorkspaceModule }) {
                       </tr>
                     );
                   })}
-                </tbody>
+                  {!visibleOrders.length && <tr><td className="dashboard-table-empty" colSpan={5}>No orders match these filters.</td></tr>}
+                  </tbody>
               </table>
+              </>
             ) : (
               <div className="empty"><Store size={23} /><h2>No orders in this range</h2><p>Orders that match the selected branch and period will appear here.</p></div>
             )}

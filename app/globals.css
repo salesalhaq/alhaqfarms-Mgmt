@@ -351,6 +351,14 @@ tbody tr:hover { background: #fcfdfb; }
 .dashboard-table-heading { padding: 16px 18px; }
 .dashboard-table-heading h2 { margin: 0; font-size: 15px; }
 .dashboard-table-heading > span { color: var(--muted); font-size: 10px; }
+.store-dashboard-table-filters { gap: 6px; margin: 0 10px 8px; }
+.store-dashboard-table-filters .horizontal-filter-content { align-items: flex-end; gap: 6px; }
+.store-dashboard-table-search { flex: 1 0 150px; min-width: 120px; }
+.store-dashboard-table-search input { box-sizing: border-box; min-height: 36px; padding-left: 34px; font-size: 10px; }
+.store-dashboard-table-search svg { top: 10px; left: 10px; }
+.store-dashboard-table-filter { flex: 0 0 130px; min-width: 0; }
+.store-dashboard-table-filter .searchable-filter-trigger { min-height: 36px; font-size: 10px; }
+.dashboard-table-empty { padding: 18px !important; color: var(--muted); text-align: center; }
 .shortcut-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 11px; margin-top: 12px; }
 .shortcut-card { display: flex; min-width: 0; align-items: center; gap: 11px; padding: 14px; transition: border-color .16s ease, transform .16s ease; }
 .shortcut-card:hover { transform: translateY(-1px); border-color: #b6d2be; }

@@ -4,6 +4,8 @@ import { AlertCircle, LoaderCircle, Pencil, Plus, RefreshCw, Save, Search, Tags,
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import {
   WorkspaceCheckbox,
@@ -547,8 +549,8 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
         <span>Product changes are saved to the shared cloud catalog. Assign weight-barcode product codes from Barcode Labels.</span>
       </div>
 
-      <div className="workspace-toolbar">
-        <label className="search-field">
+      <HorizontalFilterScroller className="product-catalog-filterbar" ariaLabel="Product catalog filters">
+        <label className="search-field product-catalog-search">
           <Search size={16} />
           <input
             aria-label="Search name, SKU or barcode"
@@ -558,30 +560,46 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
           />
         </label>
         {isAdmin && (
-          <label className="toolbar-control">
+          <label className="toolbar-control product-catalog-filter">
             <span>Branch</span>
-            <select className="toolbar-select" value={branchId} onChange={(event) => setBranchId(event.target.value)}>
-              <option value="all">All branches</option>
-              {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-            </select>
+            <SearchableFilter
+              value={branchId}
+              ariaLabel="Filter products by branch"
+              placeholder="All branches"
+              options={[
+                { value: "all", label: "All branches" },
+                ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+              ]}
+              onChange={setBranchId}
+            />
           </label>
         )}
-        <label className="toolbar-control">
+        <label className="toolbar-control product-catalog-filter">
           <span>Category</span>
-          <select className="toolbar-select" value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
-            <option value="">All categories</option>
-            {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-          </select>
+          <SearchableFilter
+            value={categoryId}
+            ariaLabel="Filter products by category"
+            placeholder="All categories"
+            options={[
+              { value: "", label: "All categories" },
+              ...categories.map((category) => ({ value: category.id, label: category.name })),
+            ]}
+            onChange={setCategoryId}
+          />
         </label>
-        <label className="toolbar-control">
+        <label className="toolbar-control product-catalog-filter">
           <span>Availability</span>
-          <select className="toolbar-select" value={availability} onChange={(event) => setAvailability(event.target.value)}>
-            {AVAILABILITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
+          <SearchableFilter
+            value={availability}
+            ariaLabel="Filter products by availability"
+            placeholder="All availability"
+            options={AVAILABILITY_OPTIONS}
+            onChange={setAvailability}
+          />
         </label>
-        <span className="result-count">{products.length} products</span>
-        <button className="secondary-button" type="button" onClick={clearFilters}>Clear</button>
-      </div>
+        <span className="result-count product-catalog-result-count">{products.length} products</span>
+        <button className="secondary-button product-catalog-clear" type="button" onClick={clearFilters}>Clear</button>
+      </HorizontalFilterScroller>
 
       {error && <div className="notice" role="alert">{error}</div>}
       <WorkspaceSuccess message={saveMessage} />

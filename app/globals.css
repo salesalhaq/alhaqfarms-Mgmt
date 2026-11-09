@@ -618,6 +618,14 @@ tbody tr:hover { background: #fcfdfb; }
 .workspace-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-bottom: 16px; }
 .workspace-toolbar .search-field { min-width: 220px; }
 .workspace-toolbar .toolbar-select { min-width: 145px; }
+.product-catalog-filterbar { gap: 7px; margin-bottom: 16px; }
+.product-catalog-filterbar .horizontal-filter-content { align-items: flex-end; gap: 8px; }
+.product-catalog-filterbar .product-catalog-search { flex: 1 0 240px; min-width: 220px; }
+.product-catalog-filterbar .product-catalog-search input { box-sizing: border-box; min-height: 38px; }
+.product-catalog-filterbar .product-catalog-filter { flex: 0 0 150px; min-width: 0; }
+.product-catalog-filterbar .searchable-filter-trigger { min-height: 38px; font-size: 10px; }
+.product-catalog-filterbar .product-catalog-result-count { flex: 0 0 auto; align-self: flex-end; padding: 0 3px 11px; white-space: nowrap; }
+.product-catalog-filterbar .product-catalog-clear { flex: 0 0 auto; min-height: 38px; }
 .workspace-table .empty { max-width: 520px; margin: 0 auto; }
 .workspace-table .empty svg { color: #7d9d86; }
 .workspace-table .empty p { margin-top: 7px; }

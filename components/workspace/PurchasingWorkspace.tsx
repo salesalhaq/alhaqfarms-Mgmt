@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { WorkspaceDialog, WorkspaceError, WorkspaceField, WorkspaceSuccess } from "@/components/workspace/WorkspaceDialog";
 import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
@@ -586,66 +588,72 @@ export function PurchasingWorkspace({ item }: { item: WorkspaceModule }) {
             <article className="dashboard-stat card"><span>Receipts</span><strong>{receipts.length}</strong></article>
           </section>
 
+          <HorizontalFilterScroller className="purchasing-filterbar" ariaLabel="Purchasing filters">
+            <label className="search-field purchasing-search">
+              <Search size={17} aria-hidden="true" />
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search order, invoice, supplier or notes"
+                aria-label="Search purchasing records"
+              />
+              {search && (
+                <button type="button" className="secondary-button" onClick={() => setSearch("")} aria-label="Clear search">
+                  Clear
+                </button>
+              )}
+            </label>
+            {isHqAdmin && (
+              <label className="toolbar-control purchasing-branch-control">
+                <span>Branch</span>
+                <SearchableFilter
+                  value={branchId}
+                  ariaLabel="Filter purchasing records by branch"
+                  placeholder="All branches"
+                  options={[
+                    { value: "all", label: "All branches" },
+                    ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+                  ]}
+                  onChange={setBranchId}
+                />
+              </label>
+            )}
+            <TableDocumentTools
+              tableId={tableId}
+              title={`Purchasing · ${view}`}
+              orientationKey={view === "suppliers" ? "supplier-directory" : `purchasing-${view}`}
+              disabled={loading || Boolean(error) || !visibleRows.length}
+              buildDocument={view === "suppliers"
+                ? (orientation) => suppliers.length
+                  ? generateSupplierDirectoryDocument({
+                      rows: suppliers.map((supplier) => ({
+                        name: supplier.name,
+                        contact_name: supplier.contact_name,
+                        phone: supplier.phone,
+                        email: supplier.email,
+                        is_active: supplier.is_active,
+                        purchased_paisa: supplierPurchases.get(supplier.name) ?? null,
+                      })),
+                      branchName: reportBranchName,
+                    }, {
+                      branding: {
+                        businessName: businessSettings.businessName,
+                        businessTagline: businessSettings.businessTagline,
+                        logoDataUrl: businessSettings.logoDataUrl,
+                      },
+                      orientationPreference: orientation,
+                      branch: reportBranchName,
+                      printedBy: staff?.full_name || "Staff",
+                    })
+                  : null
+                : undefined}
+            />
+          </HorizontalFilterScroller>
+
           <section className="card">
             <WorkspaceError message={actionError} />
             <WorkspaceSuccess message={actionMessage} />
-            <div className="workspace-toolbar">
-              <label className="search-field">
-                <Search size={17} aria-hidden="true" />
-                <input
-                  type="search"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search order, invoice, supplier or notes"
-                  aria-label="Search purchasing records"
-                />
-                {search && (
-                  <button type="button" className="secondary-button" onClick={() => setSearch("")} aria-label="Clear search">
-                    Clear
-                  </button>
-                )}
-              </label>
-              {isHqAdmin && (
-                <label className="toolbar-control">
-                  <span>Branch</span>
-                  <select className="toolbar-select" value={branchId} onChange={(event) => setBranchId(event.target.value)}>
-                    <option value="all">All branches</option>
-                    {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-                  </select>
-                </label>
-              )}
-              <TableDocumentTools
-                tableId={tableId}
-                title={`Purchasing · ${view}`}
-                orientationKey={view === "suppliers" ? "supplier-directory" : `purchasing-${view}`}
-                disabled={loading || Boolean(error) || !visibleRows.length}
-                buildDocument={view === "suppliers"
-                  ? (orientation) => suppliers.length
-                    ? generateSupplierDirectoryDocument({
-                        rows: suppliers.map((supplier) => ({
-                          name: supplier.name,
-                          contact_name: supplier.contact_name,
-                          phone: supplier.phone,
-                          email: supplier.email,
-                          is_active: supplier.is_active,
-                          purchased_paisa: supplierPurchases.get(supplier.name) ?? null,
-                        })),
-                        branchName: reportBranchName,
-                      }, {
-                        branding: {
-                          businessName: businessSettings.businessName,
-                          businessTagline: businessSettings.businessTagline,
-                          logoDataUrl: businessSettings.logoDataUrl,
-                        },
-                        orientationPreference: orientation,
-                        branch: reportBranchName,
-                        printedBy: staff?.full_name || "Staff",
-                      })
-                    : null
-                  : undefined}
-              />
-            </div>
-
             <div className="workspace-tabs" role="tablist" aria-label="Purchasing record type">
               <button type="button" role="tab" aria-selected={view === "suppliers"} className={view === "suppliers" ? "primary-button" : "secondary-button"} onClick={() => { setView("suppliers"); closeDetails(); }}>
                 Suppliers

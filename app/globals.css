@@ -633,6 +633,12 @@ tbody tr:hover { background: #fcfdfb; }
 .inventory-filterbar .inventory-filter { flex: 0 0 175px; min-width: 0; }
 .inventory-filterbar .searchable-filter-trigger { min-height: 38px; font-size: 10px; }
 .inventory-filterbar .inventory-refresh { flex: 0 0 auto; min-height: 38px; }
+.purchasing-filterbar { gap: 7px; margin-bottom: 14px; }
+.purchasing-filterbar .horizontal-filter-content { align-items: flex-end; gap: 8px; }
+.purchasing-filterbar .purchasing-search { flex: 1 0 280px; min-width: 220px; }
+.purchasing-filterbar .purchasing-search svg { top: 11px; }
+.purchasing-filterbar .purchasing-branch-control { flex: 0 0 170px; min-width: 0; }
+.purchasing-filterbar .searchable-filter-trigger { min-height: 38px; font-size: 10px; }
 .horizontal-filter-content :is(input:not([type="checkbox"]), select, .searchable-filter-trigger, .button, .primary-button, .secondary-button) {
   box-sizing: border-box;
   height: 40px;

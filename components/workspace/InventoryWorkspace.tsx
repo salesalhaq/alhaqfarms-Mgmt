@@ -150,6 +150,7 @@ export function InventoryWorkspace({ item }: { item: WorkspaceModule }) {
   const [branchId, setBranchId] = useState(staff?.role === "admin" ? "all" : staff?.branch_id || "");
   const [search, setSearch] = useState("");
   const [productId, setProductId] = useState("");
+  const [inventoryStatus, setInventoryStatus] = useState("");
   const [payload, setPayload] = useState<InventoryResponse | null>(null);
   const [detail, setDetail] = useState<StocktakeDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -384,6 +385,12 @@ export function InventoryWorkspace({ item }: { item: WorkspaceModule }) {
   ] : [];
 
   const movementProductOptions = useMemo(() => payload?.products || [], [payload?.products]);
+  const visibleInventoryProducts = useMemo(
+    () => (payload?.products || []).filter((product) => (
+      !inventoryStatus || stockTone(product.stock_milli, product.reorder_point_milli).label === inventoryStatus
+    )),
+    [inventoryStatus, payload?.products],
+  );
   const stocktakeColumnCount = isAdmin ? 8 : 7;
   const actionBranchId = branchId === "all" ? targetBranchId : branchId;
   const actionProducts = branchId === "all" ? targetBranchProducts : payload?.products || [];
@@ -458,6 +465,21 @@ export function InventoryWorkspace({ item }: { item: WorkspaceModule }) {
             onChange={setProductId}
           />
         </label>
+        <label className="toolbar-control inventory-filter">
+          <span>Status</span>
+          <SearchableFilter
+            value={inventoryStatus}
+            ariaLabel="Filter inventory by status"
+            placeholder="All statuses"
+            options={[
+              { value: "", label: "All statuses" },
+              { value: "In stock", label: "In stock" },
+              { value: "Reorder", label: "Reorder" },
+              { value: "Out of stock", label: "Out of stock" },
+            ]}
+            onChange={setInventoryStatus}
+          />
+        </label>
         <button className="button secondary inventory-refresh" type="button" onClick={() => setReloadKey((value) => value + 1)} disabled={loading}>
           {loading ? <><LoaderCircle className="spin" size={14} /> Loading…</> : <><RefreshCw size={14} /> Refresh</>}
         </button>
@@ -483,18 +505,10 @@ export function InventoryWorkspace({ item }: { item: WorkspaceModule }) {
             ))}
           </section>
 
-          {payload.products.length > 0 && (
-            <TableControls
-              tableId="inventory-products"
-              ariaLabel="Branch inventory"
-              includeSearch={false}
-              filterColumns={[{ column: "Status" }]}
-            />
-          )}
           <section className="card table-wrap workspace-table" aria-label="Branch inventory">
             <div className="table-document-heading">
               <strong>Branch inventory · {payload.branchName}</strong>
-              <TableDocumentTools tableId="inventory-products" title={`${item.title} · ${payload.branchName}`} disabled={!payload.products.length} />
+              <TableDocumentTools tableId="inventory-products" title={`${item.title} · ${payload.branchName}`} disabled={!visibleInventoryProducts.length} />
             </div>
             {payload.products.length ? (
               <table id="inventory-products">
@@ -505,7 +519,7 @@ export function InventoryWorkspace({ item }: { item: WorkspaceModule }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {payload.products.map((product) => {
+                  {visibleInventoryProducts.length ? visibleInventoryProducts.map((product) => {
                     const tone = stockTone(product.stock_milli, product.reorder_point_milli);
                     return (
                       <tr key={product.id}>
@@ -520,7 +534,9 @@ export function InventoryWorkspace({ item }: { item: WorkspaceModule }) {
                         <td><span className={`status ${tone.tone}`}>{tone.label}</span></td>
                       </tr>
                     );
-                  })}
+                  }) : (
+                    <tr><td colSpan={6} className="empty-cell">No products match this status.</td></tr>
+                  )}
                 </tbody>
               </table>
             ) : (

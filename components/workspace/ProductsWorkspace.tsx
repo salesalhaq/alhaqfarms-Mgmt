@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertCircle, LoaderCircle, Pencil, Plus, RefreshCw, Save, Search, Tags, Trash2, X } from "lucide-react";
-import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
@@ -167,7 +167,7 @@ function parseMilli(value: string, label: string): number {
 }
 
 const AVAILABILITY_OPTIONS = [
-  { value: "all", label: "All availability" },
+  { value: "all", label: "All statuses" },
   { value: "active", label: "Active" },
   { value: "inactive", label: "Inactive" },
   { value: "on_sale", label: "On sale" },
@@ -239,6 +239,7 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [availability, setAvailability] = useState("all");
+  const [fbrPctCode, setFbrPctCode] = useState("");
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [branchName, setBranchName] = useState("Your branch");
@@ -304,10 +305,29 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
     return () => { active = false; };
   }, [availability, branchId, categoryId, debouncedSearch, reloadKey, staff]);
 
+  const fbrPctOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    products.forEach((product) => {
+      if (!product.fbr_pct_code) return;
+      options.set(product.fbr_pct_code, [
+        product.fbr_pct_code,
+        product.fbr_pct_category_name,
+      ].filter(Boolean).join(" · "));
+    });
+    return [...options].sort(([left], [right]) => left.localeCompare(right));
+  }, [products]);
+  const visibleProducts = useMemo(
+    () => fbrPctCode
+      ? products.filter((product) => product.fbr_pct_code === fbrPctCode)
+      : products,
+    [fbrPctCode, products],
+  );
+
   const clearFilters = () => {
     setSearch("");
     setCategoryId("");
     setAvailability("all");
+    setFbrPctCode("");
   };
 
   const loadCategories = async () => {
@@ -588,16 +608,29 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
           />
         </label>
         <label className="toolbar-control product-catalog-filter">
-          <span>Availability</span>
+          <span>FBR PCT</span>
+          <SearchableFilter
+            value={fbrPctCode}
+            ariaLabel="Filter products by FBR PCT"
+            placeholder="All FBR PCT"
+            options={[
+              { value: "", label: "All FBR PCT" },
+              ...fbrPctOptions.map(([value, label]) => ({ value, label })),
+            ]}
+            onChange={setFbrPctCode}
+          />
+        </label>
+        <label className="toolbar-control product-catalog-filter">
+          <span>Status</span>
           <SearchableFilter
             value={availability}
-            ariaLabel="Filter products by availability"
-            placeholder="All availability"
+            ariaLabel="Filter products by status"
+            placeholder="All statuses"
             options={AVAILABILITY_OPTIONS}
             onChange={setAvailability}
           />
         </label>
-        <span className="result-count product-catalog-result-count">{products.length} products</span>
+        <span className="result-count product-catalog-result-count">{visibleProducts.length} products</span>
         <button className="secondary-button product-catalog-clear" type="button" onClick={clearFilters}>Clear</button>
       </HorizontalFilterScroller>
 
@@ -611,9 +644,9 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
             tableId="products-table"
             title="Product catalog"
             orientationKey="product-catalog"
-            disabled={loading || Boolean(error) || !products.length}
-            buildDocument={(orientation) => products.length
-              ? generateProductCatalogDocument({ products, branchName }, {
+            disabled={loading || Boolean(error) || !visibleProducts.length}
+            buildDocument={(orientation) => visibleProducts.length
+              ? generateProductCatalogDocument({ products: visibleProducts, branchName }, {
                   branding: {
                     businessName: businessSettings.businessName,
                     businessTagline: businessSettings.businessTagline,
@@ -628,11 +661,11 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
         </div>
         {loading ? (
           <div className="loading"><LoaderCircle size={18} className="spin" /> Loading products…</div>
-        ) : !error && !products.length ? (
+        ) : !error && !visibleProducts.length ? (
           <div className="empty">
             <Search size={23} />
-            <h2>{search ? "No matching products" : "No products found"}</h2>
-            <p>{search ? "Try a different search or clear the filters." : "Products will appear here once the catalog syncs to the cloud."}</p>
+            <h2>{search || fbrPctCode ? "No matching products" : "No products found"}</h2>
+            <p>{search || fbrPctCode ? "Try a different search or clear the filters." : "Products will appear here once the catalog syncs to the cloud."}</p>
           </div>
         ) : !error ? (
           <table id="products-table">
@@ -643,7 +676,7 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
               </tr>
             </thead>
             <tbody>
-              {products.map((product) => (
+              {visibleProducts.map((product) => (
                 <tr key={product.id}>
                   <td>
                     <div className="product-catalog-cell">
@@ -696,7 +729,7 @@ export function ProductsWorkspace({ item }: { item: WorkspaceModule }) {
       </section>
 
       {!loading && !error && (
-        <p className="list-limit-note">Showing {products.length} products, limited to 500 per request. Branch stock is calculated from the synchronized movement ledger.</p>
+        <p className="list-limit-note">Showing {visibleProducts.length} products, limited to 500 per request. Branch stock is calculated from the synchronized movement ledger.</p>
       )}
 
       {productDialogOpen && (

@@ -763,6 +763,7 @@ export function WorkspacePage({ moduleSlug }: { moduleSlug: string }) {
   const item = getWorkspaceModule(moduleSlug);
   if (!item) return null;
 
+  if (item.slug === "erp-reports") return <ReportCenterWorkspace key={item.slug} item={item} kind="erp" />;
   if (item.section === "Farm ERP") return <ErpWorkspace key={item.slug} item={item} />;
 
   const isDashboard = Object.hasOwn(dashboardTitles, item.slug);

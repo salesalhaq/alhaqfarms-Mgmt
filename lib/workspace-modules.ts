@@ -69,7 +69,7 @@ export const workspaceSections = [
     title: "Admin",
     modules: [
       defineWorkspaceModule("admin-dashboard", "Admin dashboard", "Admin", "A business-wide overview of sales, pending decisions, and recent activity.", ["Metric", "Today", "Trend"]),
-      defineWorkspaceModule("report-center", "Report center", "Admin", "Choose a report and review its date and branch scope.", ["Report", "Period", "Branch scope", "Updated"]),
+      defineWorkspaceModule("report-center", "Report center", "Admin", "Print or export every admin sales, POS, customer, return, and stock report.", ["Report", "Period", "Branch scope", "Updated"]),
       defineWorkspaceModule("staff-accounts", "Staff accounts", "Admin", "Review staff profiles, branch assignments, and account status.", ["Staff member", "Username", "Branch", "Role", "Status"], "Add staff", ["Branch", "Role", "Status"]),
       defineWorkspaceModule("devices", "Devices", "Admin", "Review registered terminals and their latest connection status.", ["Device", "Branch", "Last seen", "App version", "Status"]),
       defineWorkspaceModule("sales-reports", "Sales reports", "Admin", "Compare sales by day, branch, cashier, product, or payment type.", ["Period", "Branch", "Receipts", "Sales", "Refunds"], undefined, ["Date range", "Branch"]),
@@ -93,7 +93,7 @@ export const workspaceSections = [
       defineWorkspaceModule("farm-stores", "Farm stores", "Farm ERP", "Review farm store locations and their inventory summaries.", ["Store", "Location", "Items", "Stock value", "Status"], "Register store", ["Status"]),
       defineWorkspaceModule("customer-accounts", "Customer accounts", "Farm ERP", "Manage customer accounts, immutable invoices, payments, and receivables.", ["Customer", "Phone", "Invoices", "Balance", "Last activity"], "New account", ["Balance", "Status"]),
       defineWorkspaceModule("erp-expenses", "ERP expenses", "Farm ERP", "Review farm and production expenses by category and period.", ["Date", "Category", "Description", "Vendor", "Amount"], "Record expense", ["Date range", "Category"]),
-      defineWorkspaceModule("erp-reports", "ERP reports", "Farm ERP", "Review combined farm ledgers for a selected period.", ["Report", "Period", "Records", "Total", "Updated"], undefined, ["Date range", "Report"]),
+      defineWorkspaceModule("erp-reports", "ERP reports", "Farm ERP", "Print or export every finance, sales, purchasing, inventory, farm, and people report.", ["Report", "Period", "Records", "Total", "Updated"], undefined, ["Date range", "Report"]),
     ],
   },
 ] as const;

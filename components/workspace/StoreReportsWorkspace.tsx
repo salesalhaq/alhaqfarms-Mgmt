@@ -3,6 +3,8 @@
 import { AlertCircle, LoaderCircle, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
+import { HorizontalFilterScroller } from "@/components/workspace/HorizontalFilterScroller";
+import { SearchableFilter } from "@/components/workspace/SearchableFilter";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { TableControls } from "@/components/workspace/TableControls";
 import { formatMoney } from "@/lib/format";
@@ -164,23 +166,32 @@ export function StoreReportsWorkspace({ item }: { item: PageItem }) {
         </div>
       </div>
 
-      <div className="daily-report-toolbar daily-report-no-print">
+      <HorizontalFilterScroller
+        className="toolbar daily-report-toolbar store-reports-toolbar daily-report-no-print"
+        ariaLabel="Store report filters"
+      >
         {isHqAdmin && (
           <label className="toolbar-control">
             <span>Branch</span>
-            <select className="toolbar-select" value={branchId || "all"} onChange={(event) => setBranchId(event.target.value)}>
-              <option value="all">All accessible branches</option>
-              {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-            </select>
+            <SearchableFilter
+              value={branchId || "all"}
+              ariaLabel="Filter store reports by branch"
+              placeholder="All accessible branches"
+              options={[
+                { value: "all", label: "All accessible branches" },
+                ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+              ]}
+              onChange={setBranchId}
+            />
           </label>
         )}
 
-        <label className="toolbar-control">
+        <label className="toolbar-control store-reports-date">
           <span>From</span>
           <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
         </label>
 
-        <label className="toolbar-control">
+        <label className="toolbar-control store-reports-date">
           <span>To</span>
           <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
         </label>
@@ -188,7 +199,7 @@ export function StoreReportsWorkspace({ item }: { item: PageItem }) {
         <button className="button secondary" type="button" onClick={() => setReloadKey((value) => value + 1)} disabled={loading}>
           {loading ? <><LoaderCircle className="spinner" size={14} /> Loading…</> : <><RefreshCw size={14} /> Refresh</>}
         </button>
-      </div>
+      </HorizontalFilterScroller>
 
       {error && (
         <div className="card panel" role="alert">
@@ -216,7 +227,7 @@ export function StoreReportsWorkspace({ item }: { item: PageItem }) {
               This report reached the per-period record limit. Narrow the date range for complete totals.
             </div>
           )}
-          <div className="daily-report-metrics">
+          <div className="daily-report-metrics store-reports-metrics">
             {summaryCards.map((card) => (
               <div className={`metric-card ${card.tone}`} key={card.label}>
                 <span>{card.label}</span>

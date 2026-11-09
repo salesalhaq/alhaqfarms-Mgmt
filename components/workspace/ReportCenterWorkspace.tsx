@@ -1,93 +1,34 @@
 "use client";
 
-import {
-  ArrowRight, BarChart3, ClipboardList, Factory, LoaderCircle, Package, Receipt,
-  RefreshCw, RotateCcw, TrendingUp, Wallet,
-} from "lucide-react";
-import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Download, LoaderCircle, Printer, RefreshCw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
-import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
-import { TableControls } from "@/components/workspace/TableControls";
-import { formatMoney } from "@/lib/format";
+import {
+  formatReportValue,
+  reportCatalog,
+  reportGroups,
+  reportRowValues,
+  reportSectionCsv,
+  reportTotalsRow,
+  type ReportCenterPayload,
+  type ReportCell,
+  type ReportColumnSpec,
+  type ReportDefinition,
+  type ReportSectionSpec,
+  type ReportTableSpec,
+} from "@/lib/reports/report-center";
+import {
+  baseDocument,
+  chooseOrientation,
+  escapeHtml,
+  reportTableMarkup,
+  type GeneratedDocument,
+  type PrintOrientation,
+  type ReportColumn,
+} from "@/lib/print/document";
+import { printHtmlDocument } from "@/lib/print/print-window";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
-
-interface ReportLink {
-  title: string;
-  slug: string;
-  description: string;
-  icon: typeof BarChart3;
-}
-
-const REPORT_GROUPS: Array<{ title: string; detail: string; links: ReportLink[] }> = [
-  {
-    title: "Sales & POS",
-    detail: "Receipts, refunds, margin, and the daily close.",
-    links: [
-      { title: "Daily report", slug: "daily-report", description: "Drawer, payments, sales, and refunds for a business day.", icon: BarChart3 },
-      { title: "Sales reports", slug: "sales-reports", description: "Receipts by day, cashier, product, and payment method.", icon: BarChart3 },
-      { title: "Profit & tax", slug: "profit-tax", description: "Sales margin, cost of goods, and tax for a period.", icon: TrendingUp },
-      { title: "Return reports", slug: "return-reports", description: "Refunds, restocked items, and the reasons customers return.", icon: RotateCcw },
-    ],
-  },
-  {
-    title: "Stock",
-    detail: "On-hand quantity, valuation, and replenishment.",
-    links: [
-      { title: "Stock reports", slug: "stock-reports", description: "On-hand quantity, valuation, and reorder alerts.", icon: Package },
-    ],
-  },
-  {
-    title: "Farm ERP",
-    detail: "Production, wholesale, and farm ledgers.",
-    links: [
-      { title: "ERP reports", slug: "erp-reports", description: "Production, wholesale, expenses, and farm ledgers.", icon: Factory },
-    ],
-  },
-  {
-    title: "People & branch",
-    detail: "Payroll, audit, expenses, and store-level reports.",
-    links: [
-      { title: "HR & payroll", slug: "hr-payroll", description: "Staff attendance, payroll periods, and payroll cost.", icon: Wallet },
-      { title: "Audit log", slug: "audit-log", description: "Recorded actions with the actor and branch.", icon: ClipboardList },
-      { title: "Store expenses", slug: "store-expenses", description: "Branch operating expenses by category.", icon: Receipt },
-      { title: "Store reports", slug: "store-reports", description: "Branch sales, product mix, and payment summaries.", icon: BarChart3 },
-    ],
-  },
-];
-
-type SummaryType = "sales" | "returns" | "payments" | "tax";
-
-interface SummaryRow {
-  label: string;
-  branch: string;
-  valuePaisa: number;
-  secondary: string;
-  tone: "green" | "amber" | "blue" | "purple";
-  reportType?: SummaryType;
-}
-
-interface SummaryReport {
-  branchName: string;
-  summary: {
-    receiptCount: number;
-    grossSalesPaisa: number;
-    discountPaisa: number;
-    taxPaisa: number;
-    refundsPaisa: number;
-    netSalesPaisa: number;
-  };
-  rows: SummaryRow[];
-  truncated?: boolean;
-  error?: string;
-}
-
-const SUMMARY_CHOICES: Array<{ id: SummaryType; title: string; description: string }> = [
-  { id: "sales", title: "Sales summary", description: "Gross sales, refunds, net sales, receipts, and discounts." },
-  { id: "returns", title: "Returns & refunds", description: "Completed refunds and their share of gross sales." },
-  { id: "payments", title: "Payment mix", description: "Captured totals by payment method." },
-  { id: "tax", title: "Tax & discounts", description: "Tax collected, average ticket, and discounts." },
-];
 
 function localDateKey(date: Date): string {
   const year = date.getFullYear();
@@ -103,22 +44,140 @@ function defaultDateRange(): [string, string] {
   return [localDateKey(from), localDateKey(to)];
 }
 
-export function ReportCenterWorkspace({ item }: { item: WorkspaceModule }) {
+function safeFilename(value: string): string {
+  return value.toLocaleLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "report";
+}
+
+function numericType(type: ReportColumnSpec["type"]): boolean {
+  return type === "money" || type === "int" || type === "num" || type === "pct";
+}
+
+function printColumns(columns: ReportColumnSpec[]): ReportColumn[] {
+  return columns.map((column) => ({
+    label: column.label,
+    weight: numericType(column.type) ? 1 : 2,
+    priority: 1,
+    long: column.type === "text" && /customer|description|reason|note|product|vendor|employee|reference/i.test(column.label),
+    numeric: numericType(column.type),
+  }));
+}
+
+function downloadCsv(filename: string, csv: string): void {
+  const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
+  const anchor = document.createElement("a");
+  anchor.href = URL.createObjectURL(blob);
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(anchor.href);
+}
+
+function tableTotals(table: ReportTableSpec): string[] | null {
+  if (!table.totals) return null;
+  return reportTotalsRow(table).map((value, index) => (index === 0 && !value ? "Total" : value));
+}
+
+function sectionContent(section: ReportSectionSpec): string {
+  return section.tables.map((table) => {
+    const columns = printColumns(table.columns);
+    const rows = table.rows.map((row) => reportRowValues(table, row));
+    const heading = table.title ? `<h3 class="rc-print-sub">${escapeHtml(table.title)}</h3>` : "";
+    return `${heading}${reportTableMarkup(columns, rows, {
+      emptyMessage: table.empty || "No records for this period.",
+      totals: tableTotals(table),
+    })}`;
+  }).join("");
+}
+
+function ReportTable({ table }: { table: ReportTableSpec }) {
+  const totals = tableTotals(table);
+  return (
+    <div className="report-center-table-block">
+      {table.title && <h3 className="report-center-subtitle">{table.title}</h3>}
+      <div className="table-wrap">
+        <table className="workspace-table">
+          <thead>
+            <tr>
+              {table.columns.map((column) => (
+                <th key={column.key} className={numericType(column.type) ? "numeric" : undefined}>
+                  {column.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {table.rows.length ? table.rows.map((row, rowIndex) => (
+              <tr key={rowIndex}>
+                {table.columns.map((column) => (
+                  <td key={column.key} className={numericType(column.type) ? "numeric" : undefined}>
+                    {formatReportValue(row[column.key] as ReportCell, column.type)}
+                  </td>
+                ))}
+              </tr>
+            )) : (
+              <tr>
+                <td colSpan={table.columns.length} className="empty">
+                  {table.empty || "No records for this period."}
+                </td>
+              </tr>
+            )}
+          </tbody>
+          {totals && (
+            <tfoot>
+              <tr>
+                {totals.map((value, index) => (
+                  <td key={table.columns[index]?.key || index} className={numericType(table.columns[index]?.type || "text") ? "numeric" : undefined}>
+                    {value}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+    </div>
+  );
+}
+
+export function ReportCenterWorkspace({
+  item,
+  kind,
+}: {
+  item: WorkspaceModule;
+  kind?: "admin" | "erp";
+}) {
+  const reportKind = kind ?? (item.slug === "erp-reports" ? "erp" : "admin");
+  const catalog = useMemo<ReportDefinition[]>(
+    () => reportCatalog(reportKind),
+    [reportKind],
+  );
+  const groups = useMemo(() => reportGroups(catalog), [catalog]);
   const { staff, branches } = useStaffAuth();
+  const { settings: businessSettings } = useBusinessSettings();
   const [[defaultFrom, defaultTo]] = useState(defaultDateRange);
   const [fromDate, setFromDate] = useState(defaultFrom);
   const [toDate, setToDate] = useState(defaultTo);
-  const [branchId, setBranchId] = useState(staff?.role === "admin" ? "all" : staff?.branch_id || "");
-  const [selectedReports, setSelectedReports] = useState<SummaryType[]>(SUMMARY_CHOICES.map((choice) => choice.id));
-  const [summary, setSummary] = useState<SummaryReport | null>(null);
+  const [branchId, setBranchId] = useState("all");
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(catalog.map((report) => report.id)));
+  const [activeGroup, setActiveGroup] = useState(groups[0]?.name || "");
+  const [newPageEach, setNewPageEach] = useState(false);
+  const [landscape, setLandscape] = useState(false);
+  const [payload, setPayload] = useState<ReportCenterPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    setSelected(new Set(catalog.map((report) => report.id)));
+    setActiveGroup(groups[0]?.name || "");
+  }, [catalog, groups]);
+
+  useEffect(() => {
     if (!staff) return;
-    if (staff.role === "admin" && !branchId) setBranchId("all");
-    else if (staff.branch_id && !branchId) setBranchId(staff.branch_id);
+    if (staff.role !== "admin" && staff.branch_id && branchId === "all") {
+      setBranchId(staff.branch_id);
+    }
   }, [branchId, staff]);
 
   useEffect(() => {
@@ -127,38 +186,45 @@ export function ReportCenterWorkspace({ item }: { item: WorkspaceModule }) {
     setLoading(true);
     setError(null);
 
-    const parameters = new URLSearchParams({ from: fromDate, to: toDate, report: "all" });
+    const parameters = new URLSearchParams({ from: fromDate, to: toDate });
     if (branchId) parameters.set("branchId", branchId);
+    const endpoint = reportKind === "erp" ? "/api/workspace/erp-report-center" : "/api/workspace/report-center";
 
     void (async () => {
       try {
-        const response = await fetch(`/api/workspace/admin-reports?${parameters.toString()}`, {
+        const response = await fetch(`${endpoint}?${parameters.toString()}`, {
           cache: "no-store",
           credentials: "same-origin",
         });
-        const payload = await response.json() as SummaryReport;
+        const result = await response.json() as ReportCenterPayload & { error?: string };
         if (!active) return;
-        if (!response.ok) throw new Error(payload.error || "Could not load the report summary.");
-        setSummary(payload);
+        if (!response.ok) throw new Error(result.error || "Could not load the report data.");
+        setPayload(result);
       } catch (loadError) {
         if (!active) return;
-        setError(loadError instanceof Error ? loadError.message : "Could not load the report summary.");
-        setSummary(null);
+        setError(loadError instanceof Error ? loadError.message : "Could not load the report data.");
+        setPayload(null);
       } finally {
         if (active) setLoading(false);
       }
     })();
 
     return () => { active = false; };
-  }, [branchId, fromDate, reloadKey, staff, toDate]);
+  }, [branchId, fromDate, reloadKey, reportKind, staff, toDate]);
 
-  const cards = summary ? [
-    { label: "Gross sales", value: formatMoney(summary.summary.grossSalesPaisa), note: `${summary.summary.receiptCount} receipts` },
-    { label: "Refunds", value: formatMoney(summary.summary.refundsPaisa), note: "Completed returns" },
-    { label: "Net sales", value: formatMoney(summary.summary.netSalesPaisa), note: `${formatMoney(summary.summary.discountPaisa)} discounts` },
-    { label: "Tax collected", value: formatMoney(summary.summary.taxPaisa), note: "Across completed receipts" },
-  ] : [];
-  const selectedRows = summary?.rows.filter((row) => row.reportType && selectedReports.includes(row.reportType)) || [];
+  const sections = useMemo(
+    () => payload?.sections || [],
+    [payload],
+  );
+  const selectedSections = useMemo(
+    () => sections.filter((section) => selected.has(section.id)),
+    [sections, selected],
+  );
+  const currentGroup = groups.find((group) => group.name === activeGroup) || groups[0];
+  const groupSelected = currentGroup
+    ? currentGroup.items.filter((report) => selected.has(report.id)).length
+    : 0;
+
   const applyPreset = (days: number | "month") => {
     const end = new Date();
     const start = new Date(end);
@@ -167,10 +233,94 @@ export function ReportCenterWorkspace({ item }: { item: WorkspaceModule }) {
     setFromDate(localDateKey(start));
     setToDate(localDateKey(end));
   };
-  const toggleReport = (report: SummaryType) => {
-    setSelectedReports((current) => current.includes(report)
-      ? current.filter((entry) => entry !== report)
-      : [...current, report]);
+
+  const toggleReport = (id: string) => {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleGroup = (groupName: string) => {
+    const group = groups.find((entry) => entry.name === groupName);
+    if (!group) return;
+    const allSelected = group.items.every((report) => selected.has(report.id));
+    setSelected((current) => {
+      const next = new Set(current);
+      for (const report of group.items) {
+        if (allSelected) next.delete(report.id);
+        else next.add(report.id);
+      }
+      return next;
+    });
+  };
+
+  const buildDocument = (
+    targetSections: ReportSectionSpec[],
+    options: { title: string; newPageEach: boolean; landscape: boolean },
+  ): GeneratedDocument | null => {
+    if (!targetSections.length) return null;
+    const allColumns = targetSections.flatMap((section) =>
+      section.tables.flatMap((table) => printColumns(table.columns)));
+    const orientation: PrintOrientation = options.landscape ? "landscape" : "auto";
+    const resolvedOrientation = chooseOrientation(allColumns, orientation);
+    const content = [
+      `<style>.rc-print-sub{margin:3mm 0 1mm;font-size:9pt;font-weight:700;color:#333}.rc-print-note{margin:0 0 2mm;font-size:8pt;color:#555}</style>`,
+      ...targetSections.map((section, index) => {
+        const pageBreak = options.newPageEach && index > 0
+          ? ' style="break-before:page;page-break-before:always"'
+          : "";
+        const note = section.note ? `<p class="rc-print-note">${escapeHtml(section.note)}</p>` : "";
+        return `<section class="report-section"${pageBreak}><h2>${escapeHtml(section.title)}</h2>${note}${sectionContent(section)}</section>`;
+      }),
+    ].join("");
+    return {
+      title: options.title,
+      orientation: resolvedOrientation,
+      html: baseDocument({
+        reportTitle: options.title,
+        orientation: resolvedOrientation,
+        branding: {
+          businessName: businessSettings.businessName,
+          businessTagline: businessSettings.businessTagline,
+          logoDataUrl: businessSettings.logoDataUrl,
+        },
+        metadata: {
+          printedAt: new Date(),
+          printedBy: staff?.full_name || "Staff",
+          branch: payload?.branchName || (branchId === "all" ? "All accessible branches" : branches.find((branch) => branch.id === branchId)?.name || "Your branch"),
+          period: `${fromDate} to ${toDate}`,
+          filterSummary: `${targetSections.length} report${targetSections.length === 1 ? "" : "s"}`,
+        },
+        content,
+      }),
+    };
+  };
+
+  const printSections = (targetSections: ReportSectionSpec[], title: string, pageEach = newPageEach) => {
+    const document = buildDocument(targetSections, {
+      title,
+      newPageEach: pageEach,
+      landscape,
+    });
+    if (!document) {
+      setError("Select at least one report to print.");
+      return;
+    }
+    if (!printHtmlDocument(document.html, { title: document.title })) {
+      setError("The print window was blocked. Allow pop-ups for this site and try again.");
+    }
+  };
+
+  const exportSection = (section: ReportSectionSpec) => {
+    const csv = reportSectionCsv(section);
+    if (!csv.trim()) {
+      setError("This report has no table data to export.");
+      return;
+    }
+    downloadCsv(`${reportKind}-${safeFilename(section.id)}-${fromDate}_to_${toDate}.csv`, csv);
   };
 
   return (
@@ -179,9 +329,19 @@ export function ReportCenterWorkspace({ item }: { item: WorkspaceModule }) {
         <div>
           <p className="eyebrow page">{item.section}</p>
           <h1>{item.title}</h1>
-          <p>{item.description} Open any report below to review the same operational ledgers used by the desktop app.</p>
+          <p>
+            {item.description} Pick the reports you need, set the dates and branch, then print them together or one by one, or download each as CSV.
+          </p>
         </div>
         <div className="heading-actions">
+          <button
+            className="button"
+            type="button"
+            onClick={() => printSections(selectedSections, `${reportKind === "erp" ? "ERP" : "Admin"} report center`)}
+            disabled={!selectedSections.length || loading}
+          >
+            <Printer size={15} /> Print selected reports
+          </button>
           <button className="button secondary" type="button" onClick={() => setReloadKey((value) => value + 1)} disabled={loading}>
             {loading ? <><LoaderCircle className="spin" size={15} /> Loading…</> : <><RefreshCw size={15} /> Refresh</>}
           </button>
@@ -215,103 +375,98 @@ export function ReportCenterWorkspace({ item }: { item: WorkspaceModule }) {
 
       {error && <div className="notice" role="alert">{error}</div>}
 
-      {loading && !summary && <div className="card loading"><LoaderCircle size={18} className="spin" /> Loading report summary…</div>}
-
-      <section className="card panel" aria-label="Select report summaries">
+      <section className="card panel" aria-label="Report picker">
         <div className="section-heading">
-          <div><p className="eyebrow page">Report summaries</p><h2>Choose what to include</h2></div>
+          <div>
+            <p className="eyebrow page">Report picker</p>
+            <h2>{selected.size}/{catalog.length} selected</h2>
+          </div>
           <div className="heading-actions">
-            <button className="button secondary" type="button" onClick={() => setSelectedReports(SUMMARY_CHOICES.map((choice) => choice.id))}>Select all</button>
-            <button className="button secondary" type="button" onClick={() => setSelectedReports([])}>Clear</button>
+            <button className="button secondary" type="button" onClick={() => setSelected(new Set(catalog.map((report) => report.id)))}>Select all</button>
+            <button className="button secondary" type="button" onClick={() => setSelected(new Set())}>Clear</button>
           </div>
         </div>
-        <div className="report-center-options">
-          {SUMMARY_CHOICES.map((choice) => (
-            <label className="report-center-option card" key={choice.id}>
+
+        <div className="report-center-group-tabs" role="tablist" aria-label="Report groups">
+          {groups.map((group) => (
+            <button
+              key={group.name}
+              type="button"
+              role="tab"
+              aria-selected={activeGroup === group.name}
+              className={`button secondary${activeGroup === group.name ? " is-active" : ""}`}
+              onClick={() => setActiveGroup(group.name)}
+            >
+              {group.name}
+              <small>{group.items.filter((report) => selected.has(report.id)).length}/{group.items.length}</small>
+            </button>
+          ))}
+        </div>
+
+        <div className="report-center-picker-options">
+          <label className="report-center-option card">
+            <input
+              type="checkbox"
+              checked={Boolean(currentGroup) && groupSelected === currentGroup.items.length}
+              onChange={() => currentGroup && toggleGroup(currentGroup.name)}
+            />
+            <span><strong>All {currentGroup?.name}</strong><small>Select or clear every report in this group.</small></span>
+          </label>
+          {currentGroup?.items.map((report) => (
+            <label className="report-center-option card" key={report.id}>
               <input
                 type="checkbox"
-                checked={selectedReports.includes(choice.id)}
-                onChange={() => toggleReport(choice.id)}
+                checked={selected.has(report.id)}
+                onChange={() => toggleReport(report.id)}
               />
-              <span><strong>{choice.title}</strong><small>{choice.description}</small></span>
+              <span><strong>{report.icon} {report.title}</strong><small>{report.group}</small></span>
             </label>
           ))}
         </div>
+
+        <div className="report-center-print-options">
+          <label className="report-center-check">
+            <input type="checkbox" checked={newPageEach} onChange={(event) => setNewPageEach(event.target.checked)} />
+            New page each
+          </label>
+          <label className="report-center-check">
+            <input type="checkbox" checked={landscape} onChange={(event) => setLandscape(event.target.checked)} />
+            Landscape
+          </label>
+        </div>
       </section>
 
-      {summary && (
-        <section className="dashboard-stats" aria-label="Report center summary">
-          {cards.map((card) => (
-            <article className="dashboard-stat card" key={card.label}>
-              <span>{card.label}</span>
-              <strong>{card.value}</strong>
-              <small>{card.note}</small>
-            </article>
-          ))}
-        </section>
-      )}
-      {summary?.truncated && (
-        <div className="notice" role="status">
-          The report reached its per-period record limit. Narrow the date range for complete totals.
-        </div>
+      {loading && !payload && <div className="card loading"><LoaderCircle size={18} className="spin" /> Loading reports…</div>}
+
+      {payload && !selectedSections.length && (
+        <div className="notice" role="status">Select at least one report to view, print, or export.</div>
       )}
 
-      {summary && (
-        <>
-        {selectedRows.length > 0 && (
-          <TableControls
-            tableId="report-center-selected"
-            ariaLabel="Selected report summaries"
-            filterColumns={[{ column: "Report" }, { column: "Branch" }]}
-          />
-        )}
-        <section className="card table-wrap workspace-table" aria-label="Selected report summaries">
-          <div className="table-document-heading">
-            <strong>Selected summaries · {fromDate} to {toDate}</strong>
-            <TableDocumentTools
-              tableId="report-center-selected"
-              title={`Report center ${summary.branchName}`}
-              disabled={!selectedRows.length || loading}
-            />
-          </div>
-          <table id="report-center-selected">
-            <thead><tr><th>Report</th><th>Branch</th><th>Measure</th><th>Value</th><th>Notes</th></tr></thead>
-            <tbody>
-              {selectedRows.length ? selectedRows.map((row) => (
-                <tr key={`${row.reportType}-${row.label}-${row.branch}`}>
-                  <td>{SUMMARY_CHOICES.find((choice) => choice.id === row.reportType)?.title || row.reportType}</td>
-                  <td>{row.branch}</td>
-                  <td>{row.label}</td>
-                  <td>{formatMoney(row.valuePaisa)}</td>
-                  <td>{row.secondary}</td>
-                </tr>
-              )) : <tr><td colSpan={5} className="empty">Select at least one report summary to print or export.</td></tr>}
-            </tbody>
-          </table>
-        </section>
-        </>
-      )}
-
-      {REPORT_GROUPS.map((group) => (
-        <section className="overview-workspace" key={group.title}>
+      {selectedSections.map((section) => (
+        <section className="card panel report-center-section" key={section.id}>
           <div className="section-heading">
-            <div><p className="eyebrow page">Reports</p><h2>{group.title}</h2></div>
-            <span className="muted">{group.detail}</span>
+            <div>
+              <p className="eyebrow page">{section.group}</p>
+              <h2>{catalog.find((report) => report.id === section.id)?.icon} {section.title}</h2>
+            </div>
+            <div className="heading-actions">
+              <button className="button secondary" type="button" onClick={() => printSections([section], section.title, false)}>
+                <Printer size={14} /> Print
+              </button>
+              <button className="button secondary" type="button" onClick={() => exportSection(section)}>
+                <Download size={14} /> CSV
+              </button>
+            </div>
           </div>
-          <div className="overview-action-grid">
-            {group.links.map(({ title, slug, description, icon: Icon }) => (
-              <Link className="overview-action-card card" href={`/workspace/${slug}`} key={slug}>
-                <span className="shortcut-icon"><Icon size={18} /></span>
-                <span className="shortcut-copy"><strong>{title}</strong><small>{description}</small></span>
-                <span className="report-card-open">Full report <ArrowRight size={14} className="shortcut-arrow" /></span>
-              </Link>
-            ))}
-          </div>
+          {section.note && <p className="muted report-center-note">{section.note}</p>}
+          {section.tables.map((table, index) => (
+            <ReportTable key={`${section.id}-${index}`} table={table} />
+          ))}
         </section>
       ))}
 
       <p className="list-limit-note">
-        Reports are read-only and follow your signed-in branch access. Document export controls are available inside each report.
+        Reports are read-only and follow your signed-in branch access. Reports marked &quot;as of today&quot; (stock, balances, receivables) always show the current position.
       </p>
     </>
   );

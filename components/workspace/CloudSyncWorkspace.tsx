@@ -194,7 +194,7 @@ export function CloudSyncWorkspace({ item }: { item: WorkspaceModule }) {
 
       {!loading && payload && (
         <>
-          <section className="dashboard-stats" aria-label="Cloud synchronization summary">
+          <section className="dashboard-stats cloud-sync-stats" aria-label="Cloud synchronization summary">
             {cards.map((card) => (
               <article className="dashboard-stat card" key={card.label}>
                 <span>{card.label}</span>

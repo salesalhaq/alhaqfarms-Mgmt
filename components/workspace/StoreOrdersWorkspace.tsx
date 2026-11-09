@@ -118,6 +118,8 @@ export function StoreOrdersWorkspace({ item, initialOrderId }: { item: Workspace
   const [toDate, setToDate] = useState(to);
   const [branchId, setBranchId] = useState(staff?.role === "admin" ? "all" : staff?.branch_id || "");
   const [status, setStatus] = useState<(typeof ORDER_STATUS_OPTIONS)[number]>("all");
+  const [customerFilter, setCustomerFilter] = useState("");
+  const [paymentFilter, setPaymentFilter] = useState("");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [orders, setOrders] = useState<StoreOrder[]>([]);
@@ -185,7 +187,25 @@ export function StoreOrdersWorkspace({ item, initialOrderId }: { item: Workspace
     };
   }, [branchId, debouncedSearch, fromDate, reloadKey, staff, status, toDate]);
 
-  const visibleOrders = useMemo(() => orders, [orders]);
+  const customerOptions = useMemo(
+    () => [...new Set(orders.map((order) => order.customer_name.trim()).filter(Boolean))]
+      .sort((left, right) => left.localeCompare(right)),
+    [orders],
+  );
+  const paymentOptions = useMemo(
+    () => [...new Set(orders.map((order) => order.payment_review_status === "none"
+      ? order.payment_status
+      : order.payment_review_status))]
+      .sort((left, right) => left.localeCompare(right)),
+    [orders],
+  );
+  const visibleOrders = useMemo(() => orders.filter((order) => (
+    (!customerFilter || order.customer_name.trim() === customerFilter)
+    && (!paymentFilter || (order.payment_review_status === "none"
+      ? order.payment_status
+      : order.payment_review_status) === paymentFilter)
+  )), [customerFilter, orders, paymentFilter]);
+  const hasClientFilters = Boolean(customerFilter || paymentFilter);
   const awaitingReview = orders.filter((order) => order.payment_review_status === "awaiting_review").length;
   const allowedActions = selected?.allowedActions || [];
   const detailAction = selected && (() => {
@@ -311,6 +331,8 @@ export function StoreOrdersWorkspace({ item, initialOrderId }: { item: Workspace
     setToDate(defaultTo);
     setBranchId(isAdmin ? "all" : staff?.branch_id || "");
     setStatus("all");
+    setCustomerFilter("");
+    setPaymentFilter("");
     setSearch("");
   };
 
@@ -389,6 +411,34 @@ export function StoreOrdersWorkspace({ item, initialOrderId }: { item: Workspace
           />
         </label>
 
+        <label className="toolbar-control online-orders-filter">
+          <span>Customer</span>
+          <SearchableFilter
+            value={customerFilter}
+            ariaLabel="Filter online orders by customer"
+            placeholder="All customers"
+            options={[
+              { value: "", label: "All customers" },
+              ...customerOptions.map((customer) => ({ value: customer, label: customer })),
+            ]}
+            onChange={setCustomerFilter}
+          />
+        </label>
+
+        <label className="toolbar-control online-orders-filter">
+          <span>Payment</span>
+          <SearchableFilter
+            value={paymentFilter}
+            ariaLabel="Filter online orders by payment"
+            placeholder="All payments"
+            options={[
+              { value: "", label: "All payments" },
+              ...paymentOptions.map((payment) => ({ value: payment, label: labelize(payment) })),
+            ]}
+            onChange={setPaymentFilter}
+          />
+        </label>
+
         <label className="toolbar-control online-orders-date">
           <span>From</span>
           <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
@@ -432,6 +482,8 @@ export function StoreOrdersWorkspace({ item, initialOrderId }: { item: Workspace
                   period: `${formatReportDate(fromDate)} - ${formatReportDate(toDate)}`,
                   filterSummary: [
                     status !== "all" ? `Status: ${labelize(status)}` : "",
+                    customerFilter ? `Customer: ${customerFilter}` : "",
+                    paymentFilter ? `Payment: ${labelize(paymentFilter)}` : "",
                     search ? `Search: ${search}` : "",
                   ].filter(Boolean).join(" · "),
                 }, {
@@ -453,8 +505,8 @@ export function StoreOrdersWorkspace({ item, initialOrderId }: { item: Workspace
         ) : !visibleOrders.length ? (
           <div className="empty">
             <Search size={23} />
-            <h2>{search ? "No matching orders" : `No ${item.title.toLowerCase()} found`}</h2>
-            <p>{search ? "Try another search or change the status/date filters." : "Orders placed for your branch will appear here once they sync to the cloud."}</p>
+            <h2>{search || hasClientFilters ? "No matching orders" : `No ${item.title.toLowerCase()} found`}</h2>
+            <p>{search || hasClientFilters ? "Try another search or change the order filters." : "Orders placed for your branch will appear here once they sync to the cloud."}</p>
           </div>
         ) : (
           <table id={`${item.slug}-table`}>

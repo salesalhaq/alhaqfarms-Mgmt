@@ -327,6 +327,7 @@ tbody tr:hover { background: #fcfdfb; }
 .workspace-preview-note svg { flex: 0 0 auto; margin-top: 1px; color: var(--green); }
 .workspace-preview-note strong { color: var(--green-dark); }
 .dashboard-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; margin-bottom: 18px; }
+.dashboard-stats.erp-animal-summary { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .cloud-sync-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .dashboard-stat { display: grid; gap: 9px; padding: 17px; }
 .dashboard-stat span { color: var(--muted); font-size: 11px; font-weight: 700; }
@@ -855,6 +856,7 @@ tbody tr:hover { background: #fcfdfb; }
   .app-shell { grid-template-columns: 72px minmax(0, 1fr); }
   .detail-grid { grid-template-columns: 1fr; }
   .dashboard-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboard-stats.erp-animal-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .daily-report-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .store-reports-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-grid { grid-template-columns: 1fr; }
@@ -901,6 +903,7 @@ tbody tr:hover { background: #fcfdfb; }
   .store-dashboard-controls, .admin-dashboard-filterbar, .overview-dashboard-filterbar,
   .finance-filterbar, .payroll-filterbar { margin-left: 0; }
   .dashboard-stats, .shortcut-grid { grid-template-columns: 1fr 1fr; }
+  .dashboard-stats.erp-animal-summary { grid-template-columns: 1fr 1fr; }
   .daily-report-metrics { grid-template-columns: 1fr; }
   .store-reports-metrics { grid-template-columns: 1fr; }
   .overview-action-grid { grid-template-columns: 1fr; }

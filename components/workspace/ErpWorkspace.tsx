@@ -846,7 +846,7 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
     return [];
   }, [item.slug, visibleRows]);
 
-  const hasPageLevelActions = ["erp-dashboard", "erp-expenses", "bulk-sales", "spice", "production"].includes(item.slug);
+  const hasPageLevelActions = ["erp-dashboard", "erp-expenses", "bulk-sales", "spice", "production", "animals"].includes(item.slug);
   const pageReportSections = useMemo(() => {
     if (isDashboard && data?.overview) {
       const overview = data.overview;
@@ -874,6 +874,25 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
           ],
         },
       ];
+    }
+
+    if (item.slug === "animals") {
+      return [{
+        title: "Animal batches",
+        columns: ["Batch", ...(showBranchColumn ? ["Branch"] : []), "Species", "Type", "Head count", "Opened", "Feed cost", "Feed quantity", "Last event", "Status"],
+        rows: visibleRows.map((row) => [
+          row.name || "—",
+          ...(showBranchColumn ? [row.branch_name || "—"] : []),
+          labelize(row.species),
+          labelize(row.batch_type),
+          formatNumber(row.head_count),
+          formatDay(row.opening_date),
+          formatMoney(row.feed_paisa),
+          `${formatQuantity(Number(row.feed_quantity_milli || 0))}${row.feed_quantity_milli ? " issued" : ""}`,
+          row.last_event_date ? formatDay(row.last_event_date) : "—",
+          labelize(row.status),
+        ]),
+      }];
     }
 
     if (!["erp-expenses", "bulk-sales", "spice", "production"].includes(item.slug)) return [];
@@ -1310,7 +1329,9 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
                 printedBy: staff?.full_name || "Staff",
                 filterSummary: item.slug === "erp-dashboard"
                   ? `Selected period: ${formatDay(from)} – ${formatDay(to)}. Dashboard trend covers the last 14 days.`
-                  : `Includes current date, branch, search${item.slug === "erp-expenses" ? ", category" : item.slug === "bulk-sales" ? ", and payment" : ""} filters.`,
+                  : item.slug === "animals"
+                    ? "Includes current branch, status, and search filters."
+                    : `Includes current date, branch, search${item.slug === "erp-expenses" ? ", category" : item.slug === "bulk-sales" ? ", and payment" : ""} filters.`,
               }}
               onRefresh={() => setReloadKey((key) => key + 1)}
               refreshing={loading}
@@ -1334,7 +1355,7 @@ export function ErpWorkspace({ item }: { item: WorkspaceModule }) {
       {!loading && !error && !isDashboard && !isReports && (
         <>
           {summary.length > 0 && (
-            <section className="dashboard-stats" aria-label={`${item.title} summary`}>
+            <section className={`dashboard-stats${item.slug === "animals" ? " erp-animal-summary" : ""}`} aria-label={`${item.title} summary`}>
               {summary.map((entry) => <StatCard key={entry.label} label={entry.label} value={entry.value} hint={entry.hint} />)}
             </section>
           )}

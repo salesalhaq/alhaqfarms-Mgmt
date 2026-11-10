@@ -54,7 +54,6 @@ E:\ALhaqFM APP\database\supabase\migrations\0025_shared_staff_web_credentials.sq
 E:\ALhaqFM APP\database\supabase\migrations\0026_staff_overview_metrics.sql
 E:\ALhaqFM APP\database\supabase\migrations\0027_staff_pos_catalog.sql
 E:\ALhaqFM APP\database\supabase\migrations\0028_staff_daily_report.sql
-E:\ALhaqFM APP\database\supabase\migrations\0029_hq_staff_invitation_enrollment.sql
 E:\Alhaqfm Web\supabase\migrations\029_branch_tax_and_fbr_settings.sql
 E:\Alhaqfm Web\supabase\migrations\030_web_cloud_backups.sql
 E:\Alhaqfm Web\supabase\migrations\032_stock_transfer_workflow.sql

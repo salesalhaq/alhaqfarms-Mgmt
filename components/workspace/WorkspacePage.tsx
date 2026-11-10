@@ -322,7 +322,7 @@ function Overview({ item }: { item: WorkspaceModule }) {
                           Decline
                         </button>
                       </div>
-                      : <small>Another manager or administrator must review this request.</small>}
+                      : <small>Another staff member must review this request.</small>}
                   </article>
                 ))}
             </section>

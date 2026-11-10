@@ -25,6 +25,13 @@ export async function POST(request: Request) {
     assertSameOrigin(request);
     const body = await readJsonBody(request);
     const action = readEnum(body.action, "Discount approval action", ACTIONS);
+    const role = authentication.identity.staff.role;
+    if (action === "request" && !["cashier", "manager", "admin"].includes(role)) {
+      throw new WriteError("Your role cannot request a POS discount approval.", 403);
+    }
+    if ((action === "approve" || action === "decline") && !["manager", "admin"].includes(role)) {
+      throw new WriteError("Only a manager or administrator can review discount requests.", 403);
+    }
     const allBranches = action === "list" && body.branchId === "all";
     if (allBranches && (
       authentication.identity.staff.role !== "admin"

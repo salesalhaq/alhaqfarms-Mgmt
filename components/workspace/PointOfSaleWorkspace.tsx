@@ -1158,7 +1158,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
                   <button className="button secondary" disabled={discountApprovalBusy}
                     onClick={() => void reviewManagerDiscount(request, false)} type="button">Decline</button>
                 </div>
-                : <small>Another staff member must review this request.</small>}
+                : <small>Another manager or administrator must review this request.</small>}
             </article>
           ))}
         </section>
@@ -1287,7 +1287,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
           </div>
           {selectedCustomer && (
             <label className="field">
-              <span>Redeem loyalty points<small>{selectedCustomer.loyalty_points} available · PKR 1.00 per point</small></span>
+              <span>Redeem loyalty points<small>{selectedCustomer.loyalty_points} available · {formatMoney(posSettings.loyaltyPointValuePaisa)} per point</small></span>
               <input inputMode="numeric" min="0" max={selectedCustomer.loyalty_points} value={loyaltyPointsInput}
                 onChange={(event) => setLoyaltyPointsInput(event.target.value)} />
             </label>
@@ -1658,6 +1658,12 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
                     <label className="field">
                       <span>Cash received (PKR)<small>Leave blank to tender the exact amount.</small></span>
                       <input inputMode="decimal" value={payment.tendered} onChange={(event) => setPaymentDrafts((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, tendered: event.target.value } : entry))} />
+                    </label>
+                  )}
+                  {payment.method === "card" && (
+                    <label className="field">
+                      <span>Terminal reference<small>Optional</small></span>
+                      <input maxLength={100} value={payment.reference} onChange={(event) => setPaymentDrafts((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, reference: event.target.value } : entry))} />
                     </label>
                   )}
                   {["jazzcash", "easypaisa"].includes(payment.method) && (

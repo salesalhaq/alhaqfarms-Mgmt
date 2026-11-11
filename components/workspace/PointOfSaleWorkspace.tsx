@@ -1129,7 +1129,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
           </div>
 
           {["manager", "admin"].includes(staff?.role || "")
-            && (canViewAllDiscountRequests || managerDiscountRequests.length > 0) && (
+            && managerDiscountRequests.length > 0 && (
             <section className="card pos-held-sales-list" aria-label="Pending POS discount approvals">
               <div className="sales-dialog-header">
                 <div><p className="eyebrow page">Manager review</p><h2>Discount approval requests</h2></div>

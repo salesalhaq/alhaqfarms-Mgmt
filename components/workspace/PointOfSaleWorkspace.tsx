@@ -195,6 +195,14 @@ function roundedTaxPaisa(amountPaisa: number, rateBps: number, taxMode: "inclusi
   return whole * rate + Math.floor((remainder * rate + denominator / 2) / denominator);
 }
 
+function taxRateText(rateBps: number): string {
+  return `${Number(((rateBps || 0) / 100).toFixed(2))}%`;
+}
+
+function taxRateNote(rateBps: number, taxMode: "inclusive" | "exclusive"): string {
+  return `(${taxMode === "inclusive" ? "Inc Tax" : "Add Tax"} ${taxRateText(rateBps)})`;
+}
+
 export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
   const { staff, branches } = useStaffAuth();
   const { settings: receiptSettings } = useBusinessSettings();
@@ -297,9 +305,9 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
       .sort((left, right) => left - right),
     [cart],
   );
-  const cartTaxRateLabel = `${cartTaxRates.length
-    ? cartTaxRates.map((rate) => `${Number((rate / 100).toFixed(2))}%`).join(", ")
-    : ""} ${taxMode === "inclusive" ? "included in prices" : "added to prices"}`.trim();
+  const cartTaxRateLabel = cartTaxRates.length
+    ? cartTaxRates.map((rate) => taxRateText(rate)).join(", ")
+    : taxRateText(posSettings.taxRateBps);
   const discountNeedsManagerApproval = Boolean(staff)
     && (billDiscountPaisa || 0) > Math.min(Math.floor(totalPaisa * 0.03), 10_000);
   let taxDiscountRemaining = (billDiscountPaisa ?? 0)
@@ -1304,7 +1312,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
                   <strong>{line.product.name}</strong>
                   <span>{formatMoney(Math.round(productPrice(line.product) * line.quantityMilli / 1000))}</span>
                 </div>
-                <small>{formatMoney(productPrice(line.product))} / {line.product.unit_code}</small>
+                <small>{formatMoney(productPrice(line.product))} / {line.product.unit_code} <span className="pos-line-tax">{taxRateNote(line.product.tax_rate_bps || 0, taxMode)}</span></small>
                 <div className="pos-quantity-controls">
                   <button aria-label={`Decrease ${line.product.name}`} onClick={() => changeQuantity(line, -quantityStep(line.product))} type="button"><Minus size={13} /></button>
                   <input
@@ -1334,8 +1342,11 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
             {!invalidLoyaltyRedemption && loyaltyDiscountPaisa > 0 && (
               <div><span>Loyalty discount</span><strong>−{formatMoney(loyaltyDiscountPaisa)}</strong></div>
             )}
-            {saleTaxPaisa > 0 && (
-              <div><span>Tax ({cartTaxRateLabel})</span><strong>{formatMoneyPrecise(saleTaxPaisa)}</strong></div>
+            {cart.length > 0 && (
+              <div>
+                <span>{taxMode === "inclusive" ? "Tax Included" : `Tax (${cartTaxRateLabel})`}</span>
+                <strong>{saleTaxPaisa > 0 ? formatMoneyPrecise(saleTaxPaisa) : ""}</strong>
+              </div>
             )}
             <div><span>Total due</span><strong>{formatMoney(saleTotalPaisa)}</strong></div>
             <small>Final product prices and stock are revalidated when the sale is recorded.</small>
@@ -1403,7 +1414,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
                   id: line.product.id,
                   name: line.product.name,
                   details: [
-                    `${formatQuantity(line.quantityMilli)} ${line.product.unit_code} × ${formatMoney(productPrice(line.product))}`,
+                    `${formatQuantity(line.quantityMilli)} ${line.product.unit_code} × ${formatMoney(productPrice(line.product))} ${taxRateNote(line.product.tax_rate_bps || 0, completedSale.taxMode)}`,
                     ...(discount > 0 ? [`Discount −${formatMoney(discount)}`] : []),
                   ],
                   amount: formatMoney(net + (completedSale.taxMode === "exclusive" ? tax : 0)),
@@ -1417,22 +1428,29 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
                 ...(completedLoyaltyDiscountPaisa > 0
                   ? [{ label: `${completedLoyaltyPoints} loyalty points`, value: `− ${formatMoney(completedLoyaltyDiscountPaisa)}` }]
                   : []),
-                ...(!receiptSettings.showTaxOnReceipt || completedSale.taxPaisa <= 0
+                ...(!receiptSettings.showTaxOnReceipt
                   ? []
-                  : receiptSettings.taxDisplay === "detailed"
-                    ? [...new Set(completedLines.map((line) => line.product.tax_rate_bps || 0))]
-                      .filter((rate) => rate > 0)
-                      .map((rate) => ({
-                        label: `Tax ${rate / 100}%`,
-                        value: formatMoneyPrecise(completedLines
-                          .filter((line) => (line.product.tax_rate_bps || 0) === rate)
-                          .reduce((sum, line) => {
-                            const subtotal = Math.round(productPrice(line.product) * line.quantityMilli / 1000);
-                            const discount = completedLineDiscounts[line.product.id] || 0;
-                            return sum + roundedTaxPaisa(subtotal - discount, rate, completedSale.taxMode);
-                          }, 0)),
-                      }))
-                    : [{ label: `Tax (${completedSale.taxMode})`, value: formatMoneyPrecise(completedSale.taxPaisa) }]),
+                  : completedSale.taxMode === "inclusive"
+                    ? [{
+                      label: "Tax Included",
+                      value: completedSale.taxPaisa > 0 ? formatMoneyPrecise(completedSale.taxPaisa) : "",
+                    }]
+                    : completedSale.taxPaisa <= 0
+                      ? []
+                      : receiptSettings.taxDisplay === "detailed"
+                        ? [...new Set(completedLines.map((line) => line.product.tax_rate_bps || 0))]
+                          .filter((rate) => rate > 0)
+                          .map((rate) => ({
+                            label: `Tax ${rate / 100}%`,
+                            value: formatMoneyPrecise(completedLines
+                              .filter((line) => (line.product.tax_rate_bps || 0) === rate)
+                              .reduce((sum, line) => {
+                                const subtotal = Math.round(productPrice(line.product) * line.quantityMilli / 1000);
+                                const discount = completedLineDiscounts[line.product.id] || 0;
+                                return sum + roundedTaxPaisa(subtotal - discount, rate, completedSale.taxMode);
+                              }, 0)),
+                          }))
+                        : [{ label: `Tax (${completedSale.taxMode})`, value: formatMoneyPrecise(completedSale.taxPaisa) }]),
                 { label: "Total", value: formatMoney(completedSale.totalPaisa), emphasis: true },
                 ...(completedSale.duePaisa > 0
                   ? [{ label: "Credit due", value: formatMoney(completedSale.duePaisa) }]

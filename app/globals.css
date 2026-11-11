@@ -597,6 +597,7 @@ tbody tr:hover { background: #fcfdfb; }
 .pos-basket-line-title strong { min-width: 0; font-size: 10px; }
 .pos-basket-line-title span { flex: 0 0 auto; color: var(--green-dark); font-size: 10px; font-weight: 700; }
 .pos-basket-line > small { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; }
+.pos-line-tax { color: var(--muted); font-weight: 600; }
 .pos-quantity-controls { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
 .pos-quantity-controls button { display: grid; width: 26px; height: 26px; place-items: center; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: var(--surface); cursor: pointer; }
 .pos-quantity-controls > span { min-width: 38px; text-align: center; font-size: 10px; font-weight: 700; }

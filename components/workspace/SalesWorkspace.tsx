@@ -587,12 +587,17 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
                       : []),
                     ...(!receiptSettings.showTaxOnReceipt
                       ? []
-                      : receiptSettings.taxDisplay === "detailed"
-                        ? [...new Set(saleDetails.items.map((line) => line.tax_rate_bps))].map((rate) => ({
-                            label: `Tax ${rate / 100}%`,
-                            value: formatReportMoney(saleDetails.items.filter((line) => line.tax_rate_bps === rate).reduce((sum, line) => sum + line.tax_paisa, 0)),
-                          }))
-                        : [{ label: `Tax (${saleDetails.sale.tax_mode})`, value: formatReportMoney(saleDetails.sale.tax_paisa) }]),
+                      : saleDetails.sale.tax_mode === "inclusive"
+                        ? [{
+                            label: "Tax Included",
+                            value: saleDetails.sale.tax_paisa > 0 ? formatReportMoney(saleDetails.sale.tax_paisa) : "",
+                          }]
+                        : receiptSettings.taxDisplay === "detailed"
+                          ? [...new Set(saleDetails.items.map((line) => line.tax_rate_bps))].map((rate) => ({
+                              label: `Tax ${rate / 100}%`,
+                              value: formatReportMoney(saleDetails.items.filter((line) => line.tax_rate_bps === rate).reduce((sum, line) => sum + line.tax_paisa, 0)),
+                            }))
+                          : [{ label: `Tax (${saleDetails.sale.tax_mode})`, value: formatReportMoney(saleDetails.sale.tax_paisa) }]),
                     ...(saleDetails.sale.rounding_paisa !== 0
                       ? [{ label: "Rounding", value: formatReportMoney(saleDetails.sale.rounding_paisa) }]
                       : []),

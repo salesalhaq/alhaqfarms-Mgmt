@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  AlertCircle, ArrowRight, Camera, LoaderCircle, Minus, Package, Plus,
+  ArrowRight, Camera, LoaderCircle, Minus, Package, Plus,
   ScanLine, Search, ShoppingCart, Trash2, Warehouse, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
@@ -1071,35 +1071,16 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
 
   return (
     <div className="pos-workspace">
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow page">{item.section}</p>
-          <h1>{item.title}</h1>
-          <p>Scan products or weight labels, weigh measured products on a serial or Ethernet scale, and record sales against branch stock.</p>
-        </div>
-        {!staff?.branch_id && (
-          <label className="toolbar-control">
-            <span>Branch</span>
-            <select className="toolbar-select" value={branchId} onChange={(event) => {
-              setBranchId(event.target.value);
-              setOffset(0);
-              setCart([]);
-              setMeasuredProduct(null);
-            }}>
-              <option value="">Choose a branch</option>
-              {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-            </select>
-          </label>
-        )}
-      </div>
-
-      <div className="live-readonly-note pos-readonly-note">
-        <AlertCircle size={16} />
-        <span>Live catalog · register changes are saved securely. Scanning and weighing update the temporary basket until checkout.</span>
-      </div>
-
       <div className="pos-workspace-grid">
         <div className="pos-catalog-column">
+          <div className="page-heading">
+            <div>
+              <p className="eyebrow page">{item.section}</p>
+              <h1>{item.title}</h1>
+              <p>Scan products or weight labels, weigh measured products on a serial or Ethernet scale, and record sales against branch stock.</p>
+            </div>
+          </div>
+
           <div className={`pos-register-card card ${shiftOpen ? "is-open" : ""}`}>
             <span className="pos-register-icon"><Warehouse size={18} /></span>
             <div className="pos-register-copy">
@@ -1258,7 +1239,12 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
           <div className="pos-basket-top-row">
             <label className="field">
               <span>Branch</span>
-              <select value={branchId || ""} onChange={(event) => setBranchId(event.target.value || "")}>
+              <select value={branchId || ""} onChange={(event) => {
+                setBranchId(event.target.value || "");
+                setOffset(0);
+                setCart([]);
+                setMeasuredProduct(null);
+              }}>
                 <option value="">Select branch</option>
                 {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
               </select>
@@ -1347,7 +1333,10 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
           <div className="pos-basket-actions">
             <label className="field">
               <span>Branch tax mode</span>
-              <input readOnly value={taxMode === "inclusive" ? "Tax included in prices" : "Add tax to prices"} />
+              <select value={taxMode} disabled>
+                <option value="inclusive">Tax included in prices</option>
+                <option value="exclusive">Add tax to prices</option>
+              </select>
             </label>
             <button className="button secondary" disabled={!cart.length || checkoutSaving} onClick={() => {
               setDiscountDraft(billDiscountInput);

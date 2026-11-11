@@ -568,7 +568,9 @@ tbody tr:hover { background: #fcfdfb; }
 .workspace-category-details > strong, .workspace-category-details > small { overflow: hidden; text-overflow: ellipsis; }
 .workspace-category-details > small { color: var(--muted); white-space: nowrap; }
 .pos-product-card > strong { display: -webkit-box; min-height: 29px; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; font-size: 10.5px; line-height: 1.38; }
-.pos-product-card > small { overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.pos-product-meta { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 6px; }
+.pos-product-meta > small { min-width: 0; overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.pos-product-meta > .pos-product-price { flex: 0 0 auto; white-space: nowrap; }
 .pos-product-price { color: var(--green-dark); font-size: 11px; font-weight: 750; }
 .pos-product-stock { color: var(--muted); font-size: 9px; }
 .pos-product-stock.out { color: var(--red); }

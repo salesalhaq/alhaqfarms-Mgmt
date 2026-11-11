@@ -1215,8 +1215,10 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
                 >
                   {image ? <img src={image} alt="" loading="lazy" /> : <span className="pos-product-placeholder"><Package size={22} /></span>}
                   <strong>{product.name}</strong>
-                  <small>{product.sku || product.barcode || product.unit_code}</small>
-                  <span className="pos-product-price">{formatMoney(productPrice(product))}</span>
+                  <div className="pos-product-meta">
+                    <small>{product.sku || product.barcode || product.unit_code}</small>
+                    <span className="pos-product-price">{formatMoney(productPrice(product))}</span>
+                  </div>
                   <span className={`pos-product-stock ${product.stock_milli <= 0 ? "out" : ""}`}>
                     {formatQuantity(product.stock_milli)} {product.unit_code} in stock
                   </span>

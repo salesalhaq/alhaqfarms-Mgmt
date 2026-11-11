@@ -1258,7 +1258,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
           <div className="pos-basket-top-row">
             <label className="field">
               <span>Branch</span>
-              <select value={branchId || ""} onChange={(event) => setBranchId(event.target.value || null)}>
+              <select value={branchId || ""} onChange={(event) => setBranchId(event.target.value || "")}>
                 <option value="">Select branch</option>
                 {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
               </select>

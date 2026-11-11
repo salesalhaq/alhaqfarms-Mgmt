@@ -1406,7 +1406,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
                   id: line.product.id,
                   name: line.product.name,
                   details: [
-                    `${formatQuantity(line.quantityMilli)} ${line.product.unit_code} × ${formatMoney(productPrice(line.product))} ${formatTaxNote(line.product.tax_rate_bps || 0, completedSale.taxMode)}`,
+                    `${formatQuantity(line.quantityMilli)} ${line.product.unit_code} × ${formatMoneyPrecise(productPrice(line.product))} ${formatTaxNote(line.product.tax_rate_bps || 0, completedSale.taxMode)}`,
                     ...(discount > 0 ? [`Discount −${formatMoney(discount)}`] : []),
                   ],
                   amount: formatMoney(net + (completedSale.taxMode === "exclusive" ? tax : 0)),

@@ -147,8 +147,8 @@ h1, h2, h3 { font-family: "Segoe UI", Arial, sans-serif; }
   top: 0;
   width: 58px;
   min-width: 58px;
-  height: 100vh;
-  height: 100dvh;
+  height: calc(100vh - 40px);
+  height: calc(100dvh - 40px);
   display: flex;
   align-items: center;
   flex-direction: column;

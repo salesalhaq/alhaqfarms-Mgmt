@@ -208,6 +208,11 @@ h1, h2, h3 { font-family: "Segoe UI", Arial, sans-serif; }
 .fullscreen-error { max-width: 280px; color: var(--red); font-size: 10px; }
 .mobile-menu-button { display: none; }
 .mobile-hidden { display: flex; }
+@media (max-width: 600px) {
+  .mobile-menu-button { display: grid; width: 36px; height: 36px; place-items: center; border: 0; border-radius: 8px; color: var(--ink); background: var(--surface-soft); }
+  .mobile-hidden { display: none; }
+  .pos-basket { position: static; min-height: 430px; max-height: none; }
+}
 .mobile-menu-overlay { position: fixed; z-index: 50; inset: 0; background: rgb(0 0 0 / 50%); display: flex; align-items: flex-end; justify-content: center; }
 .mobile-menu { width: 100%; max-width: 400px; max-height: 80dvh; overflow-y: auto; border-top-left-radius: 20px; border-top-right-radius: 20px; background: var(--surface); padding: 20px; }
 .mobile-menu-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
@@ -563,7 +568,7 @@ tbody tr:hover { background: #fcfdfb; }
 .pos-product-stock { color: var(--muted); font-size: 9px; }
 .pos-product-stock.out { color: var(--red); }
 .pos-load-more { display: flex; justify-content: center; padding-top: 13px; }
-.pos-basket { position: sticky; top: 16px; display: flex; min-height: 560px; flex-direction: column; overflow: hidden; padding: 0; }
+.pos-basket { position: sticky; top: 0; display: flex; min-height: 560px; max-height: calc(100vh - 32px); flex-direction: column; overflow: hidden; padding: 0; }
 .pos-basket-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--line); padding: 14px; }
 .pos-basket-header h2 { margin: 0; font-size: 14px; }
 .pos-basket-header h2 span { display: inline-grid; min-width: 21px; height: 21px; place-items: center; border-radius: 50%; background: var(--green-soft); color: var(--green-dark); font-size: 10px; }
@@ -992,8 +997,6 @@ tbody tr:hover { background: #fcfdfb; }
   .topbar-date { display: none; }
   .topbar-arrow { display: none; }
   .topbar-right { gap: 7px; }
-  .mobile-menu-button { display: grid; width: 36px; height: 36px; place-items: center; border: 0; border-radius: 8px; color: var(--ink); background: var(--surface-soft); }
-  .mobile-hidden { display: none; }
   .desktop-only { display: none; }
   .branch-pill { max-width: 38vw; overflow: hidden; padding: 7px 8px; text-overflow: ellipsis; white-space: nowrap; }
   .fullscreen-toggle { display: none; }

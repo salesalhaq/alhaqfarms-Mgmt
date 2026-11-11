@@ -7,7 +7,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
-import { formatDateTime, formatMoney, formatQuantity, labelize, statusTone } from "@/lib/format";
+import { formatDateTime, formatMoney, formatQuantity, formatTaxNote, labelize, statusTone } from "@/lib/format";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { TableDocumentTools } from "@/components/workspace/TableDocumentTools";
 import { ReceiptDocument } from "@/components/workspace/ReceiptDocument";
@@ -572,7 +572,7 @@ export function SalesWorkspace({ item }: { item: WorkspaceModule }) {
                     id: line.id,
                     name: line.product_name,
                     details: [
-                      `${formatReportQuantity(line.quantity_milli)} ${line.unit_code} × ${formatReportMoney(line.unit_price_paisa)}`,
+                      `${formatReportQuantity(line.quantity_milli)} ${line.unit_code} × ${formatReportMoney(line.unit_price_paisa)} ${formatTaxNote(line.tax_rate_bps, saleDetails.sale.tax_mode === "exclusive" ? "exclusive" : "inclusive")}`,
                       ...(line.discount_paisa > 0 ? [`Discount: − ${formatReportMoney(line.discount_paisa)}`] : []),
                     ],
                     amount: formatReportMoney(line.line_total_paisa),

@@ -19,6 +19,14 @@ export function formatQuantity(milli: number): string {
   return new Intl.NumberFormat("en-PK", { maximumFractionDigits: 3 }).format(milli / 1000);
 }
 
+export function formatTaxRate(rateBps: number): string {
+  return `${Number(((rateBps || 0) / 100).toFixed(2))}%`;
+}
+
+export function formatTaxNote(rateBps: number, taxMode: "inclusive" | "exclusive"): string {
+  return `(${taxMode === "inclusive" ? "Inc Tax" : "Add Tax"} ${formatTaxRate(rateBps)})`;
+}
+
 export function formatDateTime(value: string): string {
   return new Intl.DateTimeFormat("en-PK", {
     dateStyle: "medium",

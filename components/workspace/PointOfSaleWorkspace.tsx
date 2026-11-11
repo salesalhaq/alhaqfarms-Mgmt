@@ -7,7 +7,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
-import { formatMoney, formatMoneyPrecise, formatQuantity } from "@/lib/format";
+import { formatMoney, formatMoneyPrecise, formatQuantity, formatTaxNote, formatTaxRate } from "@/lib/format";
 import { DEFAULT_BRANCH_POS_SETTINGS, type BranchPosSettings } from "@/lib/branch-pos-settings";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { ReceiptDocument } from "@/components/workspace/ReceiptDocument";
@@ -195,14 +195,6 @@ function roundedTaxPaisa(amountPaisa: number, rateBps: number, taxMode: "inclusi
   return whole * rate + Math.floor((remainder * rate + denominator / 2) / denominator);
 }
 
-function taxRateText(rateBps: number): string {
-  return `${Number(((rateBps || 0) / 100).toFixed(2))}%`;
-}
-
-function taxRateNote(rateBps: number, taxMode: "inclusive" | "exclusive"): string {
-  return `(${taxMode === "inclusive" ? "Inc Tax" : "Add Tax"} ${taxRateText(rateBps)})`;
-}
-
 export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
   const { staff, branches } = useStaffAuth();
   const { settings: receiptSettings } = useBusinessSettings();
@@ -306,8 +298,8 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
     [cart],
   );
   const cartTaxRateLabel = cartTaxRates.length
-    ? cartTaxRates.map((rate) => taxRateText(rate)).join(", ")
-    : taxRateText(posSettings.taxRateBps);
+    ? cartTaxRates.map((rate) => formatTaxRate(rate)).join(", ")
+    : formatTaxRate(posSettings.taxRateBps);
   const discountNeedsManagerApproval = Boolean(staff)
     && (billDiscountPaisa || 0) > Math.min(Math.floor(totalPaisa * 0.03), 10_000);
   let taxDiscountRemaining = (billDiscountPaisa ?? 0)
@@ -1312,7 +1304,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
                   <strong>{line.product.name}</strong>
                   <span>{formatMoney(Math.round(productPrice(line.product) * line.quantityMilli / 1000))}</span>
                 </div>
-                <small>{formatMoney(productPrice(line.product))} / {line.product.unit_code} <span className="pos-line-tax">{taxRateNote(line.product.tax_rate_bps || 0, taxMode)}</span></small>
+                <small>{formatMoney(productPrice(line.product))} / {line.product.unit_code} <span className="pos-line-tax">{formatTaxNote(line.product.tax_rate_bps || 0, taxMode)}</span></small>
                 <div className="pos-quantity-controls">
                   <button aria-label={`Decrease ${line.product.name}`} onClick={() => changeQuantity(line, -quantityStep(line.product))} type="button"><Minus size={13} /></button>
                   <input
@@ -1414,7 +1406,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
                   id: line.product.id,
                   name: line.product.name,
                   details: [
-                    `${formatQuantity(line.quantityMilli)} ${line.product.unit_code} × ${formatMoney(productPrice(line.product))}`,
+                    `${formatQuantity(line.quantityMilli)} ${line.product.unit_code} × ${formatMoney(productPrice(line.product))} ${formatTaxNote(line.product.tax_rate_bps || 0, completedSale.taxMode)}`,
                     ...(discount > 0 ? [`Discount −${formatMoney(discount)}`] : []),
                   ],
                   amount: formatMoney(net + (completedSale.taxMode === "exclusive" ? tax : 0)),

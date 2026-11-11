@@ -1093,77 +1093,6 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
         )}
       </div>
 
-      <div className={`pos-register-card card ${shiftOpen ? "is-open" : ""}`}>
-        <span className="pos-register-icon"><Warehouse size={18} /></span>
-        <div className="pos-register-copy">
-          <strong>{!branchId ? "Choose a branch to view the register" : shiftOpen ? "Register shift open" : "Register shift is closed"}</strong>
-          <small>{!branchId ? "Select an accessible branch to check register status." : shiftOpen ? "An open shift is linked to your staff account." : "Open a shift and enter the starting cash float before recording sales."}</small>
-        </div>
-        <span className={`pos-shift-status ${shiftOpen ? "open" : ""}`}>{!branchId ? "Not selected" : shiftOpen ? "Active" : "Closed"}</span>
-        <div className="pos-register-actions">
-          <button
-            className="button secondary"
-            disabled={!branchId || scannerBusy || Boolean(measuredProduct) || Boolean(completedSale)}
-            onClick={() => setScannerOpen(true)}
-            type="button"
-          ><Camera size={14} /> Camera scan</button>
-          {shiftOpen && <>
-            <button className="button secondary" disabled={registerSaving} onClick={() => openRegisterDialog("cash_in")} type="button">Cash in</button>
-            <button className="button secondary" disabled={registerSaving} onClick={() => openRegisterDialog("cash_out")} type="button">Cash out</button>
-          </>}
-          <button className="button secondary" disabled={!branchId || heldSalesBusy} onClick={() => {
-            setHeldSalesOpen(true);
-            void loadHeldSales();
-          }} type="button">Held bills <span>{heldSales.length}</span></button>
-          <button className="button" disabled={!branchId || registerSaving} onClick={() => openRegisterDialog(shiftOpen ? "close_shift" : "open_shift")} type="button">
-            {shiftOpen ? "Close shift" : "Open shift"}
-          </button>
-        </div>
-      </div>
-
-      {["manager", "admin"].includes(staff?.role || "")
-        && (canViewAllDiscountRequests || managerDiscountRequests.length > 0) && (
-        <section className="card pos-held-sales-list" aria-label="Pending POS discount approvals">
-          <div className="sales-dialog-header">
-            <div><p className="eyebrow page">Manager review</p><h2>Discount approval requests</h2></div>
-            <div className="heading-actions">
-              {canViewAllDiscountRequests && (
-                <label className="toolbar-control">
-                  <span>Approval branch</span>
-                  <select className="toolbar-select" value={approvalBranchFilter}
-                    onChange={(event) => setApprovalBranchFilter(event.target.value)}>
-                    <option value="all">All branches</option>
-                    {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-                  </select>
-                </label>
-              )}
-              <button className="button secondary" disabled={discountApprovalBusy}
-                onClick={() => void loadManagerDiscountRequests()} type="button">Refresh</button>
-            </div>
-          </div>
-          {managerDiscountRequests.length === 0
-            ? <p className="empty">No pending discount approvals.</p>
-            : managerDiscountRequests.map((request) => (
-            <article className="pos-held-sale" key={request.id}>
-              <div>
-                <strong>{request.cashierName}</strong>
-                <small>{request.branchName}</small>
-                <small>Requested discount {formatMoney(request.billDiscountPaisa)}</small>
-                <small>Expires {new Date(request.expiresAt).toLocaleTimeString()}</small>
-              </div>
-              {request.canReview
-                ? <div>
-                  <button className="button" disabled={discountApprovalBusy || Date.parse(request.expiresAt) <= Date.now()}
-                    onClick={() => void reviewManagerDiscount(request, true)} type="button">Approve</button>
-                  <button className="button secondary" disabled={discountApprovalBusy}
-                    onClick={() => void reviewManagerDiscount(request, false)} type="button">Decline</button>
-                </div>
-                : <small>Another staff member must review this request.</small>}
-            </article>
-          ))}
-        </section>
-      )}
-
       <div className="live-readonly-note pos-readonly-note">
         <AlertCircle size={16} />
         <span>Live catalog · register changes are saved securely. Scanning and weighing update the temporary basket until checkout.</span>
@@ -1171,6 +1100,77 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
 
       <div className="pos-workspace-grid">
         <div className="pos-catalog-column">
+          <div className={`pos-register-card card ${shiftOpen ? "is-open" : ""}`}>
+            <span className="pos-register-icon"><Warehouse size={18} /></span>
+            <div className="pos-register-copy">
+              <strong>{!branchId ? "Choose a branch to view the register" : shiftOpen ? "Register shift open" : "Register shift is closed"}</strong>
+              <small>{!branchId ? "Select an accessible branch to check register status." : shiftOpen ? "An open shift is linked to your staff account." : "Open a shift and enter the starting cash float before recording sales."}</small>
+            </div>
+            <span className={`pos-shift-status ${shiftOpen ? "open" : ""}`}>{!branchId ? "Not selected" : shiftOpen ? "Active" : "Closed"}</span>
+            <div className="pos-register-actions">
+              <button
+                className="button secondary"
+                disabled={!branchId || scannerBusy || Boolean(measuredProduct) || Boolean(completedSale)}
+                onClick={() => setScannerOpen(true)}
+                type="button"
+              ><Camera size={14} /> Camera scan</button>
+              {shiftOpen && <>
+                <button className="button secondary" disabled={registerSaving} onClick={() => openRegisterDialog("cash_in")} type="button">Cash in</button>
+                <button className="button secondary" disabled={registerSaving} onClick={() => openRegisterDialog("cash_out")} type="button">Cash out</button>
+              </>}
+              <button className="button secondary" disabled={!branchId || heldSalesBusy} onClick={() => {
+                setHeldSalesOpen(true);
+                void loadHeldSales();
+              }} type="button">Held bills <span>{heldSales.length}</span></button>
+              <button className="button" disabled={!branchId || registerSaving} onClick={() => openRegisterDialog(shiftOpen ? "close_shift" : "open_shift")} type="button">
+                {shiftOpen ? "Close shift" : "Open shift"}
+              </button>
+            </div>
+          </div>
+
+          {["manager", "admin"].includes(staff?.role || "")
+            && (canViewAllDiscountRequests || managerDiscountRequests.length > 0) && (
+            <section className="card pos-held-sales-list" aria-label="Pending POS discount approvals">
+              <div className="sales-dialog-header">
+                <div><p className="eyebrow page">Manager review</p><h2>Discount approval requests</h2></div>
+                <div className="heading-actions">
+                  {canViewAllDiscountRequests && (
+                    <label className="toolbar-control">
+                      <span>Approval branch</span>
+                      <select className="toolbar-select" value={approvalBranchFilter}
+                        onChange={(event) => setApprovalBranchFilter(event.target.value)}>
+                        <option value="all">All branches</option>
+                        {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                      </select>
+                    </label>
+                  )}
+                  <button className="button secondary" disabled={discountApprovalBusy}
+                    onClick={() => void loadManagerDiscountRequests()} type="button">Refresh</button>
+                </div>
+              </div>
+              {managerDiscountRequests.length === 0
+                ? <p className="empty">No pending discount approvals.</p>
+                : managerDiscountRequests.map((request) => (
+                <article className="pos-held-sale" key={request.id}>
+                  <div>
+                    <strong>{request.cashierName}</strong>
+                    <small>{request.branchName}</small>
+                    <small>Requested discount {formatMoney(request.billDiscountPaisa)}</small>
+                    <small>Expires {new Date(request.expiresAt).toLocaleTimeString()}</small>
+                  </div>
+                  {request.canReview
+                    ? <div>
+                      <button className="button" disabled={discountApprovalBusy || Date.parse(request.expiresAt) <= Date.now()}
+                        onClick={() => void reviewManagerDiscount(request, true)} type="button">Approve</button>
+                      <button className="button secondary" disabled={discountApprovalBusy}
+                        onClick={() => void reviewManagerDiscount(request, false)} type="button">Decline</button>
+                    </div>
+                    : <small>Another staff member must review this request.</small>}
+                </article>
+              ))}
+            </section>
+          )}
+
           <button className="pos-customer-button card" disabled={!branchId} onClick={() => {
             setCustomerCreating(false);
             setCustomerDialog(true);

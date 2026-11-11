@@ -571,7 +571,7 @@ tbody tr:hover { background: #fcfdfb; }
 .pos-product-stock { color: var(--muted); font-size: 9px; }
 .pos-product-stock.out { color: var(--red); }
 .pos-load-more { display: flex; justify-content: center; padding-top: 13px; }
-.pos-basket { position: sticky; top: 0; display: flex; height: 100%; min-height: 560px; max-height: calc(100vh - 80px); flex-direction: column; overflow: hidden; padding: 0; }
+.pos-basket { position: sticky; top: 0; display: flex; height: 100%; min-height: 560px; max-height: calc(100vh - 100px); flex-direction: column; overflow: hidden; padding: 0; }
 .pos-basket-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--line); padding: 14px; }
 .pos-basket-header h2 { margin: 0; font-size: 14px; }
 .pos-basket-header h2 span { display: inline-grid; min-width: 21px; height: 21px; place-items: center; border-radius: 50%; background: var(--green-soft); color: var(--green-dark); font-size: 10px; }

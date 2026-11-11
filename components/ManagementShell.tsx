@@ -237,9 +237,9 @@ function ManagementShellContent({ children, staff, branches, moduleAccess, signO
           <header className="topbar">
             <div className="topbar-title-block" aria-live="polite">
             <h1 className="topbar-title">{pageHeading.title}</h1>
-            <span className="topbar-arrow">></span>
+            <span className="topbar-arrow">{">"}</span>
             <span className="topbar-kicker">({pageHeading.section.toUpperCase()})</span>
-            <span className="topbar-arrow">---></span>
+            <span className="topbar-arrow">{"--->"}</span>
             <div className="topbar-date">
               {clock.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
               <span> · {clock.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase()}</span>

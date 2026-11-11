@@ -206,6 +206,22 @@ h1, h2, h3 { font-family: "Segoe UI", Arial, sans-serif; }
 .topbar-right { display: flex; align-items: center; gap: 12px; }
 .branch-pill { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 999px; background: #fff; padding: 8px 11px; color: #44564a; font-size: 11px; font-weight: 700; }
 .fullscreen-error { max-width: 280px; color: var(--red); font-size: 10px; }
+.mobile-menu-button { display: none; }
+.mobile-hidden { display: flex; }
+.mobile-menu-overlay { position: fixed; z-index: 50; inset: 0; background: rgb(0 0 0 / 50%); display: flex; align-items: flex-end; justify-content: center; }
+.mobile-menu { width: 100%; max-width: 400px; max-height: 80dvh; overflow-y: auto; border-top-left-radius: 20px; border-top-right-radius: 20px; background: var(--surface); padding: 20px; }
+.mobile-menu-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+.mobile-menu-section { margin-bottom: 20px; }
+.mobile-menu-section > label { display: block; margin-bottom: 10px; color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.mobile-menu .zoom-control { justify-content: center; }
+.mobile-menu .zoom-control button { width: 40px; height: 40px; }
+.mobile-menu .zoom-reset { min-width: 50px; font-size: 12px; }
+.mobile-menu .theme-menu { position: static; width: 100%; max-height: none; border: 0; border-radius: 0; padding: 0; box-shadow: none; }
+.mobile-menu .theme-menu-title { display: none; }
+.mobile-menu .theme-group { margin-top: 0; border-top: 0; padding-top: 0; }
+.mobile-menu .theme-group-title { padding: 10px 0; }
+.mobile-menu .theme-option { padding: 12px; font-size: 12px; }
+.mobile-menu .profile-option { width: 100%; padding: 12px; font-size: 12px; }
 .theme-picker { position: relative; }
 .theme-menu { position: absolute; z-index: 10; top: calc(100% + 8px); right: 0; width: 250px; max-height: min(78dvh, 560px); overflow-y: auto; border: 1px solid var(--line); border-radius: 13px; padding: 7px; background: #fff; box-shadow: 0 18px 45px rgb(0 0 0 / 18%); }
 .theme-menu-title { padding: 6px 8px 8px; color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
@@ -974,8 +990,10 @@ tbody tr:hover { background: #fcfdfb; }
   .topbar-kicker { font-size: 8px; }
   .topbar-title { max-width: 42vw; font-size: 14px; }
   .topbar-right { gap: 7px; }
+  .mobile-menu-button { display: grid; width: 36px; height: 36px; place-items: center; border: 0; border-radius: 8px; color: var(--ink); background: var(--surface-soft); }
+  .mobile-hidden { display: none; }
   .branch-pill { max-width: 38vw; overflow: hidden; padding: 7px 8px; text-overflow: ellipsis; white-space: nowrap; }
-  .fullscreen-toggle { width: 30px !important; height: 30px !important; flex-basis: 30px !important; }
+  .fullscreen-toggle { display: none; }
   .fullscreen-error { display: none; }
   .content { width: 100%; height: auto; min-height: calc(100vh - 129px); min-height: calc(100dvh - 129px); overflow: visible; padding: clamp(10px, 2.4vw, 15px); }
   .page-heading { align-items: flex-start; }

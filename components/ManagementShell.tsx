@@ -3,9 +3,9 @@
 import {
   ArrowLeftRight, BarChart3, Beef, BookUser, Boxes, BriefcaseBusiness, Building2,
   Check, ClipboardList, Cloud, Factory, FlaskConical, Globe, LayoutDashboard, LogOut,
-  Maximize2, Minimize2, MonitorSmartphone, Package, PackageCheck, Palette, PanelsTopLeft, Receipt, RotateCcw,
+  Maximize2, Menu, Minimize2, MonitorSmartphone, Package, PackageCheck, Palette, PanelsTopLeft, Receipt, RotateCcw,
   Settings, ShoppingCart, Store, Tag, Tags, TrendingUp, Truck, User, Users, Wallet, Warehouse,
-  ZoomIn, ZoomOut,
+  X, ZoomIn, ZoomOut,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -92,6 +92,7 @@ function ManagementShellContent({ children, staff, branches, moduleAccess, signO
   const themeMenuRef = useRef<HTMLDivElement>(null);
   const [zoomPercent, setZoomPercent] = useState(() => Number(localStorage.getItem('alhaqfarms.zoom') || 100));
   const [profileOpen, setProfileOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [clock, setClock] = useState(() => new Date());
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const pageHeading = useMemo(() => {
@@ -246,14 +247,23 @@ function ManagementShellContent({ children, staff, branches, moduleAccess, signO
             </div>
           </div>
           <div className="topbar-right">
+            <button
+              className="icon-button mobile-menu-button"
+              type="button"
+              onClick={() => setMobileMenuOpen((open) => !open)}
+              aria-label="Menu"
+              aria-expanded={mobileMenuOpen}
+            >
+              {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
             {fullscreenError && <span className="fullscreen-error" role="status">{fullscreenError}</span>}
-            <span className="branch-pill"><Store size={13} />{assignedBranch?.name || "HQ · All branches"}</span>
-            <div className="zoom-control" aria-label="Display zoom">
+            <span className="branch-pill mobile-hidden"><Store size={13} />{assignedBranch?.name || "HQ · All branches"}</span>
+            <div className="zoom-control mobile-hidden" aria-label="Display zoom">
               <button type="button" aria-label="Zoom out" title="Zoom out" disabled={zoomPercent <= 70} onClick={() => setZoomPercent(Math.max(70, zoomPercent - 10))}><ZoomOut size={14} /></button>
               <button type="button" className="zoom-reset" aria-label="Reset zoom to 100%" title="Reset zoom to 100%" onClick={() => setZoomPercent(100)}>{zoomPercent}%</button>
               <button type="button" aria-label="Zoom in" title="Zoom in" disabled={zoomPercent >= 130} onClick={() => setZoomPercent(Math.min(130, zoomPercent + 10))}><ZoomIn size={14} /></button>
             </div>
-            <div className="theme-picker">
+            <div className="theme-picker mobile-hidden">
               <button
                 className="icon-button"
                 type="button"
@@ -287,7 +297,7 @@ function ManagementShellContent({ children, staff, branches, moduleAccess, signO
                 </div>
               )}
             </div>
-            <div className="profile-picker">
+            <div className="profile-picker mobile-hidden">
               <button
                 className="icon-button profile-button"
                 type="button"
@@ -326,6 +336,52 @@ function ManagementShellContent({ children, staff, branches, moduleAccess, signO
           </div>
         </header>
         </div>
+        {mobileMenuOpen && (
+          <div className="mobile-menu-overlay" onClick={() => setMobileMenuOpen(false)}>
+            <div className="mobile-menu" onClick={(e) => e.stopPropagation()}>
+              <div className="mobile-menu-header">
+                <span className="branch-pill"><Store size={13} />{assignedBranch?.name || "HQ · All branches"}</span>
+                <button type="button" onClick={() => setMobileMenuOpen(false)}><X size={20} /></button>
+              </div>
+              <div className="mobile-menu-section">
+                <label>Zoom</label>
+                <div className="zoom-control">
+                  <button type="button" disabled={zoomPercent <= 70} onClick={() => setZoomPercent(Math.max(70, zoomPercent - 10))}><ZoomOut size={16} /></button>
+                  <button type="button" className="zoom-reset" onClick={() => setZoomPercent(100)}>{zoomPercent}%</button>
+                  <button type="button" disabled={zoomPercent >= 130} onClick={() => setZoomPercent(Math.min(130, zoomPercent + 10))}><ZoomIn size={16} /></button>
+                </div>
+              </div>
+              <div className="mobile-menu-section">
+                <label>Theme</label>
+                <div className="theme-menu">
+                  {themeGroups.map((group) => (
+                    <div className="theme-group" key={group.id}>
+                      <div className="theme-group-title">{group.label}</div>
+                      {appThemes.filter((theme) => theme.group === group.id).map((theme) => (
+                        <button
+                          key={theme.id}
+                          type="button"
+                          className={`theme-option ${theme.id === themeId ? "active" : ""}`}
+                          onClick={() => { setThemeId(theme.id); setMobileMenuOpen(false); }}
+                        >
+                          <span className="theme-swatch" style={{ "--theme-accent": theme.swatch, "--theme-background": theme.background } as React.CSSProperties} />
+                          <span>{theme.name}</span>
+                          {theme.id === themeId && <Check size={14} />}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="mobile-menu-section">
+                <label>Account</label>
+                <button className="profile-option" onClick={() => { void signOut(); setMobileMenuOpen(false); }} type="button">
+                  <LogOut size={16} /><span>Sign out</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         <main className="content">
           {routeAllowed ? children : (
             <section className="card panel">

@@ -986,12 +986,15 @@ tbody tr:hover { background: #fcfdfb; }
   .sidebar .nav-link span, .sidebar:hover .nav-link span, .sidebar:focus-within .nav-link span { display: none; }
   .main-area { display: block; height: auto; padding-bottom: 65px; }
   .topbar { min-height: 64px; gap: 10px; padding: 7px 12px; }
-  .topbar-title-block { gap: 2px; }
-  .topbar-kicker { font-size: 8px; }
-  .topbar-title { max-width: 42vw; font-size: 14px; }
+  .topbar-title-block { gap: 2px; flex-direction: column; align-items: flex-start; }
+  .topbar-kicker { font-size: 10px; font-weight: 400; }
+  .topbar-title { max-width: 42vw; font-size: 16px; font-weight: 700; }
+  .topbar-date { display: none; }
+  .topbar-arrow { display: none; }
   .topbar-right { gap: 7px; }
   .mobile-menu-button { display: grid; width: 36px; height: 36px; place-items: center; border: 0; border-radius: 8px; color: var(--ink); background: var(--surface-soft); }
   .mobile-hidden { display: none; }
+  .desktop-only { display: none; }
   .branch-pill { max-width: 38vw; overflow: hidden; padding: 7px 8px; text-overflow: ellipsis; white-space: nowrap; }
   .fullscreen-toggle { display: none; }
   .fullscreen-error { display: none; }

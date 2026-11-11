@@ -149,7 +149,10 @@ function ManagementShellContent({ children, staff, branches, moduleAccess, signO
   }, [themeOpen]);
 
   useEffect(() => {
-    document.documentElement.style.zoom = `${zoomPercent}%`;
+    const mainArea = document.querySelector('.main-area') as HTMLElement;
+    if (mainArea) {
+      mainArea.style.zoom = `${zoomPercent}%`;
+    }
     localStorage.setItem('alhaqfarms.zoom', String(zoomPercent));
   }, [zoomPercent]);
 
@@ -233,8 +236,10 @@ function ManagementShellContent({ children, staff, branches, moduleAccess, signO
         <div className="topbar-header-wrapper">
           <header className="topbar">
             <div className="topbar-title-block" aria-live="polite">
-            <span className="topbar-kicker">{pageHeading.section.toUpperCase()}</span>
             <h1 className="topbar-title">{pageHeading.title}</h1>
+            <span className="topbar-arrow">></span>
+            <span className="topbar-kicker">({pageHeading.section.toUpperCase()})</span>
+            <span className="topbar-arrow">---></span>
             <div className="topbar-date">
               {clock.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
               <span> · {clock.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase()}</span>

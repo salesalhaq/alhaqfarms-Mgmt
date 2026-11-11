@@ -288,7 +288,7 @@ export function ManagementShell({ children }: { children: ReactNode }) {
                           className={`theme-option ${theme.id === themeId ? "active" : ""}`}
                           onClick={() => { setThemeId(theme.id); setThemeOpen(false); }}
                         >
-                          <span className="theme-swatch" style={{ "--theme-accent": theme.swatch, "--theme-background": theme.background }} />
+                          <span className="theme-swatch" style={{ "--theme-accent": theme.swatch, "--theme-background": theme.background } as React.CSSProperties} />
                           <span>{theme.name}</span>
                           {theme.id === themeId && <Check size={14} />}
                         </button>

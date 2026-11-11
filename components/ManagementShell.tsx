@@ -2,20 +2,21 @@
 
 import {
   ArrowLeftRight, BarChart3, Beef, BookUser, Boxes, BriefcaseBusiness, Building2,
-  ClipboardList, Cloud, Factory, FlaskConical, Globe, LayoutDashboard, LogOut,
-  Maximize2, Minimize2, MonitorSmartphone, Package, PackageCheck, PanelsTopLeft, Receipt, RotateCcw,
+  Check, ClipboardList, Cloud, Factory, FlaskConical, Globe, LayoutDashboard, LogOut,
+  Maximize2, Minimize2, MonitorSmartphone, Package, PackageCheck, Palette, PanelsTopLeft, Receipt, RotateCcw,
   Settings, ShoppingCart, Store, Tag, Tags, TrendingUp, Truck, Users, Wallet, Warehouse,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { AppearanceProvider } from "@/components/AppearanceProvider";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { AppearanceProvider, useAppearance } from "@/components/AppearanceProvider";
 import { BusinessSettingsProvider } from "@/components/BusinessSettingsProvider";
 import { BrandLockup } from "@/components/BrandLockup";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { workspacePermissionId } from "@/lib/branch-permissions";
 import { workspaceModules, workspaceSections, type WorkspaceModule } from "@/lib/workspace-modules";
+import { appThemes, themeGroups } from "@/lib/themes";
 
 const icons: Record<string, LucideIcon> = {
   overview: LayoutDashboard,
@@ -77,9 +78,12 @@ export function ManagementShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { staff, branches, moduleAccess, loading, error, signOut } = useStaffAuth();
+  const { themeId, setThemeId } = useAppearance();
   const assignedBranch = branches.find((branch) => branch.id === staff?.branch_id);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fullscreenError, setFullscreenError] = useState<string | null>(null);
+  const [themeOpen, setThemeOpen] = useState(false);
+  const themeMenuRef = useRef<HTMLDivElement>(null);
   const pageHeading = useMemo(() => {
     if (pathname.startsWith("/orders")) {
       return workspaceModules.find((item) => item.slug === "online-orders")
@@ -124,6 +128,15 @@ export function ManagementShell({ children }: { children: ReactNode }) {
     updateFullscreen();
     return () => document.removeEventListener("fullscreenchange", updateFullscreen);
   }, []);
+
+  useEffect(() => {
+    if (!themeOpen) return undefined;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (themeMenuRef && !themeMenuRef.contains(event.target as Node)) setThemeOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
+  }, [themeOpen]);
 
   useEffect(() => {
     if (!loading && !staff && !error) router.replace("/login");
@@ -218,6 +231,40 @@ export function ManagementShell({ children }: { children: ReactNode }) {
           <div className="topbar-right">
             {fullscreenError && <span className="fullscreen-error" role="status">{fullscreenError}</span>}
             <span className="branch-pill"><Store size={13} />{assignedBranch?.name || "HQ · All branches"}</span>
+            <div className="theme-picker">
+              <button
+                className="icon-button"
+                type="button"
+                onClick={() => setThemeOpen((open) => !open)}
+                aria-label="Change theme"
+                aria-expanded={themeOpen}
+                title="Change theme"
+              >
+                <Palette size={16} />
+              </button>
+              {themeOpen && (
+                <div className="theme-menu" ref={themeMenuRef}>
+                  <div className="theme-menu-title">Appearance</div>
+                  {themeGroups.map((group) => (
+                    <div className="theme-group" key={group.id}>
+                      <div className="theme-group-title">{group.label}</div>
+                      {appThemes.filter((theme) => theme.group === group.id).map((theme) => (
+                        <button
+                          key={theme.id}
+                          type="button"
+                          className={`theme-option ${theme.id === themeId ? "active" : ""}`}
+                          onClick={() => { setThemeId(theme.id); setThemeOpen(false); }}
+                        >
+                          <span className="theme-swatch" style={{ "--theme-accent": theme.swatch, "--theme-background": theme.background }} />
+                          <span>{theme.name}</span>
+                          {theme.id === themeId && <Check size={14} />}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <button
               className="icon-button fullscreen-toggle"
               type="button"

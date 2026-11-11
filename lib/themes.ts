@@ -14,7 +14,7 @@ export const appThemes = [
   { id: 'palette-6', name: '6 · Pink & sky blue', group: 'light', accent: '#782D40', swatch: '#782D40', background: '#F8E8F4', glass: '#E8A9E3', text: '#172E58', heading: '#24213B', onAccent: '#FFFFFF', muted: 'color-mix(in srgb,#172E58 72%,#F8E8F4)', border: 'rgba(23,46,88,.2)', colorScheme: 'light' },
   { id: 'palette-7', name: '7 · Blush & aqua', group: 'light', accent: '#782D40', swatch: '#782D40', background: '#F7EDF0', glass: '#F3C9DF', text: '#172E58', heading: '#29243B', onAccent: '#FFFFFF', muted: 'color-mix(in srgb,#172E58 72%,#F7EDF0)', border: 'rgba(23,46,88,.2)', colorScheme: 'light' },
   { id: 'palette-8', name: '8 · Icy blue', group: 'light', accent: '#782D40', swatch: '#782D40', background: '#DBE8F5', glass: '#A9C5E1', text: '#172E58', heading: '#172A46', onAccent: '#FFFFFF', muted: 'color-mix(in srgb,#172E58 72%,#DBE8F5)', border: 'rgba(23,46,88,.2)', colorScheme: 'light' },
-  { id: 'palette-9', name: '9 · Light Green', group: 'light', accent: '#B1D438', swatch: '#B1D438', background: '#FFF5F4', glass: '#158CA2', text: '#000000', onAccent: '#142410', muted: '#444444', border: 'rgba(0,0,0,.18)', colorScheme: 'light' }
+  { id: 'palette-9', name: '9 · Light Green', group: 'light', accent: '#B1D438', swatch: '#B1D438', background: '#FFF5F4', glass: '#158CA2', text: '#000000',heading: '#88ade6', onAccent: '#142410', muted: '#444444', border: 'rgba(0,0,0,.18)', colorScheme: 'light' }
 ] as const;
 
 export type AppThemeId = (typeof appThemes)[number]["id"];

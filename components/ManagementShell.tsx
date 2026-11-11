@@ -75,10 +75,15 @@ const pageTitleOverrides: Record<string, string> = {
   transfers: "Stock transfers",
 };
 
-export function ManagementShell({ children }: { children: ReactNode }) {
+function ManagementShellContent({ children, staff, branches, moduleAccess, signOut }: {
+  children: ReactNode;
+  staff: NonNullable<ReturnType<typeof useStaffAuth>["staff"]>;
+  branches: ReturnType<typeof useStaffAuth>["branches"];
+  moduleAccess: ReturnType<typeof useStaffAuth>["moduleAccess"];
+  signOut: () => void;
+}) {
   const pathname = usePathname();
   const router = useRouter();
-  const { staff, branches, moduleAccess, loading, error, signOut } = useStaffAuth();
   const { themeId, setThemeId } = useAppearance();
   const assignedBranch = branches.find((branch) => branch.id === staff?.branch_id);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -162,26 +167,6 @@ export function ManagementShell({ children }: { children: ReactNode }) {
     return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
   }, [profileOpen]);
 
-  useEffect(() => {
-    if (!loading && !staff && !error) router.replace("/login");
-  }, [error, loading, router, staff]);
-
-  if (loading) return <main className="auth-screen"><p className="muted">Loading your secure staff session…</p></main>;
-  if (!staff && !error) return <main className="auth-screen"><p className="muted">Redirecting to sign in…</p></main>;
-  if (error || !staff) {
-    return (
-      <main className="auth-screen">
-        <section className="login-card">
-          <BrandLockup />
-          <p className="eyebrow">Staff access</p>
-          <h1>Account unavailable</h1>
-          <p className="muted">{error || "Your active staff profile could not be loaded."}</p>
-          <button className="button secondary" onClick={() => void signOut()}>Sign out</button>
-        </section>
-      </main>
-    );
-  }
-
   const canSeeSection = (section: string) => !adminSections.has(section) || staff.role === "admin";
   const canViewModule = (slug: string) => {
     if (staff.role === "admin") return true;
@@ -205,8 +190,6 @@ export function ManagementShell({ children }: { children: ReactNode }) {
   const routeAllowed = routeModuleSlug ? canViewModule(routeModuleSlug) : true;
 
   return (
-    <AppearanceProvider staffId={staff.user_id}>
-    <BusinessSettingsProvider staffId={staff.user_id}>
     <div className="app-shell">
       <aside className="sidebar">
         <BrandLockup className="brand-row" />
@@ -346,7 +329,44 @@ export function ManagementShell({ children }: { children: ReactNode }) {
         </main>
       </div>
     </div>
-    </BusinessSettingsProvider>
+  );
+}
+
+export function ManagementShell({ children }: { children: ReactNode }) {
+  const { staff, branches, moduleAccess, loading, error, signOut } = useStaffAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && !staff && !error) router.replace("/login");
+  }, [error, loading, router, staff]);
+
+  if (loading) return <main className="auth-screen"><p className="muted">Loading your secure staff session…</p></main>;
+  if (!staff && !error) return <main className="auth-screen"><p className="muted">Redirecting to sign in…</p></main>;
+  if (error || !staff) {
+    return (
+      <main className="auth-screen">
+        <section className="login-card">
+          <BrandLockup />
+          <p className="eyebrow">Staff access</p>
+          <h1>Account unavailable</h1>
+          <p className="muted">{error || "Your active staff profile could not be loaded."}</p>
+          <button className="button secondary" onClick={() => void signOut()}>Sign out</button>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <AppearanceProvider staffId={staff.user_id}>
+      <BusinessSettingsProvider staffId={staff.user_id}>
+        <ManagementShellContent
+          children={children}
+          staff={staff}
+          branches={branches}
+          moduleAccess={moduleAccess}
+          signOut={signOut}
+        />
+      </BusinessSettingsProvider>
     </AppearanceProvider>
   );
 }

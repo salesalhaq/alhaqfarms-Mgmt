@@ -230,8 +230,9 @@ function ManagementShellContent({ children, staff, branches, moduleAccess, signO
         </div>
       </aside>
       <div className="main-area">
-        <header className="topbar">
-          <div className="topbar-title-block" aria-live="polite">
+        <div className="topbar-header-wrapper">
+          <header className="topbar">
+            <div className="topbar-title-block" aria-live="polite">
             <span className="topbar-kicker">{pageHeading.section.toUpperCase()}</span>
             <h1 className="topbar-title">{pageHeading.title}</h1>
             <div className="topbar-date">
@@ -319,6 +320,7 @@ function ManagementShellContent({ children, staff, branches, moduleAccess, signO
             </button>
           </div>
         </header>
+        </div>
         <main className="content">
           {routeAllowed ? children : (
             <section className="card panel">

@@ -194,11 +194,12 @@ h1, h2, h3 { font-family: "Segoe UI", Arial, sans-serif; }
 .staff-mini small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; text-transform: capitalize; }
 
 .main-area { display: grid; min-width: 0; min-height: 0; height: 100%; grid-template-rows: auto minmax(0, 1fr); }
-.topbar { min-height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--line); border-radius: 16px; background: rgb(255 255 255 / 84%); padding: 0 16px; margin: 6px 8px 6px 0; }
-.topbar-title-block { display: grid; min-width: 0; gap: 3px; }
-.topbar-kicker { color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
-.topbar-title { overflow: hidden; margin: 0; color: var(--ink); font-size: clamp(20px, 2vw, 27px); font-weight: 700; letter-spacing: -.04em; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
-.topbar-date { color: var(--muted); font-size: 9px; white-space: nowrap; }
+.topbar-header-wrapper { display: flex; justify-content: center; padding: 0 10px; }
+.topbar { min-height: 32px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--line); border-radius: 16px; background: rgb(255 255 255 / 84%); padding: 8px 16px; width: 80%; }
+.topbar-title-block { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.topbar-kicker { color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.topbar-title { overflow: hidden; margin: 0; color: var(--ink); font-size: clamp(16px, 1.8vw, 22px); font-weight: 700; letter-spacing: -.04em; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
+.topbar-date { color: var(--muted); font-size: 10px; white-space: nowrap; }
 .topbar-date span { color: var(--muted); }
 .topbar-right { display: flex; align-items: center; gap: 12px; }
 .branch-pill { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 999px; background: #fff; padding: 8px 11px; color: #44564a; font-size: 11px; font-weight: 700; }

@@ -58,6 +58,7 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
   const [moduleAccess, setModuleAccess] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastActivity, setLastActivity] = useState(Date.now());
 
   const applyIdentity = useCallback((identity: IdentityResponse) => {
     if (
@@ -73,6 +74,7 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
     setCanViewOrders(identity.canViewOrders);
     setModuleAccess(identity.moduleAccess);
     setError(null);
+    setLastActivity(Date.now());
   }, []);
 
   useEffect(() => {
@@ -154,6 +156,45 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
     setModuleAccess({});
     setError(null);
   }, []);
+
+  useEffect(() => {
+    const INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
+    const CHECK_INTERVAL = 60 * 1000; // Check every minute
+
+    const checkInactivity = () => {
+      const now = Date.now();
+      if (now - lastActivity > INACTIVITY_TIMEOUT && staff) {
+        void signOut();
+      }
+    };
+
+    const interval = setInterval(checkInactivity, CHECK_INTERVAL);
+
+    const updateActivity = () => {
+      setLastActivity(Date.now());
+    };
+
+    const events = ["mousedown", "keydown", "scroll", "touchstart"];
+    events.forEach((event) => {
+      window.addEventListener(event, updateActivity);
+    });
+
+    const handleBeforeUnload = () => {
+      if (staff) {
+        void signOut();
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      clearInterval(interval);
+      events.forEach((event) => {
+        window.removeEventListener(event, updateActivity);
+      });
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [lastActivity, staff, signOut]);
 
   const value = useMemo(() => ({
     staff, branches, canViewOrders, moduleAccess, loading, error, signIn, signInWithUsername, enrollWithInvitation, signOut,

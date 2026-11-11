@@ -11,7 +11,7 @@ import type { Database } from "@/lib/supabase/database.types";
 
 const ACCESS_COOKIE = "ah_mgmt_access";
 const REFRESH_COOKIE = "ah_mgmt_refresh";
-const REFRESH_MAX_AGE = 7 * 24 * 60 * 60;
+const REFRESH_MAX_AGE = 30 * 60;
 
 type Staff = Pick<
   Database["public"]["Tables"]["cloud_staff"]["Row"],

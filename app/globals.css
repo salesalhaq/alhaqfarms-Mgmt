@@ -548,6 +548,9 @@ tbody tr:hover { background: #fcfdfb; }
 .pos-catalog-toolbar .horizontal-filter-content { align-items: flex-end; gap: 8px; }
 .pos-catalog-toolbar .search-field { min-width: 220px; flex: 1 0 260px; }
 .pos-catalog-toolbar .toolbar-control { flex: 0 0 180px; }
+.pos-customer-button { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 9px; border: 0; border-bottom: 1px solid var(--line); padding: 11px 14px; color: var(--ink); background: var(--surface-soft); text-align: left; margin-bottom: 10px; }
+.pos-customer-actions { display: flex; gap: 8px; margin-bottom: 10px; }
+.pos-customer-actions .button { flex: 1; min-height: 36px; font-size: 11px; }
 .pos-product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); gap: 9px; }
 .pos-product-card { display: flex; min-width: 0; min-height: 190px; flex-direction: column; align-items: stretch; gap: 6px; padding: 10px; color: var(--ink); text-align: left; cursor: pointer; transition: transform .15s ease, border-color .15s ease; }
 .pos-product-card:hover:not(:disabled) { transform: translateY(-1px); border-color: #b6d2be; }
@@ -574,11 +577,6 @@ tbody tr:hover { background: #fcfdfb; }
 .pos-basket-header h2 span { display: inline-grid; min-width: 21px; height: 21px; place-items: center; border-radius: 50%; background: var(--green-soft); color: var(--green-dark); font-size: 10px; }
 .pos-basket-header small { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; }
 .pos-basket-header .button { min-height: 31px; padding: 0 8px; font-size: 10px; }
-.pos-customer-button { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 9px; border: 0; border-bottom: 1px solid var(--line); padding: 11px 14px; color: var(--ink); background: var(--surface-soft); text-align: left; }
-.pos-customer-button:disabled { cursor: not-allowed; opacity: .75; }
-.pos-customer-button strong, .pos-customer-button small { display: block; }
-.pos-customer-button strong { font-size: 11px; }
-.pos-customer-button small { margin-top: 4px; color: var(--muted); font-size: 9px; }
 .pos-basket-lines { min-height: 110px; flex: 1; overflow: auto; padding: 0 14px; }
 .pos-basket-line { border-bottom: 1px solid var(--line); padding: 11px 0; }
 .pos-basket-line-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }

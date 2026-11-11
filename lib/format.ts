@@ -6,6 +6,15 @@ export function formatMoney(paisa: number): string {
   }).format(paisa / 100);
 }
 
+export function formatMoneyPrecise(paisa: number): string {
+  return new Intl.NumberFormat("en-PK", {
+    style: "currency",
+    currency: "PKR",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(paisa / 100);
+}
+
 export function formatQuantity(milli: number): string {
   return new Intl.NumberFormat("en-PK", { maximumFractionDigits: 3 }).format(milli / 1000);
 }

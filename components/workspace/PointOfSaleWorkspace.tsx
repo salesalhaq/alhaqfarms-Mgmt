@@ -7,7 +7,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useStaffAuth } from "@/components/StaffAuthProvider";
 import { useBusinessSettings } from "@/components/BusinessSettingsProvider";
-import { formatMoney, formatQuantity } from "@/lib/format";
+import { formatMoney, formatMoneyPrecise, formatQuantity } from "@/lib/format";
 import { DEFAULT_BRANCH_POS_SETTINGS, type BranchPosSettings } from "@/lib/branch-pos-settings";
 import type { WorkspaceModule } from "@/lib/workspace-modules";
 import { ReceiptDocument } from "@/components/workspace/ReceiptDocument";
@@ -292,6 +292,14 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
     || loyaltyPointsRedeemed > (selectedCustomer?.loyalty_points || 0)
     || loyaltyDiscountPaisa > totalPaisa - (billDiscountPaisa || 0);
   const maxBillDiscountPaisa = Math.floor(totalPaisa * posSettings.maxBillDiscountBps / 10_000);
+  const cartTaxRates = useMemo(
+    () => [...new Set(cart.map((line) => line.product.tax_rate_bps || 0).filter((rate) => rate > 0))]
+      .sort((left, right) => left - right),
+    [cart],
+  );
+  const cartTaxRateLabel = `${cartTaxRates.length
+    ? cartTaxRates.map((rate) => `${Number((rate / 100).toFixed(2))}%`).join(", ")
+    : ""} ${taxMode === "inclusive" ? "included in prices" : "added to prices"}`.trim();
   const discountNeedsManagerApproval = Boolean(staff)
     && (billDiscountPaisa || 0) > Math.min(Math.floor(totalPaisa * 0.03), 10_000);
   let taxDiscountRemaining = (billDiscountPaisa ?? 0)
@@ -1327,7 +1335,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
               <div><span>Loyalty discount</span><strong>−{formatMoney(loyaltyDiscountPaisa)}</strong></div>
             )}
             {saleTaxPaisa > 0 && (
-              <div><span>Tax ({taxMode})</span><strong>{formatMoney(saleTaxPaisa)}</strong></div>
+              <div><span>Tax ({cartTaxRateLabel})</span><strong>{formatMoneyPrecise(saleTaxPaisa)}</strong></div>
             )}
             <div><span>Total due</span><strong>{formatMoney(saleTotalPaisa)}</strong></div>
             <small>Final product prices and stock are revalidated when the sale is recorded.</small>
@@ -1416,7 +1424,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
                       .filter((rate) => rate > 0)
                       .map((rate) => ({
                         label: `Tax ${rate / 100}%`,
-                        value: formatMoney(completedLines
+                        value: formatMoneyPrecise(completedLines
                           .filter((line) => (line.product.tax_rate_bps || 0) === rate)
                           .reduce((sum, line) => {
                             const subtotal = Math.round(productPrice(line.product) * line.quantityMilli / 1000);
@@ -1424,7 +1432,7 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
                             return sum + roundedTaxPaisa(subtotal - discount, rate, completedSale.taxMode);
                           }, 0)),
                       }))
-                    : [{ label: `Tax (${completedSale.taxMode})`, value: formatMoney(completedSale.taxPaisa) }]),
+                    : [{ label: `Tax (${completedSale.taxMode})`, value: formatMoneyPrecise(completedSale.taxPaisa) }]),
                 { label: "Total", value: formatMoney(completedSale.totalPaisa), emphasis: true },
                 ...(completedSale.duePaisa > 0
                   ? [{ label: "Credit due", value: formatMoney(completedSale.duePaisa) }]

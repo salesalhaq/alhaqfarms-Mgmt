@@ -577,6 +577,16 @@ tbody tr:hover { background: #fcfdfb; }
 .pos-basket-header h2 span { display: inline-grid; min-width: 21px; height: 21px; place-items: center; border-radius: 50%; background: var(--green-soft); color: var(--green-dark); font-size: 10px; }
 .pos-basket-header small { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; }
 .pos-basket-header .button { min-height: 31px; padding: 0 8px; font-size: 10px; }
+.pos-basket-top-row { display: flex; gap: 10px; margin-bottom: 10px; padding: 10px; border-bottom: 1px solid var(--line); }
+.pos-basket-top-row .field { flex: 1; margin: 0; }
+.pos-basket-top-row .field span { font-size: 10px; }
+.pos-basket-top-row .field select { min-height: 36px; }
+.pos-customer-button-inline { display: flex; flex: 1; align-items: center; justify-content: space-between; gap: 8px; border: 0; border-radius: 8px; padding: 8px 12px; color: var(--ink); background: var(--surface-soft); text-align: left; cursor: pointer; }
+.pos-customer-button-inline:disabled { cursor: not-allowed; opacity: .6; }
+.pos-customer-button-inline strong { font-size: 11px; }
+.pos-customer-button-inline small { font-size: 9px; color: var(--muted); }
+.pos-customer-actions-inline { display: flex; gap: 8px; margin-bottom: 10px; padding: 0 10px; }
+.pos-customer-actions-inline .button { flex: 1; min-height: 32px; font-size: 10px; padding: 0 8px; }
 .pos-basket-lines { min-height: 110px; flex: 1; overflow: auto; padding: 0 14px; }
 .pos-basket-line { border-bottom: 1px solid var(--line); padding: 11px 0; }
 .pos-basket-line-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }

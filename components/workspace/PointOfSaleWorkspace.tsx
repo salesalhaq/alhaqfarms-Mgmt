@@ -1171,36 +1171,6 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
             </section>
           )}
 
-          <button className="pos-customer-button card" disabled={!branchId} onClick={() => {
-            setCustomerCreating(false);
-            setCustomerDialog(true);
-            void searchPosCustomers(customerSearch);
-          }} type="button">
-            <span>
-              <strong>{selectedCustomer?.name || "Walk-in customer"}</strong>
-              <small>{selectedCustomer
-                ? `${selectedCustomer.phone || "No phone"} · ${selectedCustomer.loyalty_points} loyalty points · ${formatMoney(selectedCustomer.available_credit_paisa)} credit available`
-                : "Select a customer account for loyalty or credit"}</small>
-            </span>
-            <ArrowRight size={15} />
-          </button>
-          <div className="pos-customer-actions">
-            <button className="button secondary" onClick={() => {
-              setCustomerCreating(true);
-              setCustomerDialog(true);
-            }} type="button">New customer account</button>
-            {selectedCustomer && <button className="button secondary" onClick={() => {
-              setSelectedCustomer(null);
-              setLoyaltyPointsInput("0");
-            }} type="button">Remove customer</button>}
-          </div>
-          {selectedCustomer && (
-            <label className="field card">
-              <span>Redeem loyalty points<small>{selectedCustomer.loyalty_points} available · PKR 1.00 per point</small></span>
-              <input inputMode="numeric" min="0" max={selectedCustomer.loyalty_points} value={loyaltyPointsInput}
-                onChange={(event) => setLoyaltyPointsInput(event.target.value)} />
-            </label>
-          )}
           <HorizontalFilterScroller className="pos-catalog-toolbar" ariaLabel="Point of sale product filters">
             <label className="search-field">
               {scannerBusy ? <LoaderCircle size={16} className="spin" /> : <Search size={16} />}
@@ -1285,6 +1255,45 @@ export function PointOfSaleWorkspace({ item }: { item: WorkspaceModule }) {
         </div>
 
         <aside className="pos-basket card" aria-label="Temporary sale basket">
+          <div className="pos-basket-top-row">
+            <label className="field">
+              <span>Branch</span>
+              <select value={branchId || ""} onChange={(event) => setBranchId(event.target.value || null)}>
+                <option value="">Select branch</option>
+                {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+              </select>
+            </label>
+            <button className="pos-customer-button-inline" disabled={!branchId} onClick={() => {
+              setCustomerCreating(false);
+              setCustomerDialog(true);
+              void searchPosCustomers(customerSearch);
+            }} type="button">
+              <span>
+                <strong>{selectedCustomer?.name || "Walk-in customer"}</strong>
+                <small>{selectedCustomer
+                  ? `${selectedCustomer.phone || "No phone"} · ${selectedCustomer.loyalty_points} pts`
+                  : "Select customer"}</small>
+              </span>
+              <ArrowRight size={15} />
+            </button>
+          </div>
+          <div className="pos-customer-actions-inline">
+            <button className="button secondary" onClick={() => {
+              setCustomerCreating(true);
+              setCustomerDialog(true);
+            }} type="button">New customer</button>
+            {selectedCustomer && <button className="button secondary" onClick={() => {
+              setSelectedCustomer(null);
+              setLoyaltyPointsInput("0");
+            }} type="button">Remove</button>}
+          </div>
+          {selectedCustomer && (
+            <label className="field">
+              <span>Loyalty points<small>{selectedCustomer.loyalty_points} available</small></span>
+              <input inputMode="numeric" min="0" max={selectedCustomer.loyalty_points} value={loyaltyPointsInput}
+                onChange={(event) => setLoyaltyPointsInput(event.target.value)} />
+            </label>
+          )}
           <div className="pos-basket-header">
             <div><h2>Current sale <span>{cart.length}</span></h2><small>Temporary basket · not saved</small></div>
             <button className="button secondary" disabled={!cart.length} onClick={() => { setCart([]); setError(null); setScanNotice(""); }} type="button">

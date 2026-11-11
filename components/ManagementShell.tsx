@@ -4,7 +4,8 @@ import {
   ArrowLeftRight, BarChart3, Beef, BookUser, Boxes, BriefcaseBusiness, Building2,
   Check, ClipboardList, Cloud, Factory, FlaskConical, Globe, LayoutDashboard, LogOut,
   Maximize2, Minimize2, MonitorSmartphone, Package, PackageCheck, Palette, PanelsTopLeft, Receipt, RotateCcw,
-  Settings, ShoppingCart, Store, Tag, Tags, TrendingUp, Truck, Users, Wallet, Warehouse,
+  Settings, ShoppingCart, Store, Tag, Tags, TrendingUp, Truck, User, Users, Wallet, Warehouse,
+  ZoomIn, ZoomOut,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -84,6 +85,10 @@ export function ManagementShell({ children }: { children: ReactNode }) {
   const [fullscreenError, setFullscreenError] = useState<string | null>(null);
   const [themeOpen, setThemeOpen] = useState(false);
   const themeMenuRef = useRef<HTMLDivElement>(null);
+  const [zoomPercent, setZoomPercent] = useState(() => Number(localStorage.getItem('alhaqfarms.zoom') || 100));
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [clock, setClock] = useState(() => new Date());
+  const profileMenuRef = useRef<HTMLDivElement>(null);
   const pageHeading = useMemo(() => {
     if (pathname.startsWith("/orders")) {
       return workspaceModules.find((item) => item.slug === "online-orders")
@@ -132,11 +137,30 @@ export function ManagementShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!themeOpen) return undefined;
     const closeOnOutsideClick = (event: MouseEvent) => {
-      if (themeMenuRef && !themeMenuRef.contains(event.target as Node)) setThemeOpen(false);
+      if (themeMenuRef.current && !themeMenuRef.current.contains(event.target as Node)) setThemeOpen(false);
     };
     document.addEventListener("pointerdown", closeOnOutsideClick);
     return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
   }, [themeOpen]);
+
+  useEffect(() => {
+    document.documentElement.style.zoom = `${zoomPercent}%`;
+    localStorage.setItem('alhaqfarms.zoom', String(zoomPercent));
+  }, [zoomPercent]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setClock(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!profileOpen) return undefined;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) setProfileOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
+  }, [profileOpen]);
 
   useEffect(() => {
     if (!loading && !staff && !error) router.replace("/login");
@@ -227,10 +251,19 @@ export function ManagementShell({ children }: { children: ReactNode }) {
           <div className="topbar-title-block" aria-live="polite">
             <span className="topbar-kicker">{pageHeading.section.toUpperCase()}</span>
             <h1 className="topbar-title">{pageHeading.title}</h1>
+            <div className="topbar-date">
+              {clock.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+              <span> · {clock.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase()}</span>
+            </div>
           </div>
           <div className="topbar-right">
             {fullscreenError && <span className="fullscreen-error" role="status">{fullscreenError}</span>}
             <span className="branch-pill"><Store size={13} />{assignedBranch?.name || "HQ · All branches"}</span>
+            <div className="zoom-control" aria-label="Display zoom">
+              <button type="button" aria-label="Zoom out" title="Zoom out" disabled={zoomPercent <= 70} onClick={() => setZoomPercent(Math.max(70, zoomPercent - 10))}><ZoomOut size={14} /></button>
+              <button type="button" className="zoom-reset" aria-label="Reset zoom to 100%" title="Reset zoom to 100%" onClick={() => setZoomPercent(100)}>{zoomPercent}%</button>
+              <button type="button" aria-label="Zoom in" title="Zoom in" disabled={zoomPercent >= 130} onClick={() => setZoomPercent(Math.min(130, zoomPercent + 10))}><ZoomIn size={14} /></button>
+            </div>
             <div className="theme-picker">
               <button
                 className="icon-button"
@@ -262,6 +295,32 @@ export function ManagementShell({ children }: { children: ReactNode }) {
                       ))}
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+            <div className="profile-picker">
+              <button
+                className="icon-button profile-button"
+                type="button"
+                onClick={() => setProfileOpen((open) => !open)}
+                aria-label="User menu"
+                aria-expanded={profileOpen}
+                title={staff.full_name}
+              >
+                <User size={16} />
+              </button>
+              {profileOpen && (
+                <div className="profile-menu" ref={profileMenuRef}>
+                  <div className="profile-header">
+                    <div className="profile-avatar">{staff.full_name.trim().slice(0, 1).toUpperCase()}</div>
+                    <div className="profile-info">
+                      <strong>{staff.full_name}</strong>
+                      <small>{staff.role}{assignedBranch ? ` · ${assignedBranch.code}` : " · HQ"}</small>
+                    </div>
+                  </div>
+                  <button className="profile-option" onClick={() => void signOut()} type="button">
+                    <LogOut size={14} /><span>Sign out</span>
+                  </button>
                 </div>
               )}
             </div>

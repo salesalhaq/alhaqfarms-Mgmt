@@ -44,6 +44,39 @@ interface StaffAuthValue {
 
 const StaffAuthContext = createContext<StaffAuthValue | null>(null);
 
+/**
+ * A tab keeps its own marker in sessionStorage: it survives reloads (Ctrl+F5)
+ * but disappears the moment the tab or browser is closed. Cookies alone cannot
+ * do this, because they survive both reloads and tab closes.
+ */
+const TAB_SESSION_KEY = "ah_mgmt_tab_session";
+const TAB_SESSION_CHANNEL = "ah_mgmt_tab_session";
+const TAB_PROBE_TIMEOUT_MS = 600;
+
+function markTabSession() {
+  try {
+    window.sessionStorage.setItem(TAB_SESSION_KEY, "1");
+  } catch {
+    // Storage can be blocked; the cookie session still works.
+  }
+}
+
+function hasTabSession() {
+  try {
+    return window.sessionStorage.getItem(TAB_SESSION_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function clearTabSession() {
+  try {
+    window.sessionStorage.removeItem(TAB_SESSION_KEY);
+  } catch {
+    // Ignore.
+  }
+}
+
 async function readIdentity(response: Response): Promise<IdentityResponse> {
   try {
     return await response.json() as IdentityResponse;
@@ -76,32 +109,91 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
     setModuleAccess(identity.moduleAccess);
     setError(null);
     lastActivityRef.current = Date.now();
+    markTabSession();
   }, []);
 
   useEffect(() => {
     let active = true;
-    void fetch("/api/auth/me", { cache: "no-store", credentials: "same-origin" })
-      .then(async (response) => {
-        const identity = await readIdentity(response);
+    const channel = typeof window !== "undefined" && "BroadcastChannel" in window
+      ? new BroadcastChannel(TAB_SESSION_CHANNEL)
+      : null;
+
+    const handleChannelMessage = (event: MessageEvent) => {
+      if (event.data === "ping" && hasTabSession()) channel?.postMessage("pong");
+    };
+    channel?.addEventListener("message", handleChannelMessage);
+
+    const askOtherTabs = () => new Promise<boolean>((resolve) => {
+      if (!channel) {
+        resolve(false);
+        return;
+      }
+      const finish = (value: boolean) => {
+        window.clearTimeout(timer);
+        channel.removeEventListener("message", onPong);
+        resolve(value);
+      };
+      const onPong = (event: MessageEvent) => {
+        if (event.data === "pong") finish(true);
+      };
+      const timer = window.setTimeout(() => finish(false), TAB_PROBE_TIMEOUT_MS);
+      channel.addEventListener("message", onPong);
+      channel.postMessage("ping");
+    });
+
+    const loadIdentity = () => {
+      void fetch("/api/auth/me", { cache: "no-store", credentials: "same-origin" })
+        .then(async (response) => {
+          const identity = await readIdentity(response);
+          if (!active) return;
+          if (response.status === 401) {
+            setStaff(null);
+            setBranches([]);
+            setCanViewOrders(false);
+            setModuleAccess({});
+            return;
+          }
+          if (!response.ok) throw new Error(identity.error || "Staff access could not be verified.");
+          applyIdentity(identity);
+        })
+        .catch((loadError: unknown) => {
+          if (!active) return;
+          setError(loadError instanceof Error ? loadError.message : "Staff access could not be verified.");
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+    };
+
+    void (async () => {
+      // The tab marker survives reloads but not a tab/browser close. A brand-new
+      // tab may only reuse the cookie session when another open tab confirms it
+      // is still alive; otherwise the previous tab was closed, so sign out.
+      if (!hasTabSession() && channel) {
+        const otherTabOpen = await askOtherTabs();
         if (!active) return;
-        if (response.status === 401) {
+        if (!otherTabOpen) {
+          await fetch("/api/auth/sign-out", { method: "POST", credentials: "same-origin" })
+            .catch(() => undefined);
+          if (!active) return;
           setStaff(null);
           setBranches([]);
           setCanViewOrders(false);
           setModuleAccess({});
+          setError(null);
+          setLoading(false);
           return;
         }
-        if (!response.ok) throw new Error(identity.error || "Staff access could not be verified.");
-        applyIdentity(identity);
-      })
-      .catch((loadError: unknown) => {
-        if (!active) return;
-        setError(loadError instanceof Error ? loadError.message : "Staff access could not be verified.");
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => { active = false; };
+      }
+      markTabSession();
+      loadIdentity();
+    })();
+
+    return () => {
+      active = false;
+      channel?.removeEventListener("message", handleChannelMessage);
+      channel?.close();
+    };
   }, [applyIdentity]);
 
   const signIn = useCallback(async (email: string, password: string) => {
@@ -156,6 +248,7 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
     setCanViewOrders(false);
     setModuleAccess({});
     setError(null);
+    clearTabSession();
   }, []);
 
   useEffect(() => {
